@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import './index.css'; 
 import App from './components/OnextapDashboard'; 
 
@@ -23,5 +24,6 @@ if (urlMode === 'dashboard') {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App initialView={startView} />
+    <SpeedInsights />
   </React.StrictMode>
 );
