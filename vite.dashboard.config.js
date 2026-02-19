@@ -15,6 +15,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: './index.html',
+        privacy: './privacy-policy.html',
       },
     },
   },

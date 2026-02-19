@@ -3,6 +3,7 @@
   "buildCommand": "vite build --config vite.dashboard.config.js",
   "outputDirectory": "dist-dashboard",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.js" }
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/privacy-policy", "destination": "/privacy-policy.html" }
   ]
 }

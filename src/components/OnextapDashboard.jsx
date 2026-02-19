@@ -1691,7 +1691,6 @@ const PublicLandingPage = ({
   handleGoogleSignIn,
   onOpenPremiumModal
 }) => {
-  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
@@ -1715,6 +1714,16 @@ const PublicLandingPage = ({
   };
 
   const toggleFaq = (i) => setOpenFaq(openFaq === i ? null : i);
+
+  useEffect(() => {
+    const revealEls = document.querySelectorAll('.reveal, .reveal-scale, .reveal-left');
+    if (!revealEls.length) return;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('revealed'); obs.unobserve(e.target); } });
+    }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
+    revealEls.forEach(el => obs.observe(el));
+    return () => obs.disconnect();
+  });
 
   return (
     <div className={`w-full min-h-screen relative overflow-x-hidden bg-[#faf9f6] dark:bg-[#1c1b18] transition-colors duration-300`}>
@@ -1812,7 +1821,7 @@ const PublicLandingPage = ({
 
         {/* Description strip */}
         <section className="px-6 py-16 md:py-20 border-y border-onextap-dark/[0.06] dark:border-white/[0.06]">
-          <div className="max-w-3xl mx-auto text-center">
+          <div className="max-w-3xl mx-auto text-center reveal">
             <h2 className="text-[28px] md:text-[36px] font-bold text-onextap-dark dark:text-white tracking-tight leading-[1.15]">
               Everything you need to apply faster
             </h2>
@@ -1834,9 +1843,9 @@ const PublicLandingPage = ({
                 { icon: Sparkles, title: 'AI-Powered Personalization', desc: 'Save answers to recurring questions. Our AI reads the job description and suggests personalized improvements you can review before submitting.' },
                 { icon: User, title: 'Multiple Profiles', desc: 'Create different profiles for various job types or industries. Switch between them effortlessly as you apply.' },
                 { icon: Activity, title: 'Automatic Application Tracking', desc: 'Stay organized without a separate job-tracking platform. Onextap automatically tracks your previous applications, helping you manage your job search effortlessly.' },
-              ].map(({ icon: Icon, title, desc }) => (
-                <div key={title} className="bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] p-8 hover:bg-white/80 dark:hover:bg-white/[0.07] hover:shadow-lg hover:shadow-onextap-dark/[0.04] dark:hover:shadow-black/10 transition-all duration-300 group">
-                  <div className="w-12 h-12 rounded-xl bg-onextap-primary/10 dark:bg-onextap-primary/15 flex items-center justify-center mb-5 group-hover:bg-onextap-primary/15 dark:group-hover:bg-onextap-primary/25 transition-colors">
+              ].map(({ icon: Icon, title, desc }, idx) => (
+                <div key={title} className={`reveal-scale stagger-${idx + 1} bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] p-8 hover:bg-white/80 dark:hover:bg-white/[0.07] hover:shadow-lg hover:shadow-onextap-dark/[0.04] dark:hover:shadow-black/10 transition-all duration-300 group feature-card-hover`}>
+                  <div className="w-12 h-12 rounded-xl bg-onextap-primary/10 dark:bg-onextap-primary/15 flex items-center justify-center mb-5 group-hover:bg-onextap-primary/15 dark:group-hover:bg-onextap-primary/25 group-hover:scale-110 transition-all duration-300">
                     <Icon size={22} className="text-onextap-primary" />
                   </div>
                   <h3 className="text-[18px] font-bold text-onextap-dark dark:text-white mb-2">{title}</h3>
@@ -1850,7 +1859,7 @@ const PublicLandingPage = ({
         {/* Pricing */}
         <section id="pricing" className="px-6 py-20 md:py-28 bg-onextap-dark/[0.02] dark:bg-white/[0.02] scroll-mt-20">
           <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-14">
+            <div className="text-center mb-14 reveal">
               <p className="text-[12px] uppercase tracking-[0.18em] text-onextap-primary font-semibold mb-4">Pricing</p>
               <h2 className="text-[32px] md:text-[42px] font-bold text-onextap-dark dark:text-white tracking-tight leading-[1.1]">
                 Simple, transparent pricing
@@ -1861,7 +1870,7 @@ const PublicLandingPage = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
               {/* Free plan */}
-              <div className="bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] p-8 flex flex-col">
+              <div className="reveal-scale stagger-1 bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] p-8 flex flex-col feature-card-hover">
                 <p className="text-[12px] uppercase tracking-[0.16em] text-onextap-dark/45 dark:text-white/40 font-semibold">Free</p>
                 <div className="mt-4 flex items-baseline gap-1">
                   <span className="text-[48px] font-bold text-onextap-dark dark:text-white leading-none">$0</span>
@@ -1887,7 +1896,7 @@ const PublicLandingPage = ({
                 </button>
               </div>
               {/* Premium plan */}
-              <div className="bg-white/80 dark:bg-white/[0.06] backdrop-blur-sm rounded-2xl border-2 border-onextap-primary/30 p-8 flex flex-col relative shadow-lg shadow-onextap-primary/[0.08] dark:shadow-onextap-primary/[0.15]">
+              <div className="reveal-scale stagger-2 bg-white/80 dark:bg-white/[0.06] backdrop-blur-sm rounded-2xl border-2 border-onextap-primary/30 p-8 flex flex-col relative shadow-lg shadow-onextap-primary/[0.08] dark:shadow-onextap-primary/[0.15] feature-card-hover">
                 <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 bg-onextap-primary text-white text-[11px] font-bold uppercase tracking-wider rounded-full">
                   Most Popular
                 </div>
@@ -1922,7 +1931,7 @@ const PublicLandingPage = ({
         {/* FAQ */}
         <section id="faq" className="px-6 py-20 md:py-28 scroll-mt-20">
           <div className="max-w-3xl mx-auto">
-            <div className="text-center mb-14">
+            <div className="text-center mb-14 reveal">
               <p className="text-[12px] uppercase tracking-[0.18em] text-onextap-primary font-semibold mb-4">FAQ</p>
               <h2 className="text-[32px] md:text-[42px] font-bold text-onextap-dark dark:text-white tracking-tight leading-[1.1]">
                 Frequently Asked Questions
@@ -1938,7 +1947,7 @@ const PublicLandingPage = ({
                 { q: 'Can I use different profiles for different job types?', a: 'Yes! You can create multiple profiles for different industries or job types and switch between them when applying. Each profile stores its own set of personal details, experience, and saved answers.' },
                 { q: 'Is Onextap an Applicant Tracking System (ATS)?', a: 'No. Onextap is a personal productivity tool and application copilot. We help you fill out applications faster — we don\'t manage hiring pipelines or act as an employer-side ATS. Your data stays with you.' },
               ].map(({ q, a }, i) => (
-                <div key={i} className="bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] overflow-hidden transition-all duration-200 hover:bg-white/80 dark:hover:bg-white/[0.07]">
+                <div key={i} className={`reveal stagger-${i + 1} bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] overflow-hidden transition-all duration-200 hover:bg-white/80 dark:hover:bg-white/[0.07]`}>
                   <button onClick={() => toggleFaq(i)} className="w-full flex items-center justify-between gap-4 p-6 text-left">
                     <span className="text-[15px] md:text-[16px] font-semibold text-onextap-dark dark:text-white">{q}</span>
                     <ChevronDown size={20} className={`text-onextap-dark/40 dark:text-white/40 shrink-0 transition-transform duration-200 ${openFaq === i ? 'rotate-180' : ''}`} />
@@ -1956,7 +1965,7 @@ const PublicLandingPage = ({
 
         {/* CTA Banner */}
         <section className="px-6 py-20 md:py-28 bg-onextap-dark/[0.02] dark:bg-white/[0.02]">
-          <div className="max-w-3xl mx-auto text-center">
+          <div className="max-w-3xl mx-auto text-center reveal">
             <h2 className="text-[28px] md:text-[40px] font-bold text-onextap-dark dark:text-white tracking-tight leading-[1.1]">
               Ready to transform your job search?
             </h2>
@@ -1971,7 +1980,7 @@ const PublicLandingPage = ({
 
         {/* Auth */}
         <section id="auth" className="px-6 py-20 md:py-28 bg-onextap-dark/[0.02] dark:bg-white/[0.02] scroll-mt-20">
-          <div className="max-w-md mx-auto text-center">
+          <div className="max-w-md mx-auto text-center reveal-scale">
             <h2 className="text-[28px] md:text-[36px] font-bold text-onextap-dark dark:text-white tracking-tight mb-2">
               {authMode === 'signup' ? 'Create your account' : 'Welcome back'}
             </h2>
@@ -2063,7 +2072,7 @@ const PublicLandingPage = ({
 
       {/* Footer */}
       <footer className="px-6 pt-16 pb-10 border-t border-onextap-dark/[0.06] dark:border-white/[0.06]">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl mx-auto reveal">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 md:gap-8">
             {/* Brand */}
             <div className="md:col-span-1">
@@ -2089,7 +2098,7 @@ const PublicLandingPage = ({
               <h4 className="text-[12px] uppercase tracking-[0.14em] text-onextap-dark/50 dark:text-white/40 font-semibold mb-4">Support</h4>
               <div className="space-y-3">
                 <a href="mailto:mazzah70@gmail.com" className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">Contact Us</a>
-                <button onClick={() => setIsPrivacyOpen(true)} className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">Privacy Policy</button>
+                <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">Privacy Policy</a>
               </div>
             </div>
             {/* Get Started */}
@@ -2111,45 +2120,6 @@ const PublicLandingPage = ({
         </div>
       </footer>
 
-      {/* Privacy Policy Modal */}
-      {isPrivacyOpen && (
-        <div className="fixed inset-0 z-40 bg-black/40 dark:bg-black/60 flex items-center justify-center p-4" onClick={() => setIsPrivacyOpen(false)}>
-          <div className="w-full max-w-2xl max-h-[85vh] bg-white dark:bg-[#262520] rounded-2xl border border-onextap-primary/20 dark:border-onextap-primary/30 shadow-xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-onextap-primary/15 dark:border-white/[0.08] flex items-center justify-between shrink-0">
-              <h3 className="font-bold text-lg text-onextap-dark dark:text-white">Onextap Privacy Policy</h3>
-              <button onClick={() => setIsPrivacyOpen(false)} className="p-1.5 hover:bg-onextap-primary/10 rounded-lg text-onextap-dark/55 dark:text-white/55 hover:text-onextap-dark dark:hover:text-white transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto space-y-5 text-[14px] text-onextap-dark/70 dark:text-white/60 leading-[1.8]">
-              <p className="text-[12px] text-onextap-dark/40 dark:text-white/35">Last Updated: February 2026</p>
-              <div>
-                <h4 className="font-bold text-onextap-dark dark:text-white mb-2">1. Data Ownership &amp; Local-First Philosophy</h4>
-                <p>Onextap is built on the principle of Data Sovereignty. By default, all personal information, resume data, and application history are stored locally on your device within the browser&apos;s secure storage.</p>
-              </div>
-              <div>
-                <h4 className="font-bold text-onextap-dark dark:text-white mb-2">2. Data Collection and Usage</h4>
-                <p><strong className="dark:text-white/80">Personal Information:</strong> We do not sell, rent, or trade your personal data. Data is used solely to facilitate the autofill functionality of job applications.</p>
-                <p className="mt-2"><strong className="dark:text-white/80">AI Processing:</strong> When you use the &ldquo;AI Refine&rdquo; feature, the job description and your selected saved answer are sent to our secure AI partners (Anthropic/Google). This data is processed in a &ldquo;stateless&rdquo; manner and is not used to train global AI models.</p>
-                <p className="mt-2"><strong className="dark:text-white/80">Cloud Sync (Optional):</strong> If you enable Cloud Backup, your data is transmitted via SSL/TLS encryption to our secure database (Supabase) to allow syncing across your devices.</p>
-              </div>
-              <div>
-                <h4 className="font-bold text-onextap-dark dark:text-white mb-2">3. Third-Party Services</h4>
-                <p>Onextap interacts with:</p>
-                <ul className="mt-2 space-y-1 ml-4">
-                  <li>&bull; <strong className="dark:text-white/80">Supabase:</strong> For encrypted authentication and cloud storage.</li>
-                  <li>&bull; <strong className="dark:text-white/80">Anthropic/Google:</strong> For natural language processing and resume parsing.</li>
-                  <li>&bull; <strong className="dark:text-white/80">Dodo Payments:</strong> For secure payment processing (we never see or store your credit card details).</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-bold text-onextap-dark dark:text-white mb-2">4. Security</h4>
-                <p>We employ industry-standard encryption. Your &ldquo;Master Profile&rdquo; is yours alone. We do not have &ldquo;backdoor&rdquo; access to your locally stored data.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -2597,7 +2567,7 @@ const DashboardView = ({ onClose }) => {
         <div className="absolute top-1/2 left-1/3 w-80 h-80 rounded-full bg-onextap-primary/5 dark:bg-onextap-primary/[0.04] blur-3xl" />
       </div>
 
-      <aside className="w-72 bg-white/80 dark:bg-[#262520]/80 backdrop-blur-md border-r border-onextap-primary/15 dark:border-white/[0.06] flex flex-col fixed h-full z-10 shadow-xl shadow-onextap-dark/5 dark:shadow-black/20 transition-colors">
+      <aside className="w-72 bg-white/80 dark:bg-[#262520]/80 backdrop-blur-md border-r border-onextap-primary/15 dark:border-white/[0.06] flex flex-col fixed h-full z-10 shadow-xl shadow-onextap-dark/5 dark:shadow-black/20 transition-colors sidebar-enter">
         <div className="p-6 flex items-center gap-3 border-b border-onextap-primary/15 dark:border-white/[0.06]">
           <img src={getIconUrl()} alt="Logo" className="w-10 h-10 rounded-xl shadow-md ring-1 ring-white/60 dark:ring-white/10" />
           <span className="font-bold text-xl text-onextap-dark dark:text-white tracking-tight">Onextap</span>
@@ -2654,16 +2624,17 @@ const DashboardView = ({ onClose }) => {
         </div>
 
         <nav className="flex-1 p-5 space-y-2" data-tour="sidebar-nav">
-          {[{id:'overview', icon:Layout, label:'Overview'}, {id:'profiles', icon:User, label:'My Profiles'}, {id:'vault', icon:PenTool, label:'Answer Studio'}].map(i => (
+          {[{id:'overview', icon:Layout, label:'Overview'}, {id:'profiles', icon:User, label:'My Profiles'}, {id:'vault', icon:PenTool, label:'Answer Studio'}].map((i, idx) => (
             <button 
               key={i.id} 
               onClick={()=>setActiveNav(i.id)} 
               data-tour={`nav-${i.id}`}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-medium transition-all duration-200 ${
+              className={`nav-item-enter w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-medium transition-all duration-200 ${
                 activeNav===i.id
                   ? 'bg-gradient-to-r from-onextap-primary/15 to-onextap-primary/5 text-onextap-primary shadow-sm border border-onextap-primary/20'
                   : 'text-onextap-dark/70 dark:text-white/60 hover:bg-white/60 dark:hover:bg-white/[0.05] hover:text-onextap-dark dark:hover:text-white hover:shadow-sm'
               }`}
+              style={{ animationDelay: `${0.2 + idx * 0.08}s` }}
             >
               <i.icon size={18}/>{i.label}
             </button>
@@ -2682,7 +2653,7 @@ const DashboardView = ({ onClose }) => {
           </div>
         </div>
       </aside>
-      <main className="flex-1 ml-72 p-8 relative z-10">{renderContent()}</main>
+      <main className="flex-1 ml-72 p-8 relative z-10 main-content-enter">{renderContent()}</main>
       
       {/* Account Settings Modal */}
       <AccountSettingsModal
@@ -2719,6 +2690,16 @@ import ExtensionBridge from './ExtensionBridge';
 
 export default function App({ initialView = 'dashboard' }) {
   const [viewMode, setViewMode] = useState(initialView); 
+  const [showSplash, setShowSplash] = useState(() => initialView === 'dashboard');
+  const [splashExiting, setSplashExiting] = useState(false);
+
+  useEffect(() => {
+    if (!showSplash) return;
+    const exitTimer = setTimeout(() => setSplashExiting(true), 1500);
+    const removeTimer = setTimeout(() => setShowSplash(false), 2000);
+    return () => { clearTimeout(exitTimer); clearTimeout(removeTimer); };
+  }, [showSplash]);
+
   const openDashboardTab = (view = null) => { 
     if (window.chrome && chrome.tabs && chrome.runtime?.id) { 
       const sep = DASHBOARD_URL.includes('?') ? '&' : '?';
@@ -2739,7 +2720,20 @@ export default function App({ initialView = 'dashboard' }) {
   if (params.get('mode') === 'extension-bridge') {
     return <ExtensionBridge />;
   }
-  
-  if (viewMode === 'popup') return <PopupView onLaunchDashboard={openDashboardTab} onLaunchAnswerStudio={() => openDashboardTab('vault')} />;
-  return <DashboardView onClose={() => window.close()} />;
+
+  return (
+    <>
+      {showSplash && (
+        <div className={`splash-screen ${splashExiting ? 'splash-exit' : ''}`}>
+          <img src={getIconUrl()} alt="Onextap" className="splash-logo" />
+          <div className="splash-text">Onextap</div>
+          <div className="splash-bar"><div className="splash-bar-fill" /></div>
+        </div>
+      )}
+      {viewMode === 'popup'
+        ? <PopupView onLaunchDashboard={openDashboardTab} onLaunchAnswerStudio={() => openDashboardTab('vault')} />
+        : <DashboardView onClose={() => window.close()} />
+      }
+    </>
+  );
 }

@@ -163,6 +163,188 @@ html, body, #root {
   animation: toastFadeOut 0.2s ease-out forwards;
 }
 
+/* ===== SPLASH / INTRO SCREEN ===== */
+
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #faf9f6;
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.dark .splash-screen {
+  background: #1c1b18;
+}
+
+.splash-screen.splash-exit {
+  opacity: 0;
+  transform: scale(1.04);
+  pointer-events: none;
+}
+
+.splash-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  animation: splashLogoBounce 1s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  filter: drop-shadow(0 8px 24px rgba(140, 150, 87, 0.25));
+}
+
+@keyframes splashLogoBounce {
+  0%   { opacity: 0; transform: scale(0) rotate(-20deg); }
+  50%  { opacity: 1; transform: scale(1.15) rotate(3deg); }
+  70%  { transform: scale(0.92) rotate(-1deg); }
+  85%  { transform: scale(1.04) rotate(0.5deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.splash-text {
+  margin-top: 20px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #473f34;
+  opacity: 0;
+  animation: splashTextFade 0.6s ease 0.4s forwards;
+}
+
+html.dark .splash-text {
+  color: #e8e4dc;
+}
+
+@keyframes splashTextFade {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.splash-bar {
+  margin-top: 24px;
+  width: 120px;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(140, 150, 87, 0.15);
+  overflow: hidden;
+  opacity: 0;
+  animation: splashTextFade 0.4s ease 0.6s forwards;
+}
+
+.splash-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #8c9657, #a8b375);
+  animation: splashBarFill 1s cubic-bezier(0.4, 0, 0.2, 1) 0.7s both;
+}
+
+@keyframes splashBarFill {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* ===== SCROLL REVEAL ===== */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.92) translateY(20px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal-scale.revealed {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.reveal-left {
+  opacity: 0;
+  transform: translateX(-40px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal-left.revealed {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Stagger delays for child-based reveals */
+.stagger-1 { transition-delay: 0.05s; }
+.stagger-2 { transition-delay: 0.1s; }
+.stagger-3 { transition-delay: 0.15s; }
+.stagger-4 { transition-delay: 0.2s; }
+.stagger-5 { transition-delay: 0.25s; }
+.stagger-6 { transition-delay: 0.3s; }
+.stagger-7 { transition-delay: 0.35s; }
+
+/* ===== SIDEBAR ENTRANCE ===== */
+
+@keyframes sidebarSlideIn {
+  from { opacity: 0; transform: translateX(-40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.sidebar-enter {
+  animation: sidebarSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+}
+
+@keyframes mainContentFadeIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.main-content-enter {
+  animation: mainContentFadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+}
+
+/* ===== FEATURE CARD HOVER TILT ===== */
+
+.feature-card-hover {
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.35s ease;
+}
+
+.feature-card-hover:hover {
+  transform: translateY(-6px);
+}
+
+/* ===== NAV ITEMS STAGGER ===== */
+
+@keyframes navItemSlide {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.nav-item-enter {
+  animation: navItemSlide 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ===== REDUCED MOTION ===== */
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-screen { transition: none; }
+  .splash-logo { animation: none; opacity: 1; }
+  .splash-text { animation: none; opacity: 1; }
+  .splash-bar, .splash-bar-fill { animation: none; }
+  .reveal, .reveal-scale, .reveal-left { opacity: 1; transform: none; transition: none; }
+  .sidebar-enter, .main-content-enter, .nav-item-enter { animation: none; opacity: 1; }
+}
+
 /* Scrollbar Polishing */
 ::-webkit-scrollbar {
   width: 6px;
