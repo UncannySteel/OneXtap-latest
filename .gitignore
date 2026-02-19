@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+dist-dashboard/
+*.crx
+*.pem
+
+# Temporary build files (copied to root for build)
+background.js
+content.js
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+server/.env
+
+# Server data (user records, etc.)
+server/data/
+
+# IDE / Editor
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+# .vscode/ is kept for workspace settings
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+Thumbs.db

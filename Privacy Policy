@@ -1,0 +1,26 @@
+Onextap Privacy Policy
+
+Last Updated: February 2026
+
+1. Data Ownership & Local-First Philosophy
+Onextap is built on the principle of Data Sovereignty. By default, all personal information, resume data, and application history are stored locally on your device within the browser's secure storage.
+
+2. Data Collection and Usage
+
+Personal Information: We do not sell, rent, or trade your personal data. Data is used solely to facilitate the autofill functionality of job applications.
+
+AI Processing: When you use the "AI Refine" feature, the job description and your selected saved answer are sent to our secure AI partners (Anthropic/Google). This data is processed in a "stateless" manner and is not used to train global AI models.
+
+Cloud Sync (Optional): If you enable Cloud Backup, your data is transmitted via SSL/TLS encryption to our secure database (Supabase) to allow syncing across your devices.
+
+3. Third-Party Services
+Onextap interacts with:
+
+Supabase: For encrypted authentication and cloud storage.
+
+Anthropic/Google: For natural language processing and resume parsing.
+
+Dodo Payments: For secure payment processing (we never see or store your credit card details).
+
+4. Security
+We employ industry-standard encryption. Your "Master Profile" is yours alone. We do not have "backdoor" access to your locally stored data.
