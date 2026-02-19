@@ -480,11 +480,15 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ------------------------------------------------------------------
-// Start Server
+// Start Server (only when running locally, not on Vercel)
 // ------------------------------------------------------------------
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Onextap server running on port ${PORT}`);
-  console.log(`Webhook endpoint: POST /api/webhook`);
-  console.log(`Health check:     GET  /api/health`);
-});
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => {
+    console.log(`Onextap server running on port ${PORT}`);
+    console.log(`Webhook endpoint: POST /api/webhook`);
+    console.log(`Health check:     GET  /api/health`);
+  });
+}
+
+export default app;

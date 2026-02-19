@@ -13,8 +13,13 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
+    "cors": "^2.8.5",
+    "dodopayments": "^0.18.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "standardwebhooks": "^1.0.0"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.2.1",
