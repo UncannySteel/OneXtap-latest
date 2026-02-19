@@ -1893,7 +1893,7 @@ const PublicLandingPage = ({
                 </div>
                 <p className="text-[12px] uppercase tracking-[0.16em] text-onextap-primary font-semibold">Premium</p>
                 <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-[48px] font-bold text-onextap-dark dark:text-white leading-none">$2.20</span>
+                  <span className="text-[48px] font-bold text-onextap-dark dark:text-white leading-none">$5.00</span>
                   <span className="text-[15px] text-onextap-dark/40 dark:text-white/35 ml-1">/month</span>
                 </div>
                 <p className="mt-3 text-[15px] text-onextap-dark/50 dark:text-white/45">Unlimited AI power for serious job seekers</p>
@@ -1934,7 +1934,7 @@ const PublicLandingPage = ({
                 { q: 'How is my data stored and protected?', a: 'By default, all your data is stored locally on your device in the browser\'s secure storage. If you enable Cloud Sync, data is transmitted via SSL/TLS encryption to our secure database (Supabase). We never sell, rent, or trade your personal data.' },
                 { q: 'Do I have control over AI suggestions?', a: 'Absolutely. AI suggestions are just that — suggestions. You review every AI-generated answer before it\'s saved or used. The AI reads the job description context and your existing answers to suggest improvements, but you always have the final say.' },
                 { q: 'Which browsers are supported?', a: 'Onextap is currently available for Chrome and Chromium-based browsers (including Opera, Brave, and Edge). Safari support is coming soon.' },
-                { q: 'What happens when I run out of free AI credits?', a: 'Free accounts come with 3 AI credits for personalized answer generation. Once used, you can upgrade to Premium ($2.20/month) for unlimited AI-powered suggestions, or continue using all other features like autofill, profiles, and field mapping for free.' },
+                { q: 'What happens when I run out of free AI credits?', a: 'Free accounts come with 3 AI credits for personalized answer generation. Once used, you can upgrade to Premium ($5.00/month) for unlimited AI-powered suggestions, or continue using all other features like autofill, profiles, and field mapping for free.' },
                 { q: 'Can I use different profiles for different job types?', a: 'Yes! You can create multiple profiles for different industries or job types and switch between them when applying. Each profile stores its own set of personal details, experience, and saved answers.' },
                 { q: 'Is Onextap an Applicant Tracking System (ATS)?', a: 'No. Onextap is a personal productivity tool and application copilot. We help you fill out applications faster — we don\'t manage hiring pipelines or act as an employer-side ATS. Your data stays with you.' },
               ].map(({ q, a }, i) => (
