@@ -4,6 +4,7 @@
   "outputDirectory": "dist-dashboard",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.js" },
-    { "source": "/privacy-policy", "destination": "/privacy-policy.html" }
+    { "source": "/privacy-policy", "destination": "/privacy-policy.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

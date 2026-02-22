@@ -8,11 +8,11 @@ import {
 } from 'lucide-react';
 import { storage } from '../storage'; 
 import { COUNTRIES, GENDERS } from '../../extension/constants';
-import { signIn as supaSignIn, signUp as supaSignUp, signOut as supaSignOut, getSession, getUser, onAuthStateChange, signInWithOAuth, getAccessToken } from '../auth';
+import { signIn as supaSignIn, signUp as supaSignUp, signOut as supaSignOut, onAuthStateChange, signInWithOAuth, getAccessToken } from '../auth';
 import { creditManager } from '../creditManager';
 
 // Fallback extension ID (e.g. for published extension). When opening dashboard from popup we pass the real ID via ?extensionId=
-const EXTENSION_ID_FALLBACK = "gljgflgaloknokmnamkbcgjdbglojaic";
+const EXTENSION_ID_FALLBACK = "mfingcndmllgldconaojoljpbgfenlco";
 
 /** Get extension ID: from URL (?extensionId=) when dashboard opened from popup, then chrome.runtime.id, then fallback. */
 function getExtensionId() {
@@ -24,11 +24,9 @@ function getExtensionId() {
   return EXTENSION_ID_FALLBACK || null;
 }
 
-// Dashboard URL — used for payment redirects and external links
-const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || "http://localhost:5173";
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
-// Answer Studio model (Anthropic-supported model ID/alias)
-const ANSWER_STUDIO_MODEL = import.meta.env.VITE_ANSWER_STUDIO_MODEL || "claude-3-5-sonnet-latest";
+const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || "https://www.onextap.com";
+const API_URL = import.meta.env.VITE_API_URL || '';
+const ANSWER_STUDIO_MODEL = import.meta.env.VITE_ANSWER_STUDIO_MODEL || "gemini-2.0-flash";
 
 
 // --- 1. CONFIGURATION ---
@@ -1532,6 +1530,18 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio }) => {
     
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if(tab?.id) {
+       try {
+         await chrome.scripting.executeScript({
+           target: { tabId: tab.id },
+           files: ['content.js']
+         });
+       } catch (err) {
+         console.error("Onextap: Failed to inject content script:", err);
+         setStatus('Error: Cannot access this page');
+         setTimeout(() => setStatus('Autofill Application'), 3000);
+         return;
+       }
+
        chrome.tabs.sendMessage(tab.id, { action: "AUTOFILL_TRIGGERED", profile }, (res) => {
          if (chrome.runtime.lastError) {
            console.error("Onextap: Tab message error:", chrome.runtime.lastError);
@@ -2344,42 +2354,34 @@ const DashboardView = ({ onClose }) => {
 
   // Initialize Supabase & Check Auth
   useEffect(() => {
-    const init = async () => {
-      try {
-        const { session } = await getSession();
-        if (session?.user) {
-          setUser(session.user);
-          creditManager.verifyPremium().then(p => setIsPremiumUser(p)).catch(console.warn);
-        }
-      } catch (error) {
-        console.error('Auth init failed:', error);
-      } finally {
-        setIsCheckingAuth(false);
-      }
-    };
-    init();
-
-    // Listen for auth state changes (sign-in, sign-out, token refresh)
     const { unsubscribe } = onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
+      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         setUser(session.user);
-        creditManager.verifyPremium().catch(console.warn);
+        creditManager.verifyPremium().then(p => setIsPremiumUser(p)).catch(console.warn);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setContentKey((k) => k + 1);
+      }
+      if (event === 'INITIAL_SESSION') {
+        setIsCheckingAuth(false);
       }
     });
     return () => unsubscribe();
   }, []);
 
-  // Trigger guided tour for first-time users
+  // Trigger guided tour only for brand-new accounts (created within the last 2 minutes)
   useEffect(() => {
     if (user && !isCheckingAuth) {
       const checkTour = async () => {
         const seen = await storage.get('onextap_tutorial_seen');
-        if (!seen) {
-          // Short delay to let the dashboard render before showing tour
+        if (seen) return;
+
+        const createdAt = user.created_at ? new Date(user.created_at) : null;
+        const isNewAccount = createdAt && (Date.now() - createdAt.getTime() < 2 * 60 * 1000);
+        if (isNewAccount) {
           setTimeout(() => setShowTour(true), 600);
+        } else {
+          await storage.set('onextap_tutorial_seen', true);
         }
       };
       checkTour();
@@ -2460,15 +2462,15 @@ const DashboardView = ({ onClose }) => {
     await supaSignOut();
     setUser(null);
 
-    // Wipe local/extension storage so profile and credits don't persist after sign-out
+    const keysToRemove = ['user_profile'];
     try {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         await new Promise((resolve) => {
-          chrome.storage.local.clear(() => resolve());
+          chrome.storage.local.remove(keysToRemove, () => resolve());
         });
       }
       if (typeof localStorage !== 'undefined') {
-        localStorage.clear();
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
       }
     } catch (err) {
       console.warn('Storage clear on sign-out:', err);

@@ -1,36 +1,31 @@
 {
   "manifest_version": 3,
   "name": "Onextap",
-  "version": "1.0",
+  "version": "1.0.1",
   "description": "Autofill job applications.",
   "permissions": [
-    "storage", 
-    "activeTab", 
+    "storage",
+    "activeTab",
     "scripting",
     "tabs"
   ],
   "host_permissions": [
     "https://*.supabase.co/*",
+    "https://www.onextap.com/*",
+    "https://onextap.com/*",
     "http://localhost:5173/*",
     "http://localhost:3001/*"
   ],
   "externally_connectable": {
     "matches": [
+      "https://www.onextap.com/*",
+      "https://onextap.com/*",
       "http://localhost:5173/*"
     ]
   },
   "background": {
     "service_worker": "extension/background.js"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["src/content.js"],
-      "exclude_matches": [
-        "http://localhost:5173/*"
-      ]
-    }
-  ],
   "action": {
     "default_popup": "index.html",
     "default_icon": "icon.png"

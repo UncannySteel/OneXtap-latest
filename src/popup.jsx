@@ -11,12 +11,10 @@ const urlMode = params.get('mode');
 let startView = 'dashboard';
 if (urlMode === 'dashboard') {
   startView = 'dashboard';
-  // Dashboard gets full screen
   document.documentElement.style.width = '100%';
   document.documentElement.style.height = '100vh';
 } else if (isExtension) {
   startView = 'popup';
-  // Popup gets fixed size
   document.documentElement.style.width = '400px';
   document.documentElement.style.height = '600px';
 }
@@ -24,6 +22,6 @@ if (urlMode === 'dashboard') {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App initialView={startView} />
-    <SpeedInsights />
+    {!isExtension && <SpeedInsights />}
   </React.StrictMode>
 );

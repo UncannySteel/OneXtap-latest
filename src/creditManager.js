@@ -2,8 +2,7 @@ import { getAccessToken } from './auth';
 
 export const INITIAL_CREDITS = 3;
 
-// API base URL — set via VITE_API_URL in .env, defaults to local dev server
-const API_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || 'http://localhost:3001';
+const API_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '';
 
 /**
  * Helper: make an authenticated fetch to the backend.

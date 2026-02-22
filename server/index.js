@@ -16,7 +16,9 @@ const app = express();
 // CORS — allow dashboard + local dev origins
 // ------------------------------------------------------------------
 const allowedOrigins = [
-  process.env.CLIENT_URL || 'http://localhost:5173',
+  process.env.CLIENT_URL || 'https://www.onextap.com',
+  'https://www.onextap.com',
+  'https://onextap.com',
   'http://localhost:5173',
   'http://localhost:3000',
 ];
@@ -183,60 +185,111 @@ app.get('/api/verify-premium', requireAuth, async (req, res) => {
 });
 
 // ------------------------------------------------------------------
-// POST /api/answer-vault/generate — generate Answer Studio text via Anthropic
+// Shared Gemini helper
+// ------------------------------------------------------------------
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+
+async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4 }) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('Server missing GEMINI_API_KEY');
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens: maxTokens, temperature },
+  };
+  if (systemInstruction) {
+    body.systemInstruction = { parts: [{ text: systemInstruction }] };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90000);
+
+  const aiRes = await fetch(url, {
+    method: 'POST',
+    signal: controller.signal,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  clearTimeout(timeout);
+
+  const payload = await aiRes.json().catch(() => ({}));
+  if (!aiRes.ok) {
+    const msg = payload?.error?.message || `Gemini error (${aiRes.status})`;
+    throw new Error(msg);
+  }
+
+  const text = payload?.candidates?.[0]?.content?.parts
+    ?.filter((p) => p.text)
+    .map((p) => p.text)
+    .join('\n')
+    .trim();
+
+  if (!text) throw new Error('Gemini returned no text');
+  return text;
+}
+
+// ------------------------------------------------------------------
+// POST /api/answer-vault/generate — generate Answer Studio text via Gemini
 // ------------------------------------------------------------------
 app.post('/api/answer-vault/generate', requireAuth, async (req, res) => {
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'Server missing ANTHROPIC_API_KEY' });
-    }
-
     const prompt = (req.body?.prompt || '').trim();
-    const model = (req.body?.model || process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest').trim();
+    if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    if (!prompt) {
-      return res.status(400).json({ error: 'Missing prompt' });
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000);
-
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 500,
-        temperature: 0.4,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-    clearTimeout(timeout);
-
-    const payload = await aiRes.json().catch(() => ({}));
-    if (!aiRes.ok) {
-      const err = payload?.error?.message || `Anthropic error (${aiRes.status})`;
-      return res.status(502).json({ error: err });
-    }
-
-    const text = Array.isArray(payload?.content)
-      ? payload.content.filter((b) => b?.type === 'text').map((b) => b.text || '').join('\n').trim()
-      : '';
-
-    if (!text) {
-      return res.status(502).json({ error: 'Anthropic returned no text' });
-    }
-
-    return res.json({ text, model });
+    const text = await callGemini({ prompt, maxTokens: 500, temperature: 0.4 });
+    return res.json({ text, model: GEMINI_MODEL });
   } catch (error) {
     const isAbort = error?.name === 'AbortError';
-    return res.status(500).json({ error: isAbort ? 'Anthropic request timed out' : (error?.message || 'Generation failed') });
+    const msg = isAbort ? 'AI request timed out' : (error?.message || 'Generation failed');
+    return res.status(error?.message?.includes('missing') ? 500 : 502).json({ error: msg });
+  }
+});
+
+// ------------------------------------------------------------------
+// POST /api/parse-resume — extract structured profile from resume via Gemini
+// ------------------------------------------------------------------
+app.post('/api/parse-resume', requireAuth, async (req, res) => {
+  try {
+    const { fileData, fileName } = req.body || {};
+    if (!fileData) return res.status(400).json({ error: 'No file data provided' });
+
+    const systemInstruction = `You are a resume parser. Extract structured data from the resume text below and return ONLY valid JSON (no markdown fences, no explanation). Use this exact schema:
+{
+  "firstName": "",
+  "lastName": "",
+  "email": "",
+  "phone": "",
+  "address": { "street": "", "city": "", "state": "", "zip": "", "country": "" },
+  "education": [{ "school": "", "degree": "", "field": "", "startDate": "", "endDate": "", "gpa": "" }],
+  "experience": [{ "company": "", "title": "", "startDate": "", "endDate": "", "description": "" }],
+  "skills": [""],
+  "urls": [{ "type": "linkedin|github|portfolio|other", "value": "" }],
+  "certificates": [{ "name": "", "issuer": "", "date": "" }],
+  "currentJob": { "company": "", "title": "" }
+}
+Omit fields you cannot find. Return only the JSON object.`;
+
+    const prompt = `Parse this resume (filename: ${fileName || 'resume'}):\n\n${fileData}`;
+
+    const raw = await callGemini({
+      prompt,
+      systemInstruction,
+      maxTokens: 2048,
+      temperature: 0.1,
+    });
+
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+    const data = JSON.parse(cleaned);
+
+    return res.json({ data });
+  } catch (error) {
+    console.error('POST /api/parse-resume error:', error?.message || error);
+    if (error instanceof SyntaxError) {
+      return res.status(502).json({ error: 'AI returned invalid JSON. Please try again.' });
+    }
+    return res.status(500).json({ error: error?.message || 'Resume parsing failed' });
   }
 });
 
@@ -256,7 +309,7 @@ app.post('/api/create-checkout-session', requireAuth, async (req, res) => {
       } catch { /* subscription not found — continue */ }
     }
 
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const clientUrl = process.env.CLIENT_URL || 'https://www.onextap.com';
 
     const session = await dodo.checkoutSessions.create({
       product_cart: [{ product_id: process.env.DODO_PRODUCT_ID, quantity: 1 }],
