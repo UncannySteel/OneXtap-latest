@@ -1041,28 +1041,28 @@ const VaultPage = ({ showToast, user }) => {
         ? hasJobContext
           ? `You are an expert career coach and ghostwriter.
 Task: Rewrite the candidate's "Generic Answer" to specifically target the "Job Description" and "Company" provided.
-Constraints: 1) Tone: Human, natural, and confident (not robotic). 2) Length: 120-180 words. 3) Use first-person voice ("I"). 4) Include at least two concrete details (skills, results, tools, or achievements) tied to the role. 5) Weave in 2-3 job-description keywords naturally. 6) No filler, no cliches, no headings, no bullet points.
+Constraints: 1) Tone: Human, natural, and confident (not robotic). 2) Length: 120-180 words. 3) Use first-person voice ("I"). 4) Include at least two concrete details (skills, results, tools, or achievements) tied to the role. 5) Weave in 2-3 job-description keywords naturally. 6) No filler, no cliches, no headings, no bullet points. 7) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. If company is unknown, avoid naming one.
 Company: ${companyName}
 Job Description Snippet: ${jdSnippet}
 Candidate's Generic Answer: "${userAnswer}"
 Refined Answer:`
           : `You are an expert career coach and ghostwriter.
 Task: Improve the candidate's answer so it is stronger, clearer, and more professional.
-Constraints: 1) Tone: Human, natural, and confident. 2) Length: 120-180 words. 3) Keep the original meaning, but make it more specific and compelling. 4) Use first-person voice and include one concrete example or outcome. 5) No filler, no cliches, no headings, no bullet points.
+Constraints: 1) Tone: Human, natural, and confident. 2) Length: 120-180 words. 3) Keep the original meaning, but make it more specific and compelling. 4) Use first-person voice and include one concrete example or outcome. 5) No filler, no cliches, no headings, no bullet points. 6) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens.
 Application Question: "${q}"
 Candidate's Answer: "${userAnswer}"
 Improved Answer:`
         : hasJobContext
           ? `You are an expert career coach and ghostwriter.
 Task: Write a short, professional answer to the following application question. Use the "Job Description" and "Company" to tailor your answer.
-Constraints: 1) Tone: Human, natural, and confident. 2) Length: 120-180 words. 3) Use first-person voice. 4) Include at least two concrete details (skills, results, tools, or achievements). 5) Mention 2-3 keywords from the job description naturally. 6) No filler, no cliches, no headings, no bullet points.
+Constraints: 1) Tone: Human, natural, and confident. 2) Length: 120-180 words. 3) Use first-person voice. 4) Include at least two concrete details (skills, results, tools, or achievements). 5) Mention 2-3 keywords from the job description naturally. 6) No filler, no cliches, no headings, no bullet points. 7) Make the answer open-ended and interview-ready (not a template). 8) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens.
 Company: ${companyName}
 Job Description Snippet: ${jdSnippet}
 Application Question: "${q}"
 Your Answer:`
           : `You are an expert career coach and ghostwriter.
-Task: Write a short, professional first-draft answer to the following application question.
-Constraints: 1) Tone: Human, natural, and confident. 2) Length: 110-170 words. 3) Use first-person voice. 4) Include at least one concrete skill and one measurable or observable result. 5) Make it broadly applicable but still specific enough to sound real. 6) No filler, no cliches, no headings, no bullet points.
+Task: Write a strong, open-ended first-draft answer to the following application question that can work across companies and job descriptions.
+Constraints: 1) Tone: Human, natural, and confident. 2) Length: 110-170 words. 3) Use first-person voice. 4) Include at least one concrete skill and one measurable or observable result. 5) Make it broadly applicable but still specific enough to sound real. 6) No filler, no cliches, no headings, no bullet points. 7) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens.
 Application Question: "${q}"
 Your Answer:`;
 

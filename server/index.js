@@ -406,12 +406,14 @@ app.post('/api/answer-vault/generate', requireAuth, async (req, res) => {
       : ANSWER_STUDIO_MODEL;
 
     const answerSystemInstruction = `You are a senior career coach helping candidates win interviews.
-Write one polished application answer in plain text only.
+Write one polished, open-ended application answer in plain text only.
 Requirements:
 - Sound human and specific, not generic.
 - Use first-person voice ("I") and include 1-2 concrete examples where possible.
 - Mention relevant skills and job-description keywords naturally.
 - Keep a confident, concise, professional tone.
+- Never output placeholders or template phrases like "job profile", "company name", "this role", or bracketed tokens.
+- If company or JD context is missing, produce a versatile answer that still feels real and interview-ready.
 - No headings, no bullet points, no markdown, no meta commentary.`;
 
     const answerModels = [...new Set([
