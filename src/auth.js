@@ -40,21 +40,81 @@ export async function signIn(email, password) {
 
 /**
  * Sign in with OAuth provider (e.g. 'google').
- * Opens a popup/redirect for the OAuth flow.
+ * In a Chrome extension context, uses chrome.identity.launchWebAuthFlow
+ * so the popup doesn't close. On the web, uses the standard redirect flow.
  * @param {'google'|'github'|'discord'} provider
  * @returns {Promise<{error: object|null}>}
  */
 export async function signInWithOAuth(provider) {
+  const isExtension =
+    typeof chrome !== 'undefined' && !!chrome?.identity?.launchWebAuthFlow;
+
+  if (isExtension) {
+    return signInWithOAuthExtension(provider);
+  }
+
   const { error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      // Use full URL so Supabase can round-trip back to the exact page
-      // where the dashboard/extension is running.
-      // Make sure this URL is listed in Supabase's "Redirect URLs".
-      redirectTo: window.location.href,
+      redirectTo: window.location.origin + window.location.pathname,
     },
   });
   return { error };
+}
+
+/**
+ * Extension-specific OAuth: opens a Chrome identity auth window,
+ * parses the tokens from the redirect URL, and sets the Supabase session.
+ * Requires the "identity" permission in manifest.json and the redirect URL
+ * https://<extension-id>.chromiumapp.org/ in Supabase's Redirect URLs.
+ */
+async function signInWithOAuthExtension(provider) {
+  const redirectTo = `https://${chrome.runtime.id}.chromiumapp.org/`;
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo,
+      skipBrowserRedirect: true,
+    },
+  });
+
+  if (error) return { error };
+
+  try {
+    const responseUrl = await new Promise((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow(
+        { url: data.url, interactive: true },
+        (callbackUrl) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(callbackUrl);
+          }
+        },
+      );
+    });
+
+    const url = new URL(responseUrl);
+    const params = new URLSearchParams(url.hash.substring(1));
+    const access_token = params.get('access_token');
+    const refresh_token = params.get('refresh_token');
+
+    if (!access_token) {
+      return { error: { message: 'No access token in OAuth response' } };
+    }
+
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token,
+      refresh_token,
+    });
+
+    return { error: sessionError };
+  } catch (err) {
+    return {
+      error: { message: err.message || 'OAuth flow was cancelled or failed' },
+    };
+  }
 }
 
 /**

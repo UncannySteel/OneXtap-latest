@@ -12,7 +12,7 @@ import { signIn as supaSignIn, signUp as supaSignUp, signOut as supaSignOut, onA
 import { creditManager } from '../creditManager';
 
 // Fallback extension ID (e.g. for published extension). When opening dashboard from popup we pass the real ID via ?extensionId=
-const EXTENSION_ID_FALLBACK = "mfingcndmllgldconaojoljpbgfenlco";
+const EXTENSION_ID_FALLBACK = "jipgjmkblebmogmipckjkegghoijeich";
 
 /** Get extension ID: from URL (?extensionId=) when dashboard opened from popup, then chrome.runtime.id, then fallback. */
 function getExtensionId() {
@@ -384,6 +384,24 @@ const ProfilesPage = ({ showToast }) => {
       const base64 = await fileToBase64(file);
       const isImage = file.type.startsWith('image/');
       const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const token = await getAccessToken();
+      if (!token) {
+        setStatus('Error: Not authenticated. Please sign in first.');
+        setIsParsing(false);
+        return;
+      }
+      if (API_URL) {
+        const meRes = await fetch(`${API_URL}/api/me`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!meRes.ok) {
+          const meBody = await meRes.json().catch(() => ({}));
+          setStatus(`Error: Session token rejected (${meBody.error || meRes.status}). Please sign out and sign in again.`);
+          setIsParsing(false);
+          return;
+        }
+      }
       
       // Send message to extension using extension ID (required when dashboard is external)
       if (!window.chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
@@ -407,7 +425,8 @@ const ProfilesPage = ({ showToast }) => {
           fileName: file.name,
           fileType: file.type,
           isImage: isImage,
-          isPDF: isPDF
+          isPDF: isPDF,
+          token
         }
       }, async (response) => {
         if (chrome.runtime.lastError) {
@@ -424,7 +443,10 @@ const ProfilesPage = ({ showToast }) => {
         }
         
         if (!response.success || !response.data) {
-          setStatus('Error: ' + (response?.error || 'Parse failed'));
+          const debug = response?.debug
+            ? ` [debug: ${JSON.stringify(response.debug)}]`
+            : '';
+          setStatus('Error: ' + (response?.error || 'Parse failed') + debug);
           setIsParsing(false);
           return;
         }
