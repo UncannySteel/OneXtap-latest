@@ -1036,34 +1036,62 @@ const VaultPage = ({ showToast, user }) => {
       const companyName = (manualCompanyName || company || 'Not specified').trim();
       const userAnswer = (tempItem.answer || '').trim();
       const hasGeneric = userAnswer.length > 0;
+      const profileSkills = (profile.skills || [])
+        .map((s) => String(s || '').trim())
+        .filter(Boolean)
+        .slice(0, 8)
+        .join(', ');
+      const currentRole = [profile.currentJob?.title, profile.currentJob?.company]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .join(' at ');
+      const recentExperience = (profile.experience || [])
+        .filter((ex) => (ex?.title || ex?.company))
+        .slice(0, 2)
+        .map((ex) => {
+          const title = String(ex?.title || '').trim();
+          const org = String(ex?.company || '').trim();
+          return [title, org].filter(Boolean).join(' at ');
+        })
+        .filter(Boolean)
+        .join(' | ');
+      const profileContext = [
+        currentRole ? `Current Role: ${currentRole}` : '',
+        profileSkills ? `Core Skills: ${profileSkills}` : '',
+        recentExperience ? `Recent Experience: ${recentExperience}` : '',
+      ].filter(Boolean).join('\n');
+      const profileContextBlock = profileContext
+        ? `Candidate Profile Context (use when relevant and avoid inventing facts):\n${profileContext}\n`
+        : '';
 
       const prompt = hasGeneric
         ? hasJobContext
           ? `You are an expert career coach and ghostwriter.
 Task: Rewrite the candidate's "Generic Answer" to specifically target the "Job Description" and "Company" provided.
-Constraints: 1) Tone: Human, natural, and confident (not robotic). 2) Length: 120-180 words. 3) Use first-person voice ("I"). 4) Include at least two concrete details (skills, results, tools, or achievements) tied to the role. 5) Weave in 2-3 job-description keywords naturally. 6) No filler, no cliches, no headings, no bullet points. 7) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. If company is unknown, avoid naming one.
+Constraints: 1) Tone: Human, natural, and confident (not robotic). 2) Length: 140-220 words. 3) Use first-person voice ("I"). 4) Include at least two concrete details (skills, results, tools, or achievements) tied to the role. 5) Weave in 2-3 job-description keywords naturally. 6) No filler, no cliches, no headings, no bullet points. 7) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. If company is unknown, avoid naming one. 8) Make it sound like a high-potential, hire-ready candidate while staying truthful.
 Company: ${companyName}
 Job Description Snippet: ${jdSnippet}
+${profileContextBlock}Application Question: "${q}"
 Candidate's Generic Answer: "${userAnswer}"
 Refined Answer:`
           : `You are an expert career coach and ghostwriter.
 Task: Improve the candidate's answer so it is stronger, clearer, and more professional.
-Constraints: 1) Tone: Human, natural, and confident. 2) Length: 120-180 words. 3) Keep the original meaning, but make it more specific and compelling. 4) Use first-person voice and include one concrete example or outcome. 5) No filler, no cliches, no headings, no bullet points. 6) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens.
-Application Question: "${q}"
-Candidate's Answer: "${userAnswer}"
+Constraints: 1) Tone: Human, natural, and confident. 2) Length: 140-220 words. 3) Keep the original meaning, but make it more specific and compelling. 4) Use first-person voice and include one concrete example or outcome. 5) No filler, no cliches, no headings, no bullet points. 6) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. 7) Make it sound polished and hire-ready while staying truthful.
+${profileContextBlock}Application Question: "${q}"
+Candidate's Existing Answer: "${userAnswer}"
 Improved Answer:`
         : hasJobContext
           ? `You are an expert career coach and ghostwriter.
 Task: Write a short, professional answer to the following application question. Use the "Job Description" and "Company" to tailor your answer.
-Constraints: 1) Tone: Human, natural, and confident. 2) Length: 120-180 words. 3) Use first-person voice. 4) Include at least two concrete details (skills, results, tools, or achievements). 5) Mention 2-3 keywords from the job description naturally. 6) No filler, no cliches, no headings, no bullet points. 7) Make the answer open-ended and interview-ready (not a template). 8) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens.
+Constraints: 1) Tone: Human, natural, and confident. 2) Length: 140-220 words. 3) Use first-person voice. 4) Include at least two concrete details (skills, results, tools, or achievements). 5) Mention 2-3 keywords from the job description naturally. 6) No filler, no cliches, no headings, no bullet points. 7) Make the answer open-ended and interview-ready (not a template). 8) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. 9) Make it sound polished and like a strong potential hire while staying factual.
 Company: ${companyName}
 Job Description Snippet: ${jdSnippet}
-Application Question: "${q}"
+${profileContextBlock}Application Question: "${q}"
 Your Answer:`
           : `You are an expert career coach and ghostwriter.
 Task: Write a strong, open-ended first-draft answer to the following application question that can work across companies and job descriptions.
-Constraints: 1) Tone: Human, natural, and confident. 2) Length: 110-170 words. 3) Use first-person voice. 4) Include at least one concrete skill and one measurable or observable result. 5) Make it broadly applicable but still specific enough to sound real. 6) No filler, no cliches, no headings, no bullet points. 7) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens.
-Application Question: "${q}"
+Constraints: 1) Tone: Human, natural, and confident. 2) Length: 130-200 words. 3) Use first-person voice. 4) Include at least one concrete skill and one measurable or observable result. 5) Make it broadly applicable but still specific enough to sound real. 6) No filler, no cliches, no headings, no bullet points. 7) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. 8) Keep it open-ended, polished, and professional so it can fit many companies.
+${profileContextBlock}Application Question: "${q}"
 Your Answer:`;
 
       const token = await getAccessToken();

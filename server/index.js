@@ -414,6 +414,7 @@ Requirements:
 - Keep a confident, concise, professional tone.
 - Never output placeholders or template phrases like "job profile", "company name", "this role", or bracketed tokens.
 - If company or JD context is missing, produce a versatile answer that still feels real and interview-ready.
+- Prefer slightly fuller answers when helpful (roughly 130-220 words) while staying crisp.
 - No headings, no bullet points, no markdown, no meta commentary.`;
 
     const answerModels = [...new Set([
@@ -425,7 +426,7 @@ Requirements:
     const { text, model } = await callGemini({
       prompt,
       systemInstruction: answerSystemInstruction,
-      maxTokens: 450,
+      maxTokens: 560,
       temperature: 0.25,
       models: answerModels,
     });
