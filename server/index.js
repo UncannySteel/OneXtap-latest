@@ -238,8 +238,33 @@ function shouldTryFallbackModel(statusCode, message) {
     text.includes('not supported') ||
     text.includes('overloaded') ||
     text.includes('temporarily unavailable') ||
-    text.includes('quota')
+    text.includes('quota') ||
+    text.includes('no text') ||
+    text.includes('blocked') ||
+    text.includes('safety')
   );
+}
+
+function extractGeminiText(payload) {
+  const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
+  const firstCandidate = candidates[0] || {};
+  const parts = Array.isArray(firstCandidate?.content?.parts) ? firstCandidate.content.parts : [];
+
+  const text = parts
+    .filter((p) => typeof p?.text === 'string' && p.text.trim().length > 0)
+    .map((p) => p.text)
+    .join('\n')
+    .trim();
+
+  if (text) {
+    return { text, reason: null };
+  }
+
+  const finishReason = firstCandidate?.finishReason || null;
+  const blockReason = payload?.promptFeedback?.blockReason || null;
+  const details = [finishReason, blockReason].filter(Boolean).join(', ');
+  const reason = details || 'no text returned by model';
+  return { text: '', reason };
 }
 
 function extractFirstJsonObject(text) {
@@ -345,13 +370,13 @@ async function callGemini({ prompt, systemInstruction, maxTokens = 1024, tempera
         throw err;
       }
 
-      const text = payload?.candidates?.[0]?.content?.parts
-        ?.filter((p) => p.text)
-        .map((p) => p.text)
-        .join('\n')
-        .trim();
-
-      if (!text) throw new Error('Gemini returned no text');
+      const { text, reason } = extractGeminiText(payload);
+      if (!text) {
+        const err = new Error(`Gemini returned no text (${reason})`);
+        // Treat as transient/provider behavior so fallback model gets a chance.
+        err.statusCode = 503;
+        throw err;
+      }
       return { text, model };
     } catch (error) {
       clearTimeout(timeout);
