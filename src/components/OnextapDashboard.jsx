@@ -641,7 +641,7 @@ const ProfilesPage = ({ showToast }) => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.png,.jpg" onChange={handleFileUpload} className="hidden" id="resume-upload" />
+              <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={handleFileUpload} className="hidden" id="resume-upload" />
               <label htmlFor="resume-upload" className={`px-5 py-2.5 rounded-xl font-semibold text-sm cursor-pointer transition-all duration-200 flex items-center gap-2 shadow-md ${isParsing ? 'bg-onextap-dark/40 text-white' : 'bg-onextap-dark text-white hover:bg-onextap-dark/90 hover:shadow-lg'}`}>
                 {isParsing ? <><Activity className="animate-spin" size={16} /> Parsing...</> : <><FileText size={16} /> Upload Resume</>}
               </label>

@@ -281,11 +281,21 @@ function parseJsonLenient(raw) {
   return JSON.parse(withoutTrailingCommas);
 }
 
-async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4 }) {
+async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4, inlineData }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Server missing GEMINI_API_KEY');
+  const userParts = [{ text: prompt }];
+  if (inlineData?.data && inlineData?.mimeType) {
+    userParts.push({
+      inlineData: {
+        mimeType: inlineData.mimeType,
+        data: inlineData.data,
+      },
+    });
+  }
+
   const body = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    contents: [{ role: 'user', parts: userParts }],
     generationConfig: { maxOutputTokens: maxTokens, temperature },
   };
   if (systemInstruction) {
@@ -362,7 +372,7 @@ app.post('/api/answer-vault/generate', requireAuth, async (req, res) => {
 // ------------------------------------------------------------------
 app.post('/api/parse-resume', requireAuth, async (req, res) => {
   try {
-    const { fileData, fileName } = req.body || {};
+    const { fileData, fileName, fileType } = req.body || {};
     if (!fileData) return res.status(400).json({ error: 'No file data provided' });
 
     const systemInstruction = `You are a resume parser. Extract structured data from the resume text below and return ONLY valid JSON (no markdown fences, no explanation). Use this exact schema:
@@ -381,13 +391,34 @@ app.post('/api/parse-resume', requireAuth, async (req, res) => {
 }
 Omit fields you cannot find. Return only the JSON object.`;
 
-    const prompt = `Parse this resume (filename: ${fileName || 'resume'}):\n\n${fileData}`;
+    const mimeType = (typeof fileType === 'string' && fileType.trim()) || 'application/pdf';
+    const supportedMimeTypes = new Set([
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'image/webp',
+      'image/heic',
+      'image/heif',
+    ]);
+    if (!supportedMimeTypes.has(mimeType)) {
+      return res.status(400).json({
+        error: `Unsupported resume file type (${mimeType}). Please upload PDF or image files.`,
+      });
+    }
+    const prompt = `Parse this resume file (filename: ${fileName || 'resume'}).
+Use the attached file content, not guesses.
+Return only valid JSON matching the schema.`;
 
     const { text: raw } = await callGemini({
       prompt,
       systemInstruction,
       maxTokens: 2048,
       temperature: 0.1,
+      inlineData: {
+        mimeType,
+        data: fileData,
+      },
     });
 
     let data;
