@@ -8,7 +8,7 @@ A Chrome extension that autofills job applications using saved profiles and AI-p
 - **Form Autofill** — Automatically fill job application forms on any site
 - **Resume Parsing** — Upload a resume to extract and populate profile data
 - **Answer Vault** — Save reusable answers for common application questions
-- **Answer Studio (AI)** — Generate tailored answers using Claude 3.5 Sonnet, informed by the job description
+- **Answer Studio (AI)** — Generate tailored answers using Google Gemini, informed by the job description
 - **Premium Subscription** — Upgrade via Dodo Payments for unlimited AI credits
 - **Cloud Sync** — Profile data syncs between the dashboard and extension via Supabase
 
@@ -46,7 +46,7 @@ OnexTap_Extension/
 - Node.js 18+
 - A [Supabase](https://supabase.com) project
 - A [Dodo Payments](https://app.dodopayments.com) account (for premium features)
-- An [Anthropic](https://console.anthropic.com) API key (for AI answer generation)
+- A [Google AI Studio](https://aistudio.google.com/apikey) API key (for AI answer generation)
 
 ## Setup
 
@@ -71,7 +71,7 @@ cp .env.example .env
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key |
 | `VITE_API_URL` | Backend server URL (`http://localhost:3001` for dev) |
 | `VITE_DASHBOARD_URL` | Dashboard URL for payment redirects |
-| `VITE_ANSWER_STUDIO_MODEL` | AI model name (default: `claude-3-5-sonnet-latest`) |
+| `VITE_ANSWER_STUDIO_MODEL` | AI model name (default: `gemini-2.5-flash`) |
 
 **Backend** — copy `server/.env.example` to `server/.env`:
 
@@ -87,7 +87,9 @@ cp server/.env.example server/.env
 | `DODO_PAYMENTS_WEBHOOK_KEY` | Dodo Payments webhook secret |
 | `DODO_PRODUCT_ID` | Dodo product ID for the premium subscription |
 | `DODO_PAYMENTS_ENVIRONMENT` | `test_mode` or `live_mode` |
-| `ANTHROPIC_API_KEY` | Anthropic API key for Answer Studio |
+| `GEMINI_API_KEY` | Google Gemini API key for Answer Studio |
+| `GEMINI_MODEL` | Primary Gemini model (default: `gemini-2.5-flash`) |
+| `GEMINI_FALLBACK_MODEL` | Fallback Gemini model (default: `gemini-2.5-pro`) |
 | `CLIENT_URL` | Dashboard URL for post-checkout redirects |
 | `PORT` | Server port (default: `3001`) |
 
@@ -155,5 +157,5 @@ After any code change, rebuild and reload the extension in Chrome.
 | MIME type / module errors | Use `npm run build` (not dev mode) when loading the extension |
 | Dashboard won't open | Verify `DASHBOARD_URL` / `VITE_DASHBOARD_URL` is correct and rebuilt |
 | Data not syncing | Confirm `EXTENSION_ID` matches your actual extension ID |
-| AI generation fails | Check `ANTHROPIC_API_KEY` in `server/.env` and that the server is running |
+| AI generation fails | Check `GEMINI_API_KEY` in `server/.env` and that the server is running |
 | Webhook not received | Verify the webhook URL and secret in Dodo Payments dashboard |

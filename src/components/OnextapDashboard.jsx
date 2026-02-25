@@ -26,7 +26,7 @@ function getExtensionId() {
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || "https://www.onextap.com";
 const API_URL = import.meta.env.VITE_API_URL || '';
-const ANSWER_STUDIO_MODEL = import.meta.env.VITE_ANSWER_STUDIO_MODEL || "gemini-2.0-flash";
+const ANSWER_STUDIO_MODEL = import.meta.env.VITE_ANSWER_STUDIO_MODEL || "gemini-2.5-flash";
 
 
 // --- 1. CONFIGURATION ---

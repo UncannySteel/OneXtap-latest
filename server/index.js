@@ -187,14 +187,51 @@ app.get('/api/verify-premium', requireAuth, async (req, res) => {
 // ------------------------------------------------------------------
 // Shared Gemini helper
 // ------------------------------------------------------------------
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-pro';
+const GEMINI_MODELS = [...new Set([GEMINI_MODEL, GEMINI_FALLBACK_MODEL].filter(Boolean))];
+
+function sanitizeProviderErrorMessage(message, statusCode) {
+  if (typeof message !== 'string') return `Gemini error (${statusCode})`;
+
+  const cleaned = message
+    .replace(/\bused_token\s*[:=]?\s*true\b/gi, '')
+    .replace(/\bmsg\s*[:=]\s*/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  return cleaned || `Gemini error (${statusCode})`;
+}
+
+function extractGeminiErrorMessage(payload, statusCode) {
+  const errorObj = payload?.error || payload || {};
+  const rawMessage =
+    (typeof errorObj?.message === 'string' && errorObj.message) ||
+    (typeof errorObj?.msg === 'string' && errorObj.msg) ||
+    (typeof payload?.message === 'string' && payload.message) ||
+    null;
+
+  return sanitizeProviderErrorMessage(rawMessage, statusCode);
+}
+
+function shouldTryFallbackModel(statusCode, message) {
+  if (statusCode === 404 || statusCode === 429) return true;
+  if (statusCode >= 500) return true;
+
+  const text = String(message || '').toLowerCase();
+  return (
+    text.includes('not found') ||
+    text.includes('no longer available') ||
+    text.includes('not supported') ||
+    text.includes('overloaded') ||
+    text.includes('temporarily unavailable') ||
+    text.includes('quota')
+  );
+}
 
 async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4 }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Server missing GEMINI_API_KEY');
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: { maxOutputTokens: maxTokens, temperature },
@@ -203,31 +240,52 @@ async function callGemini({ prompt, systemInstruction, maxTokens = 1024, tempera
     body.systemInstruction = { parts: [{ text: systemInstruction }] };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000);
+  let lastError = new Error('Gemini request failed');
 
-  const aiRes = await fetch(url, {
-    method: 'POST',
-    signal: controller.signal,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  clearTimeout(timeout);
+  for (let i = 0; i < GEMINI_MODELS.length; i += 1) {
+    const model = GEMINI_MODELS[i];
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const isLastModel = i === GEMINI_MODELS.length - 1;
 
-  const payload = await aiRes.json().catch(() => ({}));
-  if (!aiRes.ok) {
-    const msg = payload?.error?.message || `Gemini error (${aiRes.status})`;
-    throw new Error(msg);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
+
+    try {
+      const aiRes = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const payload = await aiRes.json().catch(() => ({}));
+      if (!aiRes.ok) {
+        const msg = extractGeminiErrorMessage(payload, aiRes.status);
+        const err = new Error(msg);
+        err.statusCode = aiRes.status;
+        throw err;
+      }
+
+      const text = payload?.candidates?.[0]?.content?.parts
+        ?.filter((p) => p.text)
+        .map((p) => p.text)
+        .join('\n')
+        .trim();
+
+      if (!text) throw new Error('Gemini returned no text');
+      return { text, model };
+    } catch (error) {
+      clearTimeout(timeout);
+      lastError = error;
+      const canFallback = !isLastModel && shouldTryFallbackModel(error?.statusCode, error?.message);
+      if (canFallback) continue;
+      break;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  const text = payload?.candidates?.[0]?.content?.parts
-    ?.filter((p) => p.text)
-    .map((p) => p.text)
-    .join('\n')
-    .trim();
-
-  if (!text) throw new Error('Gemini returned no text');
-  return text;
+  throw lastError;
 }
 
 // ------------------------------------------------------------------
@@ -238,8 +296,8 @@ app.post('/api/answer-vault/generate', requireAuth, async (req, res) => {
     const prompt = (req.body?.prompt || '').trim();
     if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    const text = await callGemini({ prompt, maxTokens: 500, temperature: 0.4 });
-    return res.json({ text, model: GEMINI_MODEL });
+    const { text, model } = await callGemini({ prompt, maxTokens: 500, temperature: 0.4 });
+    return res.json({ text, model });
   } catch (error) {
     const isAbort = error?.name === 'AbortError';
     const msg = isAbort ? 'AI request timed out' : (error?.message || 'Generation failed');
@@ -273,7 +331,7 @@ Omit fields you cannot find. Return only the JSON object.`;
 
     const prompt = `Parse this resume (filename: ${fileName || 'resume'}):\n\n${fileData}`;
 
-    const raw = await callGemini({
+    const { text: raw } = await callGemini({
       prompt,
       systemInstruction,
       maxTokens: 2048,
