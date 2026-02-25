@@ -71,7 +71,7 @@ cp .env.example .env
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key |
 | `VITE_API_URL` | Backend server URL (`http://localhost:3001` for dev) |
 | `VITE_DASHBOARD_URL` | Dashboard URL for payment redirects |
-| `VITE_ANSWER_STUDIO_MODEL` | AI model name (default: `gemini-2.5-flash`) |
+| `VITE_ANSWER_STUDIO_MODEL` | AI model name (default: `gemini-2.5-pro`) |
 
 **Backend** — copy `server/.env.example` to `server/.env`:
 
@@ -90,6 +90,8 @@ cp server/.env.example server/.env
 | `GEMINI_API_KEY` | Google Gemini API key for Answer Studio |
 | `GEMINI_MODEL` | Primary Gemini model (default: `gemini-2.5-flash`) |
 | `GEMINI_FALLBACK_MODEL` | Fallback Gemini model (default: `gemini-2.5-pro`) |
+| `ANSWER_STUDIO_MODEL` | Primary model for Answer Studio generation (default: `gemini-2.5-pro`) |
+| `ANSWER_STUDIO_FALLBACK_MODEL` | Fallback model for Answer Studio generation (default: `gemini-2.5-flash`) |
 | `CLIENT_URL` | Dashboard URL for post-checkout redirects |
 | `PORT` | Server port (default: `3001`) |
 

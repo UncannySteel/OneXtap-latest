@@ -26,7 +26,7 @@ function getExtensionId() {
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || "https://www.onextap.com";
 const API_URL = import.meta.env.VITE_API_URL || '';
-const ANSWER_STUDIO_MODEL = import.meta.env.VITE_ANSWER_STUDIO_MODEL || "gemini-2.5-flash";
+const ANSWER_STUDIO_MODEL = import.meta.env.VITE_ANSWER_STUDIO_MODEL || "gemini-2.5-pro";
 
 
 // --- 1. CONFIGURATION ---
@@ -1041,28 +1041,28 @@ const VaultPage = ({ showToast, user }) => {
         ? hasJobContext
           ? `You are an expert career coach and ghostwriter.
 Task: Rewrite the candidate's "Generic Answer" to specifically target the "Job Description" and "Company" provided.
-Constraints: 1) Tone: Human, conversational, professional but not stiff. Avoid AI buzzwords like "tapestry", "testament", "delve". 2) Length: Keep it roughly the same length as the generic answer (under 200 words). 3) Strategy: Mention specific keywords from the job description naturally.
+Constraints: 1) Tone: Human, natural, and confident (not robotic). 2) Length: 120-180 words. 3) Use first-person voice ("I"). 4) Include at least two concrete details (skills, results, tools, or achievements) tied to the role. 5) Weave in 2-3 job-description keywords naturally. 6) No filler, no cliches, no headings, no bullet points.
 Company: ${companyName}
 Job Description Snippet: ${jdSnippet}
 Candidate's Generic Answer: "${userAnswer}"
 Refined Answer:`
           : `You are an expert career coach and ghostwriter.
 Task: Improve the candidate's answer so it is stronger, clearer, and more professional.
-Constraints: 1) Tone: Human, conversational, professional but not stiff. Avoid AI buzzwords like "tapestry", "testament", "delve". 2) Length: Keep it roughly the same length as the original answer (under 200 words). 3) Keep the original meaning but improve quality and specificity where possible.
+Constraints: 1) Tone: Human, natural, and confident. 2) Length: 120-180 words. 3) Keep the original meaning, but make it more specific and compelling. 4) Use first-person voice and include one concrete example or outcome. 5) No filler, no cliches, no headings, no bullet points.
 Application Question: "${q}"
 Candidate's Answer: "${userAnswer}"
 Improved Answer:`
         : hasJobContext
           ? `You are an expert career coach and ghostwriter.
 Task: Write a short, professional answer to the following application question. Use the "Job Description" and "Company" to tailor your answer.
-Constraints: 1) Tone: Human, conversational, professional. Avoid AI buzzwords. 2) Length: Under 200 words. 3) Strategy: Mention specific keywords from the job description naturally.
+Constraints: 1) Tone: Human, natural, and confident. 2) Length: 120-180 words. 3) Use first-person voice. 4) Include at least two concrete details (skills, results, tools, or achievements). 5) Mention 2-3 keywords from the job description naturally. 6) No filler, no cliches, no headings, no bullet points.
 Company: ${companyName}
 Job Description Snippet: ${jdSnippet}
 Application Question: "${q}"
 Your Answer:`
           : `You are an expert career coach and ghostwriter.
 Task: Write a short, professional first-draft answer to the following application question.
-Constraints: 1) Tone: Human, conversational, professional. Avoid AI buzzwords. 2) Length: Under 200 words. 3) Make it broadly applicable to most roles.
+Constraints: 1) Tone: Human, natural, and confident. 2) Length: 110-170 words. 3) Use first-person voice. 4) Include at least one concrete skill and one measurable or observable result. 5) Make it broadly applicable but still specific enough to sound real. 6) No filler, no cliches, no headings, no bullet points.
 Application Question: "${q}"
 Your Answer:`;
 

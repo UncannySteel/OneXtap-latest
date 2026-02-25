@@ -190,6 +190,19 @@ app.get('/api/verify-premium', requireAuth, async (req, res) => {
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-pro';
 const GEMINI_MODELS = [...new Set([GEMINI_MODEL, GEMINI_FALLBACK_MODEL].filter(Boolean))];
+const ANSWER_STUDIO_MODEL = process.env.ANSWER_STUDIO_MODEL || 'gemini-2.5-pro';
+const ANSWER_STUDIO_FALLBACK_MODEL =
+  process.env.ANSWER_STUDIO_FALLBACK_MODEL || GEMINI_MODEL || 'gemini-2.5-flash';
+
+const ANSWER_STUDIO_ALLOWED_MODELS = new Set(
+  [
+    ANSWER_STUDIO_MODEL,
+    ANSWER_STUDIO_FALLBACK_MODEL,
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    ...GEMINI_MODELS,
+  ].filter(Boolean)
+);
 
 function sanitizeProviderErrorMessage(message, statusCode) {
   if (typeof message !== 'string') return `Gemini error (${statusCode})`;
@@ -281,7 +294,7 @@ function parseJsonLenient(raw) {
   return JSON.parse(withoutTrailingCommas);
 }
 
-async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4, inlineData }) {
+async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4, inlineData, models }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Server missing GEMINI_API_KEY');
   const userParts = [{ text: prompt }];
@@ -304,10 +317,14 @@ async function callGemini({ prompt, systemInstruction, maxTokens = 1024, tempera
 
   let lastError = new Error('Gemini request failed');
 
-  for (let i = 0; i < GEMINI_MODELS.length; i += 1) {
-    const model = GEMINI_MODELS[i];
+  const modelCandidates = Array.isArray(models) && models.length
+    ? [...new Set(models.filter(Boolean))]
+    : GEMINI_MODELS;
+
+  for (let i = 0; i < modelCandidates.length; i += 1) {
+    const model = modelCandidates[i];
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    const isLastModel = i === GEMINI_MODELS.length - 1;
+    const isLastModel = i === modelCandidates.length - 1;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 90000);
@@ -358,7 +375,33 @@ app.post('/api/answer-vault/generate', requireAuth, async (req, res) => {
     const prompt = (req.body?.prompt || '').trim();
     if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    const { text, model } = await callGemini({ prompt, maxTokens: 500, temperature: 0.4 });
+    const requestedModel = (req.body?.model || '').trim();
+    const selectedModel = ANSWER_STUDIO_ALLOWED_MODELS.has(requestedModel)
+      ? requestedModel
+      : ANSWER_STUDIO_MODEL;
+
+    const answerSystemInstruction = `You are a senior career coach helping candidates win interviews.
+Write one polished application answer in plain text only.
+Requirements:
+- Sound human and specific, not generic.
+- Use first-person voice ("I") and include 1-2 concrete examples where possible.
+- Mention relevant skills and job-description keywords naturally.
+- Keep a confident, concise, professional tone.
+- No headings, no bullet points, no markdown, no meta commentary.`;
+
+    const answerModels = [...new Set([
+      selectedModel,
+      ANSWER_STUDIO_FALLBACK_MODEL,
+      ...GEMINI_MODELS,
+    ])];
+
+    const { text, model } = await callGemini({
+      prompt,
+      systemInstruction: answerSystemInstruction,
+      maxTokens: 450,
+      temperature: 0.25,
+      models: answerModels,
+    });
     return res.json({ text, model });
   } catch (error) {
     const isAbort = error?.name === 'AbortError';
