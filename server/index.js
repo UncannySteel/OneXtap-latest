@@ -229,6 +229,58 @@ function shouldTryFallbackModel(statusCode, message) {
   );
 }
 
+function extractFirstJsonObject(text) {
+  if (typeof text !== 'string') return null;
+
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
+
+  const start = trimmed.indexOf('{');
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < trimmed.length; i += 1) {
+    const ch = trimmed[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return trimmed.slice(start, i + 1);
+    }
+  }
+
+  return null;
+}
+
+function parseJsonLenient(raw) {
+  const stripped = String(raw || '')
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
+  const candidate = extractFirstJsonObject(stripped) || stripped;
+  const withoutTrailingCommas = candidate.replace(/,\s*([}\]])/g, '$1');
+  return JSON.parse(withoutTrailingCommas);
+}
+
 async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4 }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Server missing GEMINI_API_KEY');
@@ -338,8 +390,24 @@ Omit fields you cannot find. Return only the JSON object.`;
       temperature: 0.1,
     });
 
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-    const data = JSON.parse(cleaned);
+    let data;
+    try {
+      data = parseJsonLenient(raw);
+    } catch {
+      // One repair attempt: ask model to return strictly valid JSON only.
+      const repairPrompt = `Convert the following into valid JSON only.
+Do not add explanations, markdown, or code fences.
+
+${raw}`;
+
+      const { text: repairedRaw } = await callGemini({
+        prompt: repairPrompt,
+        maxTokens: 2048,
+        temperature: 0,
+      });
+
+      data = parseJsonLenient(repairedRaw);
+    }
 
     return res.json({ data });
   } catch (error) {
