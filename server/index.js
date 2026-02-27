@@ -378,6 +378,29 @@ function assessGeneratedAnswerQuality(text) {
   return { score: Math.max(0, score), issues, shouldRetry };
 }
 
+function countWords(text) {
+  return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function isLikelyTruncatedAnswer(text) {
+  const cleaned = String(text || '').trim();
+  if (!cleaned) return true;
+
+  const wordCount = countWords(cleaned);
+  const endsWithPunctuation = /[.!?]"?$/.test(cleaned);
+  const endsWithDanglingApostrophe = /[A-Za-z]'\s*$/.test(cleaned);
+  const quoteCount = (cleaned.match(/"/g) || []).length;
+  const hasUnbalancedDoubleQuotes = quoteCount % 2 !== 0;
+
+  // Very short outputs and abrupt endings are usually provider truncation or weak drafts.
+  if (wordCount < 35) return true;
+  if (endsWithDanglingApostrophe) return true;
+  if (hasUnbalancedDoubleQuotes && wordCount < 140) return true;
+  if (!endsWithPunctuation && wordCount < 120) return true;
+
+  return false;
+}
+
 async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4, inlineData, models }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Server missing GEMINI_API_KEY');
@@ -479,18 +502,28 @@ Requirements:
 - Prefer slightly fuller answers when helpful (roughly 130-220 words) while staying crisp.
 - No headings, no bullet points, no markdown, no meta commentary.`;
 
-    const answerModels = [...new Set([
+    const standardFastFirstModels = [...new Set([
+      ANSWER_STUDIO_FALLBACK_MODEL,
+      selectedModel,
+      ...GEMINI_MODELS,
+    ])];
+    const highQualityRefineModels = [...new Set([
       selectedModel,
       ANSWER_STUDIO_FALLBACK_MODEL,
       ...GEMINI_MODELS,
     ])];
+
+    // Premium: faster draft first, then strong refinement.
+    // Standard: keep fast-first order for snappier responses.
+    const draftModels = qualityMode === 'high' ? standardFastFirstModels : standardFastFirstModels;
+    const refineModels = qualityMode === 'high' ? highQualityRefineModels : standardFastFirstModels;
 
     const firstPass = await callGemini({
       prompt,
       systemInstruction: answerSystemInstruction,
       maxTokens: 560,
       temperature: 0.25,
-      models: answerModels,
+      models: draftModels,
     });
 
     let finalText = String(firstPass.text || '').trim();
@@ -523,7 +556,7 @@ Return only the final rewritten answer in plain text.`;
           systemInstruction: answerSystemInstruction,
           maxTokens: 560,
           temperature: 0.35,
-          models: answerModels,
+          models: refineModels,
         });
 
         const secondText = String(secondPass.text || '').trim();
@@ -535,6 +568,49 @@ Return only the final rewritten answer in plain text.`;
         }
       } catch {
         // Keep first pass if rewrite fails; do not break working flow.
+      }
+    }
+
+    const finalQuality = assessGeneratedAnswerQuality(finalText);
+    const truncated = isLikelyTruncatedAnswer(finalText);
+    const shouldHardRetry = truncated || finalQuality.score < 58 || countWords(finalText) < 70;
+
+    if (shouldHardRetry) {
+      const repairPrompt = `The draft below appears incomplete, too short, or low quality.
+Rewrite it into one complete, polished application answer.
+Hard requirements:
+- Plain text only
+- 170-240 words unless question clearly needs less
+- First-person voice
+- Include concrete details and at least one measurable or observable result when truthful
+- End with a complete final sentence
+- No headings, bullets, markdown, placeholders, or template phrases
+
+Original Request:
+${prompt}
+
+Draft:
+${finalText}
+
+Return only the final rewritten answer.`;
+
+      try {
+        const repaired = await callGemini({
+          prompt: repairPrompt,
+          systemInstruction: answerSystemInstruction,
+          maxTokens: 640,
+          temperature: 0.2,
+          models: highQualityRefineModels,
+        });
+
+        const repairedText = String(repaired.text || '').trim();
+        const repairedQuality = assessGeneratedAnswerQuality(repairedText);
+        if (repairedText && repairedQuality.score >= finalQuality.score && !isLikelyTruncatedAnswer(repairedText)) {
+          finalText = repairedText;
+          finalModel = repaired.model;
+        }
+      } catch {
+        // Preserve current answer if repair attempt fails.
       }
     }
 

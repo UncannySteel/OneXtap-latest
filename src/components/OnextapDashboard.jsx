@@ -935,6 +935,20 @@ const withTimeout = (promise, ms, message) =>
     new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms))
   ]);
 
+const countAnswerWords = (text) => String(text || '').trim().split(/\s+/).filter(Boolean).length;
+
+const isLikelyIncompleteAnswer = (text) => {
+  const cleaned = String(text || '').trim();
+  if (!cleaned) return true;
+  const wordCount = countAnswerWords(cleaned);
+  const endsWithPunctuation = /[.!?]"?$/.test(cleaned);
+  const endsWithDanglingApostrophe = /[A-Za-z]'\s*$/.test(cleaned);
+  if (wordCount < 35) return true;
+  if (endsWithDanglingApostrophe) return true;
+  if (!endsWithPunctuation && wordCount < 120) return true;
+  return false;
+};
+
 // --- VAULT PAGE (Answer Improver - Anthropic AI via backend) ---
 const VaultPage = ({ showToast, user }) => {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
@@ -1125,17 +1139,19 @@ Your Answer:`;
       const token = await getAccessToken();
       if (!token) throw new Error('Please sign in first.');
 
+      const requestBody = {
+        prompt,
+        model: ANSWER_STUDIO_MODEL,
+        qualityMode: premiumStatus ? 'high' : 'standard',
+      };
+
       const generatePromise = fetch(`${API_URL}/api/answer-vault/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          prompt,
-          model: ANSWER_STUDIO_MODEL,
-          qualityMode: premiumStatus ? 'high' : 'standard',
-        }),
+        body: JSON.stringify(requestBody),
       }).then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body?.error || `Generation failed (${res.status})`);
@@ -1147,9 +1163,46 @@ Your Answer:`;
         PUTER_AI_TIMEOUT_SEC * 1000,
         'AI is taking too long. Check your connection and try again.'
       );
-      const improvedText = String(result?.text || '').trim();
+      let improvedText = String(result?.text || '').trim();
       if (!improvedText || improvedText.includes('Error')) {
         throw new Error(improvedText || 'Failed to generate improved answer');
+      }
+
+      // Client-side safety net: retry once if provider returned an obviously incomplete answer.
+      if (isLikelyIncompleteAnswer(improvedText)) {
+        const repairPrompt = `The previous answer was incomplete or cut off.
+Rewrite into one complete, polished answer in plain text.
+Use first-person voice, 170-240 words unless question clearly needs less, and include concrete details/results when truthful.
+
+Original request:
+${prompt}
+
+Incomplete draft:
+${improvedText}
+
+Final answer:`;
+
+        const retryResult = await withTimeout(
+          fetch(`${API_URL}/api/answer-vault/generate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ ...requestBody, prompt: repairPrompt }),
+          }).then(async (res) => {
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(body?.error || `Generation failed (${res.status})`);
+            return body;
+          }),
+          PUTER_AI_TIMEOUT_SEC * 1000,
+          'AI retry timed out. Please try again.'
+        );
+
+        const retriedText = String(retryResult?.text || '').trim();
+        if (retriedText && !isLikelyIncompleteAnswer(retriedText)) {
+          improvedText = retriedText;
+        }
       }
 
       if (!hasJobContext) {
