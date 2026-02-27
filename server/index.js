@@ -514,9 +514,9 @@ Requirements:
     ])];
 
     // Premium: faster draft first, then strong refinement.
-    // Standard: keep fast-first order for snappier responses.
-    const draftModels = qualityMode === 'high' ? standardFastFirstModels : standardFastFirstModels;
-    const refineModels = qualityMode === 'high' ? highQualityRefineModels : standardFastFirstModels;
+    // Standard: fast first draft; escalate to stronger model only when needed.
+    const draftModels = standardFastFirstModels;
+    const refineModels = qualityMode === 'high' ? highQualityRefineModels : highQualityRefineModels;
 
     const firstPass = await callGemini({
       prompt,
@@ -529,7 +529,14 @@ Requirements:
     let finalText = String(firstPass.text || '').trim();
     let finalModel = firstPass.model;
     const firstQuality = assessGeneratedAnswerQuality(finalText);
-    const shouldRunSecondPass = qualityMode === 'high' || firstQuality.shouldRetry;
+    const firstWordCount = countWords(finalText);
+    const firstTruncated = isLikelyTruncatedAnswer(finalText);
+    const standardNeedsSecondPass =
+      firstTruncated ||
+      firstWordCount < 85 ||
+      firstQuality.score < 58 ||
+      firstQuality.issues.includes('contains placeholder/template wording');
+    const shouldRunSecondPass = qualityMode === 'high' || standardNeedsSecondPass;
 
     // Premium gets high-quality mode (always second pass); standard only retries weak drafts.
     if (shouldRunSecondPass) {
@@ -573,7 +580,7 @@ Return only the final rewritten answer in plain text.`;
 
     const finalQuality = assessGeneratedAnswerQuality(finalText);
     const truncated = isLikelyTruncatedAnswer(finalText);
-    const shouldHardRetry = truncated || finalQuality.score < 58 || countWords(finalText) < 70;
+    const shouldHardRetry = truncated || finalQuality.score < 54 || countWords(finalText) < 70;
 
     if (shouldHardRetry) {
       const repairPrompt = `The draft below appears incomplete, too short, or low quality.
@@ -612,6 +619,10 @@ Return only the final rewritten answer.`;
       } catch {
         // Preserve current answer if repair attempt fails.
       }
+    }
+
+    if (isLikelyTruncatedAnswer(finalText) || countWords(finalText) < 75) {
+      throw new Error('AI returned an incomplete answer. Please try again.');
     }
 
     return res.json({ text: finalText, model: finalModel });
