@@ -319,6 +319,65 @@ function parseJsonLenient(raw) {
   return JSON.parse(withoutTrailingCommas);
 }
 
+function assessGeneratedAnswerQuality(text) {
+  const cleaned = String(text || '').trim();
+  if (!cleaned) return { score: 0, issues: ['empty output'], shouldRetry: true };
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+  const sentenceCount = cleaned.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean).length;
+
+  const hasPlaceholder =
+    /\b(job profile|company name|this role|this position)\b/i.test(cleaned) ||
+    /\[[^\]]{1,60}\]/.test(cleaned);
+  const hasMarkdownOrBullets =
+    /^[#>*-]\s/m.test(cleaned) || /```/.test(cleaned);
+  const startsTooGeneric =
+    /^(i am excited|i'm excited|thank you for considering|dear hiring manager)\b/i.test(cleaned);
+  const hasConcreteSignals =
+    /\b(\d+%|\d+\+|increased|reduced|improved|launched|built|led|owned|delivered|optimized)\b/i.test(cleaned);
+
+  const issues = [];
+  let score = 100;
+
+  if (wordCount < 115) {
+    issues.push(`too short (${wordCount} words)`);
+    score -= 25;
+  }
+  if (wordCount > 260) {
+    issues.push(`too long (${wordCount} words)`);
+    score -= 12;
+  }
+  if (sentenceCount < 3) {
+    issues.push('not enough sentence depth');
+    score -= 16;
+  }
+  if (hasPlaceholder) {
+    issues.push('contains placeholder/template wording');
+    score -= 40;
+  }
+  if (hasMarkdownOrBullets) {
+    issues.push('contains markdown/bullets');
+    score -= 25;
+  }
+  if (startsTooGeneric) {
+    issues.push('opens with generic phrase');
+    score -= 14;
+  }
+  if (!hasConcreteSignals) {
+    issues.push('lacks concrete signals/results');
+    score -= 12;
+  }
+
+  const shouldRetry =
+    hasPlaceholder ||
+    hasMarkdownOrBullets ||
+    wordCount < 110 ||
+    score < 70;
+
+  return { score: Math.max(0, score), issues, shouldRetry };
+}
+
 async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4, inlineData, models }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Server missing GEMINI_API_KEY');
@@ -399,6 +458,9 @@ app.post('/api/answer-vault/generate', requireAuth, async (req, res) => {
   try {
     const prompt = (req.body?.prompt || '').trim();
     if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
+    const profile = await getProfile(req.userId);
+    const isPremiumUser = !!profile?.is_premium;
+    const qualityMode = isPremiumUser ? 'high' : 'standard';
 
     const requestedModel = (req.body?.model || '').trim();
     const selectedModel = ANSWER_STUDIO_ALLOWED_MODELS.has(requestedModel)
@@ -423,14 +485,60 @@ Requirements:
       ...GEMINI_MODELS,
     ])];
 
-    const { text, model } = await callGemini({
+    const firstPass = await callGemini({
       prompt,
       systemInstruction: answerSystemInstruction,
       maxTokens: 560,
       temperature: 0.25,
       models: answerModels,
     });
-    return res.json({ text, model });
+
+    let finalText = String(firstPass.text || '').trim();
+    let finalModel = firstPass.model;
+    const firstQuality = assessGeneratedAnswerQuality(finalText);
+    const shouldRunSecondPass = qualityMode === 'high' || firstQuality.shouldRetry;
+
+    // Premium gets high-quality mode (always second pass); standard only retries weak drafts.
+    if (shouldRunSecondPass) {
+      const qualityIssues = firstQuality.issues.length
+        ? firstQuality.issues.join('; ')
+        : 'answer quality is weak';
+
+      const rewritePrompt = `Rewrite the draft below into a stronger final answer.
+Follow the same objective and constraints as the original request.
+Fix these issues: ${qualityIssues}
+Quality mode: ${qualityMode === 'high' ? 'High quality (premium)' : 'Standard'}
+
+Original Request:
+${prompt}
+
+Current Draft:
+${finalText}
+
+Return only the final rewritten answer in plain text.`;
+
+      try {
+        const secondPass = await callGemini({
+          prompt: rewritePrompt,
+          systemInstruction: answerSystemInstruction,
+          maxTokens: 560,
+          temperature: 0.35,
+          models: answerModels,
+        });
+
+        const secondText = String(secondPass.text || '').trim();
+        const secondQuality = assessGeneratedAnswerQuality(secondText);
+
+        if (secondText && secondQuality.score >= firstQuality.score) {
+          finalText = secondText;
+          finalModel = secondPass.model;
+        }
+      } catch {
+        // Keep first pass if rewrite fails; do not break working flow.
+      }
+    }
+
+    return res.json({ text: finalText, model: finalModel });
   } catch (error) {
     const isAbort = error?.name === 'AbortError';
     const msg = isAbort ? 'AI request timed out' : (error?.message || 'Generation failed');
