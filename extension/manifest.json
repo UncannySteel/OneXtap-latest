@@ -13,15 +13,12 @@
   "host_permissions": [
     "https://*.supabase.co/*",
     "https://www.onextap.com/*",
-    "https://onextap.com/*",
-    "http://localhost:5173/*",
-    "http://localhost:3001/*"
+    "https://onextap.com/*"
   ],
   "externally_connectable": {
     "matches": [
       "https://www.onextap.com/*",
-      "https://onextap.com/*",
-      "http://localhost:5173/*"
+      "https://onextap.com/*"
     ]
   },
   "background": {
