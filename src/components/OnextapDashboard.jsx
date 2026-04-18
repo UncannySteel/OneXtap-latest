@@ -1404,7 +1404,10 @@ const VaultPage = ({ showToast, user }) => {
             {creditsError && (
               <div className="mt-3 text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
                 Couldn't load credits: {creditsError}
-                <p className="text-xs mt-1">Make sure the server is running (npm run dev in server/) and SUPABASE_SERVICE_ROLE_KEY is set correctly in server/.env</p>
+                <p className="text-xs mt-1">
+                  Check the message above, then: server running (<code className="text-[11px]">npm run dev</code> in <code className="text-[11px]">server/</code>),
+                  <code className="text-[11px]"> VITE_API_URL</code> pointing at it, and <code className="text-[11px]">SUPABASE_URL</code> + <code className="text-[11px]">SUPABASE_SERVICE_ROLE_KEY</code> in <code className="text-[11px]">server/.env</code>.
+                </p>
                 <button onClick={loadCredits} className="mt-2 text-sm font-medium text-amber-800 underline hover:no-underline">Try again</button>
               </div>
             )}
@@ -1600,7 +1603,9 @@ const AccountSettingsModal = ({ isOpen, onClose, user, onSignOut, onOpenPremiumM
             ) : creditsError ? (
               <div className="text-sm text-amber-700 bg-amber-50 px-3 py-3 rounded-lg border border-amber-200">
                 <strong>Couldn't load credits:</strong> {creditsError}
-                <p className="mt-2 text-xs text-amber-800/80">Make sure the server is running and SUPABASE_SERVICE_ROLE_KEY is set correctly in server/.env</p>
+                <p className="mt-2 text-xs text-amber-800/80">
+                  Server running, <code className="text-[11px]">VITE_API_URL</code> correct, and Supabase keys in <code className="text-[11px]">server/.env</code>.
+                </p>
                 <button onClick={loadAccountData} className="mt-2 text-sm font-medium text-amber-800 underline hover:no-underline">Try again</button>
               </div>
             ) : (

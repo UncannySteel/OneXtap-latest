@@ -51,7 +51,7 @@ app.use(express.json());
 // ------------------------------------------------------------------
 app.get('/api/me', requireAuth, async (req, res) => {
   try {
-    const profile = await getProfile(req.userId);
+    const profile = await getProfile(req.userId, req.userEmail);
     res.json({
       id: profile.id,
       email: profile.email,
@@ -73,7 +73,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
 // ------------------------------------------------------------------
 app.get('/api/credits', requireAuth, async (req, res) => {
   try {
-    const profile = await getProfile(req.userId);
+    const profile = await getProfile(req.userId, req.userEmail);
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
@@ -92,7 +92,7 @@ app.get('/api/credits', requireAuth, async (req, res) => {
 // ------------------------------------------------------------------
 app.post('/api/credits/deduct', requireAuth, async (req, res) => {
   try {
-    const profile = await getProfile(req.userId);
+    const profile = await getProfile(req.userId, req.userEmail);
 
     if (profile.is_premium) {
       return res.json({ success: true, remaining: Infinity, isPremium: true });
@@ -124,7 +124,7 @@ app.post('/api/credits/deduct', requireAuth, async (req, res) => {
 // ------------------------------------------------------------------
 app.post('/api/credits/refund', requireAuth, async (req, res) => {
   try {
-    const profile = await getProfile(req.userId);
+    const profile = await getProfile(req.userId, req.userEmail);
 
     if (profile.is_premium) {
       return res.json({ success: true, remaining: Infinity, isPremium: true });
@@ -152,7 +152,7 @@ app.post('/api/credits/refund', requireAuth, async (req, res) => {
 // ------------------------------------------------------------------
 app.get('/api/verify-premium', requireAuth, async (req, res) => {
   try {
-    const profile = await getProfile(req.userId);
+    const profile = await getProfile(req.userId, req.userEmail);
 
     if (!profile.is_premium) {
       return res.json({ isPremium: false });
@@ -703,7 +703,7 @@ ${raw}`;
 // ------------------------------------------------------------------
 app.post('/api/create-checkout-session', requireAuth, async (req, res) => {
   try {
-    const profile = await getProfile(req.userId);
+    const profile = await getProfile(req.userId, req.userEmail);
 
     if (profile.is_premium && profile.dodo_subscription_id) {
       try {
@@ -740,7 +740,7 @@ app.post('/api/create-checkout-session', requireAuth, async (req, res) => {
 // ------------------------------------------------------------------
 app.post('/api/cancel-subscription', requireAuth, async (req, res) => {
   try {
-    const profile = await getProfile(req.userId);
+    const profile = await getProfile(req.userId, req.userEmail);
 
     if (!profile.dodo_subscription_id) {
       return res.status(400).json({ error: 'No active subscription found for this account.' });

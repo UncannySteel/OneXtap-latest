@@ -32,16 +32,67 @@ export const supabaseAdmin = createClient(
 );
 
 // ------------------------------------------------------------------
-// Helper: get or create a profile row for a user
+// Helper: get profile row; create one if missing (e.g. no auth trigger in DB)
 // ------------------------------------------------------------------
-export async function getProfile(userId) {
+export async function getProfile(userId, userEmail = null) {
+  if (!userId) throw new Error('Missing user id');
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error(
+      'Server misconfiguration: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in server/.env'
+    );
+  }
+
   const { data, error } = await supabaseAdmin
     .from('profiles')
     .select('*')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
+
   if (error) throw error;
-  return data;
+  if (data) return data;
+
+  const email = typeof userEmail === 'string' ? userEmail.trim() : '';
+  const displayName = email.includes('@')
+    ? email.split('@')[0]
+    : (email || 'User');
+
+  const { data: inserted, error: insertError } = await supabaseAdmin
+    .from('profiles')
+    .insert({
+      id: userId,
+      email: email || null,
+      display_name: displayName,
+      credits: 3,
+      is_premium: false,
+    })
+    .select()
+    .single();
+
+  if (insertError) {
+    if (insertError.code === '23505') {
+      const { data: retry, error: retryErr } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      if (retryErr) throw retryErr;
+      if (retry) return retry;
+    }
+    throw insertError;
+  }
+
+  try {
+    await supabaseAdmin.from('credit_transactions').insert({
+      user_id: userId,
+      amount: 3,
+      type: 'initial',
+      description: 'Profile backfill: welcome credits (row was missing)',
+    });
+  } catch {
+    // ignore audit failures for backfill
+  }
+
+  return inserted;
 }
 
 export async function updateProfile(userId, updates) {
