@@ -1,60 +1,15 @@
-import { supabase } from './supabaseClient';
-
 const isExtension = typeof chrome !== 'undefined' && chrome.storage;
 
 /**
- * Check if the user is signed in to Supabase
- */
-const isSignedIn = async () => {
-  try {
-    const { data } = await supabase.auth.getSession();
-    return !!data?.session;
-  } catch {
-    return false;
-  }
-};
-
-/**
  * Smart Storage Wrapper
- * 1. If signed in to Supabase: profile data syncs to Supabase Postgres via the profiles table
- *    (only the `user_profile` key is synced — other keys stay local)
- * 2. Chrome Storage (Local) is always used as the local/offline layer
- * 3. Falls back to localStorage when not in an extension context
+ * - Chrome storage.local in the extension; localStorage on the web dashboard.
+ * - Full `user_profile` JSON lives only in local/extension storage (not on `profiles` row today).
  *
- * Note: Credits are now server-managed (see creditManager.js).
- *       This storage layer handles profile data and general KV needs.
+ * Note: Credits are server-managed (see creditManager.js).
  */
 export const storage = {
   // --- GET DATA ---
   get: async (key) => {
-    // For user_profile, try Supabase first when signed in
-    if (key === 'user_profile') {
-      try {
-        const signedInNow = await isSignedIn();
-        if (signedInNow) {
-          const { data } = await supabase.auth.getSession();
-          if (data?.session?.user?.id) {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', data.session.user.id)
-              .single();
-            // If we have a stored profile JSON, return it
-            // Otherwise fall through to local storage
-            if (profile) {
-              // We store the full profile JSON in local storage too as cache
-              const localProfile = await getLocal(key);
-              // Prefer local if it has data (user may have edited offline)
-              if (localProfile) return localProfile;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Supabase profile fetch failed, using local:', err);
-      }
-    }
-
-    // Fallback to local storage
     return getLocal(key);
   },
 

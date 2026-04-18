@@ -12,6 +12,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "dodopayments": "^0.18.0",
+    "groq-sdk": "^0.15.0",
     "standardwebhooks": "^1.0.0"
   }
 }

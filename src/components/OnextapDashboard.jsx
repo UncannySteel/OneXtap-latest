@@ -25,8 +25,11 @@ function getExtensionId() {
 }
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || "https://www.onextap.com";
-const API_URL = import.meta.env.VITE_API_URL || '';
-const ANSWER_STUDIO_MODEL = import.meta.env.VITE_ANSWER_STUDIO_MODEL || "gemini-2.5-pro";
+const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? 'https://www.onextap.com' : '')
+).replace(/\/$/, '');
+const ANSWER_STUDIO_MODEL = import.meta.env.VITE_ANSWER_STUDIO_MODEL || "llama-3.3-70b-versatile";
 const ANSWER_STYLE_OPTIONS = [
   { value: 'balanced', label: 'Balanced & professional' },
   { value: 'impact', label: 'Impact-driven' },
@@ -1138,7 +1141,7 @@ const VaultPage = ({ showToast, user }) => {
       const manualCompanyName = (manualCompany || '').trim();
       const contextDescription = manualDescription || (description || '').trim();
       const hasJobContext = !!contextDescription;
-      const jdSnippet = hasJobContext ? String(contextDescription).substring(0, 2000) : '';
+      const jdSnippet = hasJobContext ? String(contextDescription).substring(0, 6000) : '';
       const companyName = (manualCompanyName || company || 'Not specified').trim();
       const userAnswer = (tempItem.answer || '').trim();
       const hasGeneric = userAnswer.length > 0;
@@ -1161,63 +1164,52 @@ const VaultPage = ({ showToast, user }) => {
         })
         .filter(Boolean)
         .join(' | ');
-      const profileStrengthHighlights = [
-        profileSkills ? `Top skills: ${profileSkills}` : '',
-        recentExperience ? `Relevant experience: ${recentExperience}` : '',
-      ].filter(Boolean).join('\n');
-      const profileContext = [
-        currentRole ? `Current Role: ${currentRole}` : '',
-        profileSkills ? `Core Skills: ${profileSkills}` : '',
-        recentExperience ? `Recent Experience: ${recentExperience}` : '',
-      ].filter(Boolean).join('\n');
-      const profileContextBlock = profileContext
-        ? `Candidate Profile Context (use when relevant and avoid inventing facts):\n${profileContext}\n`
-        : '';
-      const profileStrengthBlock = profileStrengthHighlights
-        ? `Candidate Strength Highlights (prioritize these when relevant):\n${profileStrengthHighlights}\n`
+      const profileLines = [
+        currentRole ? `Current role: ${currentRole}` : '',
+        profileSkills ? `Core skills: ${profileSkills}` : '',
+        recentExperience ? `Recent experience: ${recentExperience}` : '',
+      ].filter(Boolean);
+      const profileContext = profileLines.length
+        ? profileLines.join('\n')
         : '';
       const selectedStyleInstruction =
         ANSWER_STYLE_INSTRUCTIONS[answerStyle] || ANSWER_STYLE_INSTRUCTIONS.balanced;
       const richerLengthRule = 'Target length: 170-240 words unless the question clearly needs less.';
-      const measurableImpactRule = 'Include at least one measurable or observable impact/result. Prefer numbers/percentages/timeframes when truthful; never invent facts.';
+      const measurableImpactRule =
+        'Include at least one measurable or observable impact/result. Prefer numbers/percentages/timeframes when truthful; never invent facts.';
 
-      const prompt = hasGeneric
-        ? hasJobContext
-          ? `You are an expert career coach and ghostwriter.
-Task: Rewrite the candidate's "Generic Answer" to specifically target the "Job Description" and "Company" provided.
-Constraints: 1) Tone: Human, natural, and confident (not robotic). 2) ${richerLengthRule} 3) Use first-person voice ("I"). 4) Include at least two concrete details (skills, results, tools, or achievements) tied to the role. 5) Weave in 2-3 job-description keywords naturally. 6) ${measurableImpactRule} 7) Prioritize relevant strengths from Candidate Profile Context and Candidate Strength Highlights. 8) No filler, no cliches, no headings, no bullet points. 9) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. If company is unknown, avoid naming one. 10) Make it sound like a high-potential, hire-ready candidate while staying truthful. 11) Style preference: ${selectedStyleInstruction}
-Company: ${companyName}
-Job Description Snippet: ${jdSnippet}
-${profileContextBlock}${profileStrengthBlock}Application Question: "${q}"
-Candidate's Generic Answer: "${userAnswer}"
-Refined Answer:`
-          : `You are an expert career coach and ghostwriter.
-Task: Improve the candidate's answer so it is stronger, clearer, and more professional.
-Constraints: 1) Tone: Human, natural, and confident. 2) ${richerLengthRule} 3) Keep the original meaning, but make it more specific and compelling. 4) Use first-person voice and include one concrete example or outcome. 5) ${measurableImpactRule} 6) Prioritize relevant strengths from Candidate Profile Context and Candidate Strength Highlights. 7) No filler, no cliches, no headings, no bullet points. 8) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. 9) Make it sound polished and hire-ready while staying truthful. 10) Style preference: ${selectedStyleInstruction}
-${profileContextBlock}${profileStrengthBlock}Application Question: "${q}"
-Candidate's Existing Answer: "${userAnswer}"
-Improved Answer:`
-        : hasJobContext
-          ? `You are an expert career coach and ghostwriter.
-Task: Write a short, professional answer to the following application question. Use the "Job Description" and "Company" to tailor your answer.
-Constraints: 1) Tone: Human, natural, and confident. 2) ${richerLengthRule} 3) Use first-person voice. 4) Include at least two concrete details (skills, results, tools, or achievements). 5) Mention 2-3 keywords from the job description naturally. 6) ${measurableImpactRule} 7) Prioritize relevant strengths from Candidate Profile Context and Candidate Strength Highlights. 8) No filler, no cliches, no headings, no bullet points. 9) Make the answer open-ended and interview-ready (not a template). 10) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. 11) Make it sound polished and like a strong potential hire while staying factual. 12) Style preference: ${selectedStyleInstruction}
-Company: ${companyName}
-Job Description Snippet: ${jdSnippet}
-${profileContextBlock}${profileStrengthBlock}Application Question: "${q}"
-Your Answer:`
-          : `You are an expert career coach and ghostwriter.
-Task: Write a strong, open-ended first-draft answer to the following application question that can work across companies and job descriptions.
-Constraints: 1) Tone: Human, natural, and confident. 2) Target length: 160-230 words unless the question clearly needs less. 3) Use first-person voice. 4) Include at least one concrete skill and one measurable or observable result. 5) ${measurableImpactRule} 6) Prioritize relevant strengths from Candidate Profile Context and Candidate Strength Highlights. 7) Make it broadly applicable but still specific enough to sound real. 8) No filler, no cliches, no headings, no bullet points. 9) Do NOT use placeholders like "job profile", "company name", "this role", or bracketed tokens. 10) Keep it open-ended, polished, and professional so it can fit many companies. 11) Style preference: ${selectedStyleInstruction}
-${profileContextBlock}${profileStrengthBlock}Application Question: "${q}"
-Your Answer:`;
+      const jobContext = hasJobContext
+        ? `${companyName ? `Company: ${companyName}\n\n` : ''}${jdSnippet}`
+        : '';
+
+      const vaultAnswers = (profile.vault || []).map((item) => ({
+        question: String(item.question || ''),
+        answer: String(item.answer || ''),
+      }));
+
+      let taskHint = '';
+      if (hasGeneric) {
+        taskHint = hasJobContext
+          ? `Rewrite the candidate draft to target the job description and company. Answer the application question directly. Tone: human, natural, confident. ${richerLengthRule} First person. At least two concrete details tied to the role; weave in 2-4 phrases from the job description. ${measurableImpactRule} No filler, cliches, headings, or bullet points.`
+          : `Improve the candidate draft so it is stronger and clearer. Answer the application question directly. Preserve the candidate's intent; add specificity and one concrete example or outcome. ${richerLengthRule} First person. ${measurableImpactRule} No filler, cliches, headings, or bullet points.`;
+      } else {
+        taskHint = hasJobContext
+          ? `Write a tailored answer to the application question. Use the job description and company to ground specifics. ${richerLengthRule} First person. At least two concrete details; reflect 2-4 ideas from the job description. ${measurableImpactRule} Interview-ready, not a template. No filler, cliches, headings, or bullet points.`
+          : `Write a strong, portable first-draft answer that works across employers. Target length: 160-230 words unless the question clearly needs less. First person. At least one concrete skill and one measurable or observable result. ${measurableImpactRule} Specific enough to sound real; broadly reusable. No filler, cliches, headings, or bullet points.`;
+      }
 
       const token = await getAccessToken();
       if (!token) throw new Error('Please sign in first.');
 
       const requestBody = {
-        prompt,
+        question: q,
+        draft: userAnswer,
+        jobContext: jobContext || 'Not provided',
+        vaultAnswers,
+        ...(profileContext ? { profileContext } : {}),
+        taskHint,
+        styleHint: selectedStyleInstruction,
         model: ANSWER_STUDIO_MODEL,
-        qualityMode: premiumStatus ? 'high' : 'standard',
       };
 
       const generatePromise = fetch(`${API_URL}/api/answer-vault/generate`, {
@@ -1782,7 +1774,15 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio }) => {
            setTimeout(() => setStatus('Autofill Application'), 3000);
            return;
          }
-         setStatus(res?.filled ? `Filled ${res.filled}!` : (res?.success === false ? 'Error: ' + (res?.error || 'Failed') : 'Done'));
+         const filledCount = res?.filled;
+         const filledMsg =
+           typeof filledCount === 'number'
+             ? `Filled ${filledCount} field${filledCount === 1 ? '' : 's'}`
+             : null;
+         setStatus(
+           filledMsg ||
+             (res?.success === false ? 'Error: ' + (res?.error || 'Failed') : 'Done')
+         );
          setTimeout(() => setStatus('Autofill Application'), 2000);
        });
     } else {

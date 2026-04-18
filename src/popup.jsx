@@ -1,8 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { SpeedInsights } from '@vercel/speed-insights/react';
-import './index.css'; 
-import App from './components/OnextapDashboard'; 
+import './index.css';
+import App from './components/OnextapDashboard';
 
 const isExtension = !!(window.chrome && chrome.runtime && chrome.runtime.id);
 const params = new URLSearchParams(window.location.search);
@@ -22,6 +21,5 @@ if (urlMode === 'dashboard') {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App initialView={startView} />
-    {!isExtension && <SpeedInsights />}
   </React.StrictMode>
 );

@@ -1,4 +1,5 @@
-import 'dotenv/config';
+import './load-env.js';
+import Groq from 'groq-sdk';
 import express from 'express';
 import cors from 'cors';
 import DodoPayments from 'dodopayments';
@@ -190,22 +191,36 @@ app.get('/api/verify-premium', requireAuth, async (req, res) => {
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-pro';
 const GEMINI_MODELS = [...new Set([GEMINI_MODEL, GEMINI_FALLBACK_MODEL].filter(Boolean))];
-const ANSWER_STUDIO_MODEL = process.env.ANSWER_STUDIO_MODEL || 'gemini-2.5-pro';
-const ANSWER_STUDIO_FALLBACK_MODEL =
-  process.env.ANSWER_STUDIO_FALLBACK_MODEL || GEMINI_MODEL || 'gemini-2.5-flash';
 
-const ANSWER_STUDIO_ALLOWED_MODELS = new Set(
+/** Answer Studio uses Groq (fast inference), not Gemini. */
+const GROQ_ANSWER_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_FALLBACK_MODEL = process.env.GROQ_FALLBACK_MODEL || 'llama-3.1-8b-instant';
+
+const GROQ_ALLOWED_MODELS = new Set(
   [
-    ANSWER_STUDIO_MODEL,
-    ANSWER_STUDIO_FALLBACK_MODEL,
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    ...GEMINI_MODELS,
+    GROQ_ANSWER_MODEL,
+    GROQ_FALLBACK_MODEL,
+    'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile',
+    'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768',
   ].filter(Boolean)
 );
 
-function sanitizeProviderErrorMessage(message, statusCode) {
-  if (typeof message !== 'string') return `Gemini error (${statusCode})`;
+const _groqMaxTok = Number.parseInt(process.env.GROQ_MAX_TOKENS || '4096', 10);
+const GROQ_MAX_TOKENS =
+  Number.isFinite(_groqMaxTok) && _groqMaxTok >= 256 ? Math.min(_groqMaxTok, 8192) : 4096;
+
+let groqClient;
+function getGroq() {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('Server missing GROQ_API_KEY');
+  if (!groqClient) groqClient = new Groq({ apiKey });
+  return groqClient;
+}
+
+function sanitizeProviderErrorMessage(message, statusCode, label = 'Gemini') {
+  if (typeof message !== 'string') return `${label} error (${statusCode})`;
 
   const cleaned = message
     .replace(/\bused_token\s*[:=]?\s*true\b/gi, '')
@@ -213,7 +228,7 @@ function sanitizeProviderErrorMessage(message, statusCode) {
     .replace(/\s{2,}/g, ' ')
     .trim();
 
-  return cleaned || `Gemini error (${statusCode})`;
+  return cleaned || `${label} error (${statusCode})`;
 }
 
 function extractGeminiErrorMessage(payload, statusCode) {
@@ -224,7 +239,7 @@ function extractGeminiErrorMessage(payload, statusCode) {
     (typeof payload?.message === 'string' && payload.message) ||
     null;
 
-  return sanitizeProviderErrorMessage(rawMessage, statusCode);
+  return sanitizeProviderErrorMessage(rawMessage, statusCode, 'Gemini');
 }
 
 function shouldTryFallbackModel(statusCode, message) {
@@ -251,6 +266,7 @@ function extractGeminiText(payload) {
   const parts = Array.isArray(firstCandidate?.content?.parts) ? firstCandidate.content.parts : [];
 
   const text = parts
+    .filter((p) => p && p.thought !== true)
     .filter((p) => typeof p?.text === 'string' && p.text.trim().length > 0)
     .map((p) => p.text)
     .join('\n')
@@ -319,86 +335,73 @@ function parseJsonLenient(raw) {
   return JSON.parse(withoutTrailingCommas);
 }
 
-function assessGeneratedAnswerQuality(text) {
-  const cleaned = String(text || '').trim();
-  if (!cleaned) return { score: 0, issues: ['empty output'], shouldRetry: true };
+/** Top vault entries by word overlap with the application question (not full dump). */
+function pickRelevantAnswers(vaultAnswers, question) {
+  const q = String(question || '').trim();
+  const list = Array.isArray(vaultAnswers) ? vaultAnswers : [];
+  if (!q) return '(No question provided.)';
+  if (list.length === 0) return '(No saved answers in vault.)';
 
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  const wordCount = words.length;
-  const sentenceCount = cleaned.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean).length;
+  const questionWords = new Set(
+    q.toLowerCase().split(/\W+/).filter((w) => w.length > 4)
+  );
 
-  const hasPlaceholder =
-    /\b(job profile|company name|this role|this position)\b/i.test(cleaned) ||
-    /\[[^\]]{1,60}\]/.test(cleaned);
-  const hasMarkdownOrBullets =
-    /^[#>*-]\s/m.test(cleaned) || /```/.test(cleaned);
-  const startsTooGeneric =
-    /^(i am excited|i'm excited|thank you for considering|dear hiring manager)\b/i.test(cleaned);
-  const hasConcreteSignals =
-    /\b(\d+%|\d+\+|increased|reduced|improved|launched|built|led|owned|delivered|optimized)\b/i.test(cleaned);
+  const scored = list.map((entry) => {
+    const eq = String(entry?.question || '');
+    const ea = String(entry?.answer || '');
+    const entryWords = `${eq} ${ea}`.toLowerCase().split(/\W+/);
+    const overlap = entryWords.filter((w) => questionWords.has(w)).length;
+    return { question: eq, answer: ea, score: overlap };
+  });
 
-  const issues = [];
-  let score = 100;
-
-  if (wordCount < 115) {
-    issues.push(`too short (${wordCount} words)`);
-    score -= 25;
-  }
-  if (wordCount > 260) {
-    issues.push(`too long (${wordCount} words)`);
-    score -= 12;
-  }
-  if (sentenceCount < 3) {
-    issues.push('not enough sentence depth');
-    score -= 16;
-  }
-  if (hasPlaceholder) {
-    issues.push('contains placeholder/template wording');
-    score -= 40;
-  }
-  if (hasMarkdownOrBullets) {
-    issues.push('contains markdown/bullets');
-    score -= 25;
-  }
-  if (startsTooGeneric) {
-    issues.push('opens with generic phrase');
-    score -= 14;
-  }
-  if (!hasConcreteSignals) {
-    issues.push('lacks concrete signals/results');
-    score -= 12;
-  }
-
-  const shouldRetry =
-    hasPlaceholder ||
-    hasMarkdownOrBullets ||
-    wordCount < 110 ||
-    score < 70;
-
-  return { score: Math.max(0, score), issues, shouldRetry };
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((e) => `Q: ${e.question}\nA: ${e.answer}`)
+    .join('\n\n');
 }
 
-function countWords(text) {
-  return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+function buildGroqAnswerSystemInstruction(taskHint, styleHint) {
+  const hints = [taskHint, styleHint].filter(Boolean);
+  const hintBlock = hints.length
+    ? `\n\nFollow for this request:\n${hints.map((h) => `- ${h}`).join('\n')}`
+    : '';
+
+  return `You are a job application assistant. Always write complete, polished answers in plain text only.
+Never truncate. Never use "..." to stand in for content. Return only the answer text the employer should read—no headings, bullet lists, markdown, labels, or meta commentary.${hintBlock}
+
+Rules:
+- Answer the QUESTION in the user message directly; do not answer a different question.
+- When job context is provided, tie concrete details to that role (tools, domain). Do not invent employer facts.
+- First person ("I"); include specific examples and a measurable or observable result when consistent with context; never fabricate numbers.
+- About 160–230 words unless the question clearly needs less.
+- Never use placeholders like "company name" or "this role" as stand-ins.`;
 }
 
-function isLikelyTruncatedAnswer(text) {
-  const cleaned = String(text || '').trim();
-  if (!cleaned) return true;
+/** Groq/OpenAI-style messages may use string or array content parts. */
+function groqAssistantMessageText(message) {
+  if (!message || typeof message !== 'object') return '';
+  const c = message.content;
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) {
+    return c
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part.text === 'string') return part.text;
+        return '';
+      })
+      .join('');
+  }
+  return '';
+}
 
-  const wordCount = countWords(cleaned);
-  const endsWithPunctuation = /[.!?]"?$/.test(cleaned);
-  const endsWithDanglingApostrophe = /[A-Za-z]'\s*$/.test(cleaned);
-  const quoteCount = (cleaned.match(/"/g) || []).length;
-  const hasUnbalancedDoubleQuotes = quoteCount % 2 !== 0;
-
-  // Very short outputs and abrupt endings are usually provider truncation or weak drafts.
-  if (wordCount < 35) return true;
-  if (endsWithDanglingApostrophe) return true;
-  if (hasUnbalancedDoubleQuotes && wordCount < 140) return true;
-  if (!endsWithPunctuation && wordCount < 120) return true;
-
-  return false;
+/** Gemini 2.5 counts thinking tokens inside maxOutputTokens; Flash can disable thinking so the budget is mostly answer text. */
+function thinkingConfigForGeminiModel(modelId) {
+  const id = String(modelId || '').toLowerCase();
+  if (!id.includes('gemini-2.5')) return undefined;
+  if (id.includes('pro')) return undefined;
+  if (id.includes('flash')) return { thinkingBudget: 0 };
+  return undefined;
 }
 
 async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4, inlineData, models }) {
@@ -414,14 +417,6 @@ async function callGemini({ prompt, systemInstruction, maxTokens = 1024, tempera
     });
   }
 
-  const body = {
-    contents: [{ role: 'user', parts: userParts }],
-    generationConfig: { maxOutputTokens: maxTokens, temperature },
-  };
-  if (systemInstruction) {
-    body.systemInstruction = { parts: [{ text: systemInstruction }] };
-  }
-
   let lastError = new Error('Gemini request failed');
 
   const modelCandidates = Array.isArray(models) && models.length
@@ -432,6 +427,18 @@ async function callGemini({ prompt, systemInstruction, maxTokens = 1024, tempera
     const model = modelCandidates[i];
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const isLastModel = i === modelCandidates.length - 1;
+
+    const generationConfig = { maxOutputTokens: maxTokens, temperature };
+    const thinkingCfg = thinkingConfigForGeminiModel(model);
+    if (thinkingCfg) generationConfig.thinkingConfig = thinkingCfg;
+
+    const body = {
+      contents: [{ role: 'user', parts: userParts }],
+      generationConfig,
+    };
+    if (systemInstruction) {
+      body.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 90000);
@@ -475,160 +482,135 @@ async function callGemini({ prompt, systemInstruction, maxTokens = 1024, tempera
 }
 
 // ------------------------------------------------------------------
-// POST /api/answer-vault/generate — generate Answer Studio text via Gemini
+// POST /api/answer-vault/generate — Answer Studio via Groq (groq-sdk)
 // ------------------------------------------------------------------
 app.post('/api/answer-vault/generate', requireAuth, async (req, res) => {
   try {
-    const prompt = (req.body?.prompt || '').trim();
-    if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
-    const profile = await getProfile(req.userId);
-    const isPremiumUser = !!profile?.is_premium;
-    const qualityMode = isPremiumUser ? 'high' : 'standard';
+    const taskHint = String(req.body?.taskHint || '').trim();
+    const styleHint = String(req.body?.styleHint || '').trim();
+
+    const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
+    const legacyPrompt = String(req.body?.userPrompt ?? req.body?.prompt ?? '').trim();
+
+    const draft = typeof req.body?.draft === 'string' ? req.body.draft.trim() : '';
+    const jobContext = typeof req.body?.jobContext === 'string' ? req.body.jobContext.trim() : '';
+    const profileContext = typeof req.body?.profileContext === 'string' ? req.body.profileContext.trim() : '';
+    const vaultAnswers = Array.isArray(req.body?.vaultAnswers) ? req.body.vaultAnswers : [];
+
+    let userContent;
+    if (question) {
+      const relevantAnswers = pickRelevantAnswers(vaultAnswers, question);
+      const profileBlock = profileContext
+        ? `PROFILE (brief):\n${profileContext}\n\n`
+        : '';
+      userContent = `
+SAVED ANSWERS FOR CONTEXT:
+${relevantAnswers}
+
+${profileBlock}JOB CONTEXT:
+${jobContext || 'Not provided'}
+
+QUESTION:
+${question}
+
+EXISTING DRAFT (improve this):
+${draft || 'None'}
+`.trim();
+    } else if (legacyPrompt) {
+      userContent = legacyPrompt;
+    } else {
+      return res.status(400).json({ error: 'Missing question or userPrompt' });
+    }
 
     const requestedModel = (req.body?.model || '').trim();
-    const selectedModel = ANSWER_STUDIO_ALLOWED_MODELS.has(requestedModel)
+    const selectedModel = GROQ_ALLOWED_MODELS.has(requestedModel)
       ? requestedModel
-      : ANSWER_STUDIO_MODEL;
+      : GROQ_ANSWER_MODEL;
 
-    const answerSystemInstruction = `You are a senior career coach helping candidates win interviews.
-Write one polished, open-ended application answer in plain text only.
-Requirements:
-- Sound human and specific, not generic.
-- Use first-person voice ("I") and include 1-2 concrete examples where possible.
-- Mention relevant skills and job-description keywords naturally.
-- Keep a confident, concise, professional tone.
-- Never output placeholders or template phrases like "job profile", "company name", "this role", or bracketed tokens.
-- If company or JD context is missing, produce a versatile answer that still feels real and interview-ready.
-- Prefer slightly fuller answers when helpful (roughly 130-220 words) while staying crisp.
-- No headings, no bullet points, no markdown, no meta commentary.`;
+    const modelChain = [...new Set([selectedModel, GROQ_FALLBACK_MODEL].filter(Boolean))];
 
-    const standardFastFirstModels = [...new Set([
-      ANSWER_STUDIO_FALLBACK_MODEL,
-      selectedModel,
-      ...GEMINI_MODELS,
-    ])];
-    const highQualityRefineModels = [...new Set([
-      selectedModel,
-      ANSWER_STUDIO_FALLBACK_MODEL,
-      ...GEMINI_MODELS,
-    ])];
+    const systemInstruction = buildGroqAnswerSystemInstruction(taskHint, styleHint);
+    const groq = getGroq();
 
-    // Premium: faster draft first, then strong refinement.
-    // Standard: fast first draft; escalate to stronger model only when needed.
-    const draftModels = standardFastFirstModels;
-    const refineModels = qualityMode === 'high' ? highQualityRefineModels : highQualityRefineModels;
+    let finalText = '';
+    let finalModel = selectedModel;
+    let finishReason;
+    let lastError;
 
-    const firstPass = await callGemini({
-      prompt,
-      systemInstruction: answerSystemInstruction,
-      maxTokens: 560,
-      temperature: 0.25,
-      models: draftModels,
-    });
-
-    let finalText = String(firstPass.text || '').trim();
-    let finalModel = firstPass.model;
-    const firstQuality = assessGeneratedAnswerQuality(finalText);
-    const firstWordCount = countWords(finalText);
-    const firstTruncated = isLikelyTruncatedAnswer(finalText);
-    const standardNeedsSecondPass =
-      firstTruncated ||
-      firstWordCount < 85 ||
-      firstQuality.score < 58 ||
-      firstQuality.issues.includes('contains placeholder/template wording');
-    const shouldRunSecondPass = qualityMode === 'high' || standardNeedsSecondPass;
-
-    // Premium gets high-quality mode (always second pass); standard only retries weak drafts.
-    if (shouldRunSecondPass) {
-      const qualityIssues = firstQuality.issues.length
-        ? firstQuality.issues.join('; ')
-        : 'answer quality is weak';
-
-      const rewritePrompt = `Rewrite the draft below into a stronger final answer.
-Follow the same objective and constraints as the original request.
-Fix these issues: ${qualityIssues}
-Quality mode: ${qualityMode === 'high' ? 'High quality (premium)' : 'Standard'}
-
-Original Request:
-${prompt}
-
-Current Draft:
-${finalText}
-
-Return only the final rewritten answer in plain text.`;
-
+    for (let i = 0; i < modelChain.length; i += 1) {
+      const model = modelChain[i];
+      const isLastModel = i === modelChain.length - 1;
       try {
-        const secondPass = await callGemini({
-          prompt: rewritePrompt,
-          systemInstruction: answerSystemInstruction,
-          maxTokens: 560,
+        const completion = await groq.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userContent },
+          ],
           temperature: 0.35,
-          models: refineModels,
+          max_tokens: GROQ_MAX_TOKENS,
         });
-
-        const secondText = String(secondPass.text || '').trim();
-        const secondQuality = assessGeneratedAnswerQuality(secondText);
-
-        if (secondText && secondQuality.score >= firstQuality.score) {
-          finalText = secondText;
-          finalModel = secondPass.model;
+        const choice = completion.choices?.[0];
+        const assistantMsg = choice?.message;
+        if (assistantMsg?.refusal && String(assistantMsg.refusal).trim()) {
+          const err = new Error(String(assistantMsg.refusal).trim());
+          err.code = 'REFUSAL';
+          throw err;
         }
-      } catch {
-        // Keep first pass if rewrite fails; do not break working flow.
+        const raw = groqAssistantMessageText(assistantMsg);
+        finalText = String(raw || '').trim();
+        finishReason = choice?.finish_reason || null;
+        finalModel = completion.model || model;
+        if (finalText) break;
+        const err = new Error('Groq returned no text');
+        err.statusCode = 503;
+        lastError = err;
+        if (!isLastModel) continue;
+      } catch (e) {
+        if (e?.code === 'REFUSAL') throw e;
+        lastError = e;
+        const status = e?.status ?? e?.statusCode;
+        if (!isLastModel && shouldTryFallbackModel(status, e?.message)) continue;
+        throw e;
       }
     }
 
-    const finalQuality = assessGeneratedAnswerQuality(finalText);
-    const truncated = isLikelyTruncatedAnswer(finalText);
-    const shouldHardRetry = truncated || finalQuality.score < 54 || countWords(finalText) < 70;
-
-    if (shouldHardRetry) {
-      const repairPrompt = `The draft below appears incomplete, too short, or low quality.
-Rewrite it into one complete, polished application answer.
-Hard requirements:
-- Plain text only
-- 170-240 words unless question clearly needs less
-- First-person voice
-- Include concrete details and at least one measurable or observable result when truthful
-- End with a complete final sentence
-- No headings, bullets, markdown, placeholders, or template phrases
-
-Original Request:
-${prompt}
-
-Draft:
-${finalText}
-
-Return only the final rewritten answer.`;
-
-      try {
-        const repaired = await callGemini({
-          prompt: repairPrompt,
-          systemInstruction: answerSystemInstruction,
-          maxTokens: 640,
-          temperature: 0.2,
-          models: highQualityRefineModels,
-        });
-
-        const repairedText = String(repaired.text || '').trim();
-        const repairedQuality = assessGeneratedAnswerQuality(repairedText);
-        if (repairedText && repairedQuality.score >= finalQuality.score && !isLikelyTruncatedAnswer(repairedText)) {
-          finalText = repairedText;
-          finalModel = repaired.model;
-        }
-      } catch {
-        // Preserve current answer if repair attempt fails.
-      }
+    if (!finalText) {
+      throw lastError || new Error('Groq returned no text');
     }
 
-    if (isLikelyTruncatedAnswer(finalText) || countWords(finalText) < 75) {
+    // Do not use English word count — CJK text often has no spaces and was mis-counted as 1 "word".
+    const nonSpaceChars = finalText.replace(/\s/g, '').length;
+    if (nonSpaceChars < 8) {
       throw new Error('AI returned an incomplete answer. Please try again.');
     }
+    if (finishReason === 'length') {
+      throw new Error(
+        'The answer hit the model output limit. Shorten the pasted job description or try again.'
+      );
+    }
 
-    return res.json({ text: finalText, model: finalModel });
+    return res.json({
+      text: finalText,
+      answer: finalText,
+      model: finalModel,
+      provider: 'groq',
+      finishReason: finishReason || undefined,
+    });
   } catch (error) {
+    if (error?.code === 'REFUSAL') {
+      return res.status(502).json({ error: error.message || 'The model declined to answer.' });
+    }
     const isAbort = error?.name === 'AbortError';
-    const msg = isAbort ? 'AI request timed out' : (error?.message || 'Generation failed');
+    const status = error?.status ?? error?.statusCode;
+    let msg = isAbort ? 'AI request timed out' : (error?.message || 'Generation failed');
+    if (status === 429) {
+      msg = 'AI provider rate limit — wait a minute and try again.';
+    }
+    const lower = String(msg).toLowerCase();
+    if (!isAbort && (lower.includes('rate limit') || lower.includes('too many requests'))) {
+      msg = 'AI provider rate limit — wait a minute and try again.';
+    }
     return res.status(error?.message?.includes('missing') ? 500 : 502).json({ error: msg });
   }
 });
@@ -964,6 +946,9 @@ if (!process.env.VERCEL) {
     console.log(`Onextap server running on port ${PORT}`);
     console.log(`Webhook endpoint: POST /api/webhook`);
     console.log(`Health check:     GET  /api/health`);
+    console.log(
+      `[Answer Studio] provider=groq model=${GROQ_ANSWER_MODEL} GROQ_API_KEY=${process.env.GROQ_API_KEY ? 'set' : 'MISSING'}`
+    );
   });
 }
 

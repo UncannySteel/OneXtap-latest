@@ -2,7 +2,10 @@ import { getAccessToken } from './auth';
 
 export const INITIAL_CREDITS = 3;
 
-const API_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '';
+const rawApiUrl =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
+  (typeof import.meta !== 'undefined' && import.meta.env?.PROD ? 'https://www.onextap.com' : '');
+const API_URL = String(rawApiUrl).replace(/\/$/, '');
 
 /**
  * Helper: make an authenticated fetch to the backend.

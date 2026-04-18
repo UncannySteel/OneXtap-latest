@@ -7,18 +7,20 @@
     "storage",
     "activeTab",
     "scripting",
-    "tabs",
     "identity"
   ],
   "host_permissions": [
     "https://*.supabase.co/*",
     "https://www.onextap.com/*",
-    "https://onextap.com/*"
+    "https://onextap.com/*",
+    "http://localhost:5173/*",
+    "http://localhost:3001/*"
   ],
   "externally_connectable": {
     "matches": [
       "https://www.onextap.com/*",
-      "https://onextap.com/*"
+      "https://onextap.com/*",
+      "http://localhost:5173/*"
     ]
   },
   "background": {
