@@ -28,8 +28,18 @@ async function authFetch(path, options = {}) {
     },
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(body.error || `Request failed (${res.status})`);
+    const raw = await res.text();
+    let message = `HTTP ${res.status}`;
+    if (raw) {
+      try {
+        const body = JSON.parse(raw);
+        message = body.error || body.message || message;
+        if (typeof message !== 'string') message = raw.slice(0, 300);
+      } catch {
+        message = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || message;
+      }
+    }
+    throw new Error(message);
   }
   return res.json();
 }

@@ -6,6 +6,24 @@
  */
 import { createClient } from '@supabase/supabase-js';
 
+/** Human-readable message for API JSON + logs (PostgREST / Postgres). */
+export function formatSupabaseError(err) {
+  if (!err) return 'Unknown error';
+  if (typeof err === 'string') return err;
+  const msg = err.message || err.msg || '';
+  const details = err.details || '';
+  const hint = err.hint || '';
+  const code = err.code || '';
+  const parts = [msg, details, hint].filter(Boolean);
+  if (parts.length) return parts.join(' — ');
+  if (code) return `Database error (code ${code})`;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -48,7 +66,7 @@ export async function getProfile(userId, userEmail = null) {
     .eq('id', userId)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) throw new Error(formatSupabaseError(error));
   if (data) return data;
 
   const email = typeof userEmail === 'string' ? userEmail.trim() : '';
@@ -75,21 +93,28 @@ export async function getProfile(userId, userEmail = null) {
         .select('*')
         .eq('id', userId)
         .maybeSingle();
-      if (retryErr) throw retryErr;
+      if (retryErr) throw new Error(formatSupabaseError(retryErr));
       if (retry) return retry;
     }
-    throw insertError;
+    throw new Error(
+      `Could not create profile row: ${formatSupabaseError(insertError)}. ` +
+        'Confirm public.profiles exists and matches supabase/schema.sql.'
+    );
   }
 
-  try {
-    await supabaseAdmin.from('credit_transactions').insert({
+  const { error: backfillTxError } = await supabaseAdmin
+    .from('credit_transactions')
+    .insert({
       user_id: userId,
       amount: 3,
       type: 'initial',
       description: 'Profile backfill: welcome credits (row was missing)',
     });
-  } catch {
-    // ignore audit failures for backfill
+  if (backfillTxError) {
+    console.warn(
+      '[Supabase] credit_transactions backfill failed after profile insert:',
+      formatSupabaseError(backfillTxError)
+    );
   }
 
   return inserted;
@@ -102,7 +127,7 @@ export async function updateProfile(userId, updates) {
     .eq('id', userId)
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(formatSupabaseError(error));
   return data;
 }
 

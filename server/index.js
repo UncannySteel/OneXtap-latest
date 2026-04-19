@@ -3,7 +3,20 @@ import Groq from 'groq-sdk';
 import express from 'express';
 import cors from 'cors';
 import DodoPayments from 'dodopayments';
-import { supabaseAdmin, getProfile, updateProfile, requireAuth } from './supabase.js';
+import {
+  supabaseAdmin,
+  getProfile,
+  updateProfile,
+  requireAuth,
+  formatSupabaseError,
+} from './supabase.js';
+
+function apiErrorMessage(error) {
+  if (error && typeof error.message === 'string' && error.message.trim()) {
+    return error.message.trim();
+  }
+  return formatSupabaseError(error);
+}
 
 const dodo = new DodoPayments({
   bearerToken: process.env.DODO_PAYMENTS_API_KEY,
@@ -64,7 +77,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('GET /api/me error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: apiErrorMessage(error) });
   }
 });
 
@@ -82,8 +95,8 @@ app.get('/api/credits', requireAuth, async (req, res) => {
       isPremium: profile.is_premium,
     });
   } catch (error) {
-    console.error('[API] GET /api/credits error:', error?.message || error);
-    res.status(500).json({ error: error.message });
+    console.error('[API] GET /api/credits error:', apiErrorMessage(error));
+    res.status(500).json({ error: apiErrorMessage(error) });
   }
 });
 
@@ -105,17 +118,39 @@ app.post('/api/credits/deduct', requireAuth, async (req, res) => {
     const newCredits = profile.credits - 1;
     await updateProfile(req.userId, { credits: newCredits });
 
-    await supabaseAdmin.from('credit_transactions').insert({
-      user_id: req.userId,
-      amount: -1,
-      type: 'usage',
-      description: 'AI generation credit used',
-    });
+    const { error: deductTxError } = await supabaseAdmin
+      .from('credit_transactions')
+      .insert({
+        user_id: req.userId,
+        amount: -1,
+        type: 'usage',
+        description: 'AI generation credit used',
+      });
+
+    if (deductTxError) {
+      console.error(
+        '[API] credit_transactions insert failed after deduct:',
+        formatSupabaseError(deductTxError)
+      );
+      try {
+        await updateProfile(req.userId, { credits: profile.credits });
+      } catch (rollbackErr) {
+        console.error(
+          '[API] Failed to rollback credits after deduct audit failure:',
+          apiErrorMessage(rollbackErr)
+        );
+      }
+      return res.status(500).json({
+        success: false,
+        error:
+          'Could not record credit usage. Your balance was restored; please try again.',
+      });
+    }
 
     res.json({ success: true, remaining: newCredits });
   } catch (error) {
-    console.error('POST /api/credits/deduct error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('POST /api/credits/deduct error:', apiErrorMessage(error));
+    res.status(500).json({ success: false, error: apiErrorMessage(error) });
   }
 });
 
@@ -133,17 +168,39 @@ app.post('/api/credits/refund', requireAuth, async (req, res) => {
     const newCredits = profile.credits + 1;
     await updateProfile(req.userId, { credits: newCredits });
 
-    await supabaseAdmin.from('credit_transactions').insert({
-      user_id: req.userId,
-      amount: 1,
-      type: 'refund',
-      description: 'Credit refunded (failed generation)',
-    });
+    const { error: refundTxError } = await supabaseAdmin
+      .from('credit_transactions')
+      .insert({
+        user_id: req.userId,
+        amount: 1,
+        type: 'refund',
+        description: 'Credit refunded (failed generation)',
+      });
+
+    if (refundTxError) {
+      console.error(
+        '[API] credit_transactions insert failed after refund:',
+        formatSupabaseError(refundTxError)
+      );
+      try {
+        await updateProfile(req.userId, { credits: profile.credits });
+      } catch (rollbackErr) {
+        console.error(
+          '[API] Failed to rollback credits after refund audit failure:',
+          apiErrorMessage(rollbackErr)
+        );
+      }
+      return res.status(500).json({
+        success: false,
+        error:
+          'Could not record credit refund. Your balance was reverted; please try again.',
+      });
+    }
 
     res.json({ success: true, remaining: newCredits });
   } catch (error) {
-    console.error('POST /api/credits/refund error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('POST /api/credits/refund error:', apiErrorMessage(error));
+    res.status(500).json({ success: false, error: apiErrorMessage(error) });
   }
 });
 
@@ -180,8 +237,8 @@ app.get('/api/verify-premium', requireAuth, async (req, res) => {
       subscriptionStatus: profile.subscription_status || 'active',
     });
   } catch (error) {
-    console.error('Verify premium error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Verify premium error:', apiErrorMessage(error));
+    res.status(500).json({ error: apiErrorMessage(error) });
   }
 });
 
@@ -908,22 +965,36 @@ async function resolveUserId(data) {
 
   const customerId = data.customer?.customer_id;
   if (customerId) {
-    const { data: profiles } = await supabaseAdmin
+    const { data: profiles, error: byCustomerErr } = await supabaseAdmin
       .from('profiles')
       .select('id')
       .eq('dodo_customer_id', customerId)
       .limit(1);
-    if (profiles?.length) return profiles[0].id;
+    if (byCustomerErr) {
+      console.error(
+        '[Dodo] resolveUserId dodo_customer_id lookup failed:',
+        formatSupabaseError(byCustomerErr)
+      );
+    } else if (profiles?.length) {
+      return profiles[0].id;
+    }
   }
 
   const email = data.customer?.email;
   if (email) {
-    const { data: profiles } = await supabaseAdmin
+    const { data: profiles, error: byEmailErr } = await supabaseAdmin
       .from('profiles')
       .select('id')
       .eq('email', email)
       .limit(1);
-    if (profiles?.length) return profiles[0].id;
+    if (byEmailErr) {
+      console.error(
+        '[Dodo] resolveUserId email lookup failed:',
+        formatSupabaseError(byEmailErr)
+      );
+    } else if (profiles?.length) {
+      return profiles[0].id;
+    }
   }
 
   console.warn('[Dodo] Could not resolve user for webhook:', JSON.stringify(data).slice(0, 200));
