@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Layout, FileText, Shield, Plus, CheckCircle, 
   User, ExternalLink, Lock, Save, Activity, Trash2, Calendar, 
-  PenTool, Sparkles, Clipboard, ChevronLeft, ChevronDown, Briefcase, GraduationCap, Flag,
+  PenTool, Sparkles, Clipboard, ChevronLeft, Briefcase, GraduationCap, Flag,
   MapPin, Award, Code, Cloud, LogOut, Terminal, Settings, X, AlertTriangle, Crown, ArrowRight,
   CreditCard, Zap, Moon, Sun, Menu
 } from 'lucide-react';
@@ -264,19 +264,19 @@ const PremiumModal = ({ isOpen, onClose, user }) => {
 
 const OverviewPage = ({ user, onNavigate, isPremium }) => {
   return (
-    <div className="space-y-6 animate-fade-in max-w-3xl mx-auto">
-      <div className="bg-white/80 dark:bg-white/[0.05] backdrop-blur-sm p-10 rounded-3xl border border-onextap-primary/15 dark:border-white/[0.06] shadow-lg shadow-onextap-dark/5 dark:shadow-black/10 text-center relative overflow-hidden transition-colors">
-        <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-onextap-primary/10 to-transparent rounded-full blur-2xl" />
-        <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-onextap-cream/40 dark:from-onextap-cream/[0.04] to-transparent rounded-full blur-xl" />
-        
+    <div className="mx-auto max-w-3xl animate-fade-in space-y-6">
+      <div className="relative overflow-hidden rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-10 text-center shadow-[0_8px_32px_rgba(42,60,28,0.06)] transition-colors dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card dark:shadow-black/20">
+        <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-gradient-to-bl from-onextap-olive-muted to-transparent blur-2xl dark:from-onextap-primary/20" />
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-onextap-primary/10 border border-onextap-primary/20 mb-6">
-            <Sparkles size={14} className="text-onextap-primary" />
-            <span className="text-onextap-dark/80 dark:text-white/80 text-sm font-medium">Your job application hub</span>
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-onextap-olive-pale bg-onextap-olive-muted px-4 py-2 dark:border-[rgba(90,122,58,0.4)] dark:bg-[rgba(90,122,58,0.2)]">
+            <Sparkles size={14} className="text-onextap-primary dark:text-onextap-olive-pale" />
+            <span className="text-sm font-medium text-onextap-primary dark:text-onextap-olive-pale">Your job application hub</span>
           </div>
-          
-          <h1 className="text-3xl font-bold text-onextap-dark dark:text-white mb-3 tracking-tight">Welcome to Onextap</h1>
-          <p className="text-onextap-dark/60 dark:text-white/50 mb-8 max-w-md mx-auto leading-relaxed">
+
+          <h1 className="mb-3 font-display text-4xl font-normal tracking-tight text-onextap-dark dark:text-[#E8EFD8]">
+            Welcome to <em className="not-italic text-onextap-primary dark:text-onextap-olive-pale">Onextap</em>
+          </h1>
+          <p className="mx-auto mb-8 max-w-md leading-relaxed text-onextap-secondary dark:text-[#9AB07A]">
             Configure your profile and Answer Studio to autofill job applications in one click.
           </p>
           
@@ -292,21 +292,20 @@ const OverviewPage = ({ user, onNavigate, isPremium }) => {
         </div>
       </div>
 
-      {/* Quick actions */}
       <div className="grid grid-cols-2 gap-4">
-        <button onClick={() => onNavigate?.('profiles')} className="bg-white/70 dark:bg-white/[0.04] backdrop-blur-sm p-6 rounded-2xl border border-onextap-primary/15 dark:border-white/[0.06] shadow-sm hover:shadow-md hover:bg-white/90 dark:hover:bg-white/[0.07] transition-all duration-300 group text-left">
-          <div className="p-3 rounded-xl bg-onextap-primary/10 dark:bg-onextap-primary/15 w-fit mb-4 group-hover:bg-onextap-primary/15 dark:group-hover:bg-onextap-primary/25 transition-colors">
-            <User size={22} className="text-onextap-primary" />
+        <button type="button" onClick={() => onNavigate?.('profiles')} className="group text-left rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-6 shadow-sm transition-all duration-300 hover:bg-onextap-cream hover:shadow-md dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card dark:hover:bg-onextap-night-surface">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[10px] bg-onextap-olive-muted transition-colors group-hover:bg-onextap-olive-pale/40 dark:bg-[rgba(90,122,58,0.2)]">
+            <User size={22} className="text-onextap-primary dark:text-onextap-olive-pale" />
           </div>
-          <h3 className="font-bold text-onextap-dark dark:text-white mb-1">My Profiles</h3>
-          <p className="text-sm text-onextap-dark/60 dark:text-white/50">Add your personal info, education, and experience</p>
+          <h3 className="mb-1 font-semibold text-onextap-dark dark:text-[#E8EFD8]">My Profiles</h3>
+          <p className="text-sm text-onextap-secondary dark:text-[#9AB07A]">Add your personal info, education, and experience</p>
         </button>
-        <button onClick={() => onNavigate?.('vault')} className="bg-white/70 dark:bg-white/[0.04] backdrop-blur-sm p-6 rounded-2xl border border-onextap-primary/15 dark:border-white/[0.06] shadow-sm hover:shadow-md hover:bg-white/90 dark:hover:bg-white/[0.07] transition-all duration-300 group text-left">
-          <div className="p-3 rounded-xl bg-onextap-primary/10 dark:bg-onextap-primary/15 w-fit mb-4 group-hover:bg-onextap-primary/15 dark:group-hover:bg-onextap-primary/25 transition-colors">
-            <PenTool size={22} className="text-onextap-primary" />
+        <button type="button" onClick={() => onNavigate?.('vault')} className="group text-left rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-6 shadow-sm transition-all duration-300 hover:bg-onextap-cream hover:shadow-md dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card dark:hover:bg-onextap-night-surface">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[10px] bg-onextap-olive-muted transition-colors group-hover:bg-onextap-olive-pale/40 dark:bg-[rgba(90,122,58,0.2)]">
+            <PenTool size={22} className="text-onextap-primary dark:text-onextap-olive-pale" />
           </div>
-          <h3 className="font-bold text-onextap-dark dark:text-white mb-1">Answer Studio</h3>
-          <p className="text-sm text-onextap-dark/60 dark:text-white/50">
+          <h3 className="mb-1 font-semibold text-onextap-dark dark:text-[#E8EFD8]">Answer Studio</h3>
+          <p className="text-sm text-onextap-secondary dark:text-[#9AB07A]">
             {isPremium
               ? 'Unlimited high-quality AI generation with deeper rewrites and profile-tailored answers'
               : 'Fast standard AI generation with 3 credits, plus profile-tailored answer improvements'}
@@ -1798,27 +1797,23 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio }) => {
 
   if (checking) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#f8f7f4] via-[#faf9f6] to-[#f0ebe3] p-6">
-        <div className="w-9 h-9 rounded-full border-2 border-onextap-primary/20 border-t-onextap-primary animate-spin" />
-        <p className="text-onextap-dark/50 text-sm mt-3 font-medium">Loading...</p>
+      <div className="flex h-full w-full flex-col items-center justify-center bg-onextap-cream p-6 dark:bg-onextap-night">
+        <div className="h-9 w-9 animate-spin rounded-full border-2 border-onextap-primary/20 border-t-onextap-primary" />
+        <p className="mt-3 text-sm font-medium text-onextap-muted dark:text-[#9AB07A]">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full flex flex-col relative overflow-hidden min-h-0 bg-gradient-to-br from-[#f8f7f4] via-[#faf9f6] to-[#ebe6de]">
-      {/* Soft gradient mesh background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-onextap-primary/10 blur-2xl animate-float-slow opacity-90" />
-        <div className="absolute top-1/3 -left-12 w-36 h-36 rounded-full bg-onextap-cream/60 blur-xl animate-float opacity-80" style={{ animationDelay: '0.5s' }} />
-        <div className="absolute bottom-1/4 right-0 w-32 h-32 rounded-full bg-onextap-primary-light/15 blur-2xl animate-float-slow opacity-90" style={{ animationDelay: '1s' }} />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full bg-onextap-primary/5 blur-3xl" />
+    <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-onextap-cream dark:bg-onextap-night">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-onextap-primary/[0.08] blur-2xl dark:bg-onextap-primary/[0.15]" />
       </div>
 
-      <header className="relative z-10 px-4 py-4 flex justify-between items-center shrink-0">
+      <header className="relative z-10 flex shrink-0 items-center justify-between px-4 py-4">
         <div className="flex items-center gap-2.5 opacity-0 animate-fade-up animate-delay-100" style={{ animationFillMode: 'forwards' }}>
-          <img src={getIconUrl()} className="w-9 h-9 rounded-xl shadow-md ring-1 ring-white/60" alt="Onextap" />
-          <span className="font-bold text-onextap-dark text-lg tracking-tight">Onextap</span>
+          <img src={getIconUrl()} alt="Onextap" className="h-9 w-9 shrink-0 rounded-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/10" />
+          <span className="text-lg font-semibold tracking-tight text-onextap-dark dark:text-[#E8EFD8]">Onextap</span>
         </div>
         {hasProfile && (
           <button
@@ -1974,52 +1969,95 @@ const PublicLandingPage = ({
   });
 
   return (
-    <div className={`w-full min-h-screen relative overflow-x-hidden bg-[#faf9f6] dark:bg-[#1c1b18] transition-colors duration-300`}>
-      {/* Subtle background accents */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full bg-onextap-primary/[0.06] dark:bg-onextap-primary/[0.08] blur-3xl" />
-        <div className="absolute top-1/2 -left-24 w-80 h-80 rounded-full bg-onextap-cream/30 dark:bg-onextap-cream/[0.04] blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 rounded-full bg-onextap-primary/[0.04] dark:bg-onextap-primary/[0.06] blur-3xl" />
-      </div>
+    <div className="w-full min-h-screen relative overflow-x-hidden bg-onextap-cream text-onextap-dark transition-colors duration-300 dark:bg-onextap-night dark:text-[#E8EFD8]">
+      <button
+        type="button"
+        onClick={() => setDarkMode(!darkMode)}
+        className="fixed top-5 right-6 z-[100] hidden items-center gap-2 rounded-full border border-[rgba(42,60,28,0.25)] bg-white px-3.5 py-1.5 text-[12px] font-medium text-onextap-secondary shadow-sm transition-all hover:border-onextap-primary hover:bg-onextap-primary hover:text-white dark:border-[rgba(200,216,168,0.2)] dark:bg-onextap-night-card dark:text-[#E8EFD8] dark:hover:bg-onextap-primary-dark md:flex"
+        aria-label="Toggle dark mode"
+      >
+        {darkMode ? <Sun size={14} /> : <Moon size={14} />}
+        <span className="hidden sm:inline">{darkMode ? 'Light' : 'Dark'}</span>
+      </button>
 
-      {/* Header */}
-      <header className="sticky top-0 z-30 backdrop-blur-xl bg-[#faf9f6]/80 dark:bg-[#1c1b18]/80 border-b border-onextap-dark/[0.06] dark:border-white/[0.06] transition-colors">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <img src={getIconUrl()} className="w-8 h-8 rounded-lg" alt="Onextap" />
-            <span className="font-bold text-onextap-dark dark:text-white text-[17px] tracking-tight">Onextap</span>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Dark mode toggle */}
-            <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-xl text-onextap-dark/50 dark:text-white/50 hover:text-onextap-dark dark:hover:text-white hover:bg-onextap-dark/[0.04] dark:hover:bg-white/[0.06] transition-all" aria-label="Toggle dark mode">
-              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+      <header className="sticky top-0 z-50 border-b border-[rgba(42,60,28,0.12)] bg-onextap-cream/92 backdrop-blur-xl transition-colors dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night/92">
+        <nav className="mx-auto flex h-[68px] max-w-[1100px] items-center justify-between px-6 md:h-[72px] md:px-12">
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="flex items-center gap-2.5 text-left"
+          >
+            <img src={getIconUrl()} alt="Onextap" className="h-8 w-8 shrink-0 rounded-lg shadow-sm ring-1 ring-black/[0.06] dark:ring-white/10" />
+            <span className="text-[16px] font-semibold tracking-tight text-onextap-dark dark:text-[#E8EFD8]">Onextap</span>
+          </button>
+          <div className="hidden items-center gap-8 md:flex">
+            <button type="button" onClick={() => scrollToSection('features')} className="text-[14px] font-normal text-onextap-secondary transition-colors hover:text-onextap-primary dark:text-[#9AB07A] dark:hover:text-onextap-olive-pale">
+              Features
             </button>
-            {/* Hamburger */}
-            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 rounded-xl text-onextap-dark/60 dark:text-white/60 hover:bg-onextap-dark/[0.04] dark:hover:bg-white/[0.06] transition-all" aria-label="Open menu">
-              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            <button type="button" onClick={() => scrollToSection('pricing')} className="text-[14px] font-normal text-onextap-secondary transition-colors hover:text-onextap-primary dark:text-[#9AB07A] dark:hover:text-onextap-olive-pale">
+              Pricing
+            </button>
+            <button type="button" onClick={() => scrollToSection('faq')} className="text-[14px] font-normal text-onextap-secondary transition-colors hover:text-onextap-primary dark:text-[#9AB07A] dark:hover:text-onextap-olive-pale">
+              FAQ
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('auth')}
+              className="rounded-md bg-onextap-primary px-5 py-2 text-[14px] font-medium text-white transition-colors hover:bg-onextap-primary-dark"
+            >
+              Get Extension
             </button>
           </div>
-        </div>
-
-        {/* Menu overlay */}
+          <div className="flex items-center gap-1 md:hidden">
+            <button
+              type="button"
+              onClick={() => setDarkMode(!darkMode)}
+              className="rounded-xl p-2 text-onextap-secondary transition-colors hover:bg-black/[0.04] dark:text-[#9AB07A] dark:hover:bg-white/[0.06]"
+              aria-label="Toggle dark mode"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="rounded-xl p-2 text-onextap-secondary transition-colors hover:bg-black/[0.04] dark:text-[#9AB07A] dark:hover:bg-white/[0.06]"
+              aria-label="Open menu"
+            >
+              {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
+          </div>
+        </nav>
         {mobileMenuOpen && (
-          <div className="absolute top-full left-0 right-0 bg-[#faf9f6]/95 dark:bg-[#1c1b18]/95 backdrop-blur-xl border-b border-onextap-dark/[0.06] dark:border-white/[0.06] shadow-xl animate-fade-in">
-            <div className="px-6 py-4 space-y-1">
+          <div className="animate-fade-in border-b border-[rgba(42,60,28,0.12)] bg-onextap-cream/98 backdrop-blur-xl dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night/98">
+            <div className="space-y-1 px-6 py-4">
               {[
                 { id: 'features', label: 'Features' },
                 { id: 'pricing', label: 'Pricing' },
                 { id: 'faq', label: 'FAQ' },
               ].map((item) => (
-                <button key={item.id} onClick={() => scrollToSection(item.id)} className="w-full text-left px-4 py-3 rounded-xl text-[15px] text-onextap-dark/70 dark:text-white/70 hover:bg-onextap-dark/[0.04] dark:hover:bg-white/[0.06] hover:text-onextap-dark dark:hover:text-white font-medium transition-all">
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => scrollToSection(item.id)}
+                  className="w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium text-onextap-secondary transition-colors hover:bg-black/[0.04] hover:text-onextap-primary dark:text-[#E8EFD8]/80 dark:hover:bg-white/[0.06]"
+                >
                   {item.label}
                 </button>
               ))}
-              <div className="pt-2 border-t border-onextap-dark/[0.06] dark:border-white/[0.06] mt-2 space-y-1">
-                <button onClick={() => scrollToSection('auth')} className="w-full text-left px-4 py-3 rounded-xl text-[15px] text-onextap-dark/70 dark:text-white/70 hover:bg-onextap-dark/[0.04] dark:hover:bg-white/[0.06] font-medium transition-all">
+              <div className="mt-2 space-y-1 border-t border-[rgba(42,60,28,0.12)] pt-2 dark:border-[rgba(200,216,168,0.15)]">
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('auth')}
+                  className="w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium text-onextap-secondary dark:text-[#E8EFD8]/80"
+                >
                   Sign in
                 </button>
-                <button onClick={() => scrollToSection('auth')} className="w-full bg-onextap-dark dark:bg-white text-white dark:text-onextap-dark px-4 py-3 rounded-xl text-[15px] font-semibold text-center hover:bg-onextap-dark/90 dark:hover:bg-white/90 transition-colors">
-                  Get the Extension
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('auth')}
+                  className="w-full rounded-md bg-onextap-primary py-3 text-center text-[15px] font-medium text-white hover:bg-onextap-primary-dark"
+                >
+                  Get Extension
                 </button>
               </div>
             </div>
@@ -2028,103 +2066,175 @@ const PublicLandingPage = ({
       </header>
 
       <main className="relative z-10">
-        {/* Hero */}
-        <section className="px-6 pt-20 md:pt-32 pb-16 md:pb-24">
-          <div className="max-w-4xl mx-auto text-center">
-            <h1 className="text-[42px] md:text-[72px] leading-[1.05] font-bold text-onextap-dark dark:text-white tracking-tight animate-hero-intro">
-              Apply to jobs{'\n'}in one click
-            </h1>
-            <p className="mt-6 md:mt-8 text-[17px] md:text-[20px] leading-[1.6] text-onextap-dark/50 dark:text-white/50 max-w-2xl mx-auto animate-fade-up">
-              Onextap is a browser extension that makes job applications fast and effortless. Enter your information once, and autofill any application with AI-powered personalization.
-            </p>
-            <div className="mt-10 md:mt-12 flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-up animate-delay-200" style={{ animationFillMode: 'forwards' }}>
-              <button onClick={() => scrollToSection('auth')} className="bg-onextap-dark dark:bg-white text-white dark:text-onextap-dark px-8 py-4 rounded-2xl text-[15px] font-semibold hover:bg-onextap-dark/90 dark:hover:bg-white/90 transition-all shadow-lg shadow-onextap-dark/15 dark:shadow-black/20 hover:shadow-xl flex items-center gap-2.5 group">
-                Get the Extension <ArrowRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
-              </button>
-              <button onClick={() => scrollToSection('features')} className="text-onextap-dark/55 dark:text-white/55 hover:text-onextap-dark dark:hover:text-white text-[15px] font-medium transition-colors flex items-center gap-1.5">
-                Learn More <ArrowRight size={16} />
-              </button>
+        <section className="px-6 pb-16 pt-14 md:px-12 md:pb-24 md:pt-20">
+          <div className="mx-auto grid max-w-[1100px] items-center gap-12 md:grid-cols-2 md:gap-20">
+            <div>
+              <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-onextap-olive-pale bg-onextap-olive-muted px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-onextap-primary dark:border-[rgba(90,122,58,0.4)] dark:bg-[rgba(90,122,58,0.2)] dark:text-onextap-olive-pale">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-onextap-primary-light" />
+                Now on Chrome & Opera
+              </div>
+              <h1 className="font-display text-[44px] font-normal leading-[1.05] tracking-[-0.02em] text-onextap-dark md:text-[56px] dark:text-[#E8EFD8]">
+                Apply to jobs <em className="not-italic text-onextap-primary dark:text-onextap-olive-pale">in one tap.</em>
+              </h1>
+              <p className="mt-6 max-w-[440px] text-[17px] font-light leading-relaxed text-onextap-secondary dark:text-[#9AB07A]">
+                Enter your profile once. Onextap autofills every job application instantly — with AI that personalizes your answers for each role.
+              </p>
+              <div className="mt-10 flex flex-wrap items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('auth')}
+                  className="group inline-flex items-center gap-2 rounded-lg bg-onextap-primary px-7 py-3.5 text-[15px] font-medium text-white shadow-sm transition-all hover:-translate-y-px hover:bg-onextap-primary-dark"
+                >
+                  Get the Extension <ArrowRight size={18} className="transition-transform group-hover:translate-x-0.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('features')}
+                  className="inline-flex items-center gap-1.5 text-[15px] font-normal text-onextap-secondary transition-colors hover:text-onextap-primary dark:text-[#9AB07A] dark:hover:text-onextap-olive-pale"
+                >
+                  See how it works <ArrowRight size={16} />
+                </button>
+              </div>
             </div>
-            {/* Browser badges */}
-            <div className="mt-12 flex flex-col items-center gap-3 animate-fade-up animate-delay-300" style={{ animationFillMode: 'forwards' }}>
-              <p className="text-[12px] uppercase tracking-[0.16em] text-onextap-dark/40 dark:text-white/35 font-semibold">Available for</p>
-              <div className="flex items-center gap-4 flex-wrap justify-center">
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/70 dark:bg-white/[0.06] border border-onextap-dark/[0.06] dark:border-white/[0.08]">
-                  <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#4285F4"/><circle cx="8" cy="8" r="3.5" fill="white"/><path d="M8 4.5h7.2a8 8 0 01.3 3.5H8V4.5z" fill="#EA4335"/></svg>
-                  <span className="text-[13px] font-semibold text-onextap-dark dark:text-white">Chrome</span>
+            <div>
+              <div className="overflow-hidden rounded-[14px] border border-[rgba(42,60,28,0.25)] bg-white shadow-[0_20px_60px_rgba(42,60,28,0.12)] dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card dark:shadow-black/30">
+                <div className="flex items-center gap-2 border-b border-[rgba(42,60,28,0.12)] bg-onextap-cream-dark px-4 py-3 dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-surface">
+                  <div className="flex gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#FFBD2E]" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#28CA41]" />
+                  </div>
+                  <div className="mx-3 flex-1 rounded-md border border-[rgba(42,60,28,0.12)] bg-white px-3 py-1 text-[12px] text-onextap-muted dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card dark:text-[#9AB07A]">
+                    linkedin.com/jobs/apply/...
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/70 dark:bg-white/[0.06] border border-onextap-dark/[0.06] dark:border-white/[0.08]">
-                  <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#FF1B2D"/><circle cx="8" cy="8" r="4" fill="white"/></svg>
-                  <span className="text-[13px] font-semibold text-onextap-dark dark:text-white">Opera</span>
+                <div className="p-6">
+                  <div className="mb-4 text-[13px] font-semibold text-onextap-dark dark:text-[#E8EFD8]">Senior Product Designer — Application</div>
+                  {[
+                    { l: 'Full Name', v: 'Arjun Mehta' },
+                    { l: 'Email', v: 'arjun@email.com' },
+                    { l: 'Years of Experience', v: '5 years' },
+                    { l: 'Cover Note (AI Generated)', v: "Tailored to this role's requirements...", tall: true },
+                  ].map((row) => (
+                    <div key={row.l} className="mb-3">
+                      <div className="mb-1 text-[11px] font-normal uppercase tracking-[0.06em] text-onextap-muted dark:text-[#9AB07A]">{row.l}</div>
+                      <div
+                        className={`flex items-center gap-1.5 rounded-md border border-onextap-olive-pale bg-onextap-olive-muted px-3 py-2 text-[13px] font-medium text-onextap-primary dark:border-[rgba(90,122,58,0.4)] dark:bg-[rgba(90,122,58,0.25)] dark:text-onextap-olive-pale ${row.tall ? 'min-h-[40px] items-start pt-2' : ''}`}
+                      >
+                        <span className="text-[11px] text-onextap-primary-light dark:text-onextap-olive-pale" aria-hidden>
+                          ✓
+                        </span>
+                        {row.v}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="mt-2 flex w-full items-center justify-center gap-2 rounded-md bg-onextap-primary py-2.5 text-[13px] font-medium text-white">
+                    <Zap size={14} className="shrink-0" /> Autofill Complete — 1 tap
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-onextap-dark/[0.03] dark:bg-white/[0.04] border border-dashed border-onextap-dark/10 dark:border-white/10">
-                  <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke="#999" strokeWidth="1.5"/><path d="M5 3a7.5 7.5 0 010 10" stroke="#999" strokeWidth="1.5" fill="none"/></svg>
-                  <span className="text-[13px] font-medium text-onextap-dark/45 dark:text-white/40">Safari</span>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-onextap-primary bg-onextap-primary/10 px-2 py-0.5 rounded-full">Soon</span>
-                </div>
+              </div>
+              <div className="mt-3 flex gap-px">
+                {[
+                  ['1', 'Tap to apply'],
+                  ['∞', 'Applications'],
+                  ['Free', 'To start'],
+                ].map(([strong, label]) => (
+                  <div
+                    key={label}
+                    className="m-0.5 flex-1 rounded-[10px] border border-[rgba(42,60,28,0.12)] bg-white px-4 py-4 text-center dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card"
+                  >
+                    <strong className="block text-2xl font-semibold tracking-tight text-onextap-primary dark:text-onextap-olive-pale">{strong}</strong>
+                    <span className="text-[11px] font-normal uppercase tracking-[0.04em] text-onextap-muted dark:text-[#9AB07A]">{label}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </section>
 
-        {/* Description strip */}
-        <section className="px-6 py-16 md:py-20 border-y border-onextap-dark/[0.06] dark:border-white/[0.06]">
-          <div className="max-w-3xl mx-auto text-center reveal">
-            <h2 className="text-[28px] md:text-[36px] font-bold text-onextap-dark dark:text-white tracking-tight leading-[1.15]">
-              Everything you need to apply faster
-            </h2>
-            <p className="mt-4 text-[16px] md:text-[17px] leading-[1.7] text-onextap-dark/50 dark:text-white/50 max-w-2xl mx-auto">
-              Onextap is a productivity tool and personal application copilot&mdash;not an ATS platform. We focus purely on simplifying your application process.
-            </p>
-          </div>
-        </section>
-
-        {/* Features */}
-        <section id="features" className="px-6 py-20 md:py-28 scroll-mt-20">
-          <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <section id="features" className="scroll-mt-20 bg-white px-6 py-20 md:px-12 md:py-24 dark:bg-onextap-night-surface">
+          <div className="mx-auto max-w-[1100px]">
+            <div className="mb-14 flex flex-col justify-between gap-8 md:mb-16 md:flex-row md:items-end">
+              <div>
+                <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-onextap-primary-light dark:text-onextap-olive-pale">Features</p>
+                <h2 className="font-display text-[36px] font-normal leading-[1.1] tracking-[-0.02em] text-onextap-dark md:text-[44px] dark:text-[#E8EFD8]">
+                  Everything you need
+                  <br />
+                  to apply <em className="not-italic text-onextap-primary dark:text-onextap-olive-pale">faster</em>
+                </h2>
+              </div>
+              <p className="max-w-[520px] text-[16px] font-light leading-relaxed text-onextap-secondary dark:text-[#9AB07A]">
+                A focused tool, not a bloated platform. We handle the friction so you can focus on finding the right role.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-px bg-[rgba(42,60,28,0.12)] sm:grid-cols-2 lg:grid-cols-3 dark:bg-[rgba(200,216,168,0.08)]">
               {[
-                { icon: FileText, title: 'Enter Once, Use Everywhere', desc: 'Manually enter your information or upload your resume for automatic parsing. Your data is securely stored and ready to use.' },
-                { icon: Lock, title: 'Secure Local & Cloud Storage', desc: 'Data stored locally on your device with optional encrypted cloud backup for seamless syncing across all your devices.' },
-                { icon: Clipboard, title: 'One-Click Autofill', desc: 'Onextap scans job application forms using DOM analysis and pattern matching, then autofills everything with a single click.' },
-                { icon: Layout, title: 'Smart Field Mapping', desc: "If a field isn't recognized, map it once manually. Onextap remembers your mapping for all future applications." },
-                { icon: Sparkles, title: 'AI-Powered Personalization', desc: 'Save answers to recurring questions. Our AI reads the job description and suggests personalized improvements you can review before submitting.' },
-                { icon: User, title: 'Multiple Profiles', desc: 'Create different profiles for various job types or industries. Switch between them effortlessly as you apply.' },
-                { icon: Activity, title: 'Automatic Application Tracking', desc: 'Stay organized without a separate job-tracking platform. Onextap automatically tracks your previous applications, helping you manage your job search effortlessly.' },
-              ].map(({ icon: Icon, title, desc }, idx) => (
-                <div key={title} className={`reveal-scale stagger-${idx + 1} bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] p-8 hover:bg-white/80 dark:hover:bg-white/[0.07] hover:shadow-lg hover:shadow-onextap-dark/[0.04] dark:hover:shadow-black/10 transition-all duration-300 group feature-card-hover`}>
-                  <div className="w-12 h-12 rounded-xl bg-onextap-primary/10 dark:bg-onextap-primary/15 flex items-center justify-center mb-5 group-hover:bg-onextap-primary/15 dark:group-hover:bg-onextap-primary/25 group-hover:scale-110 transition-all duration-300">
-                    <Icon size={22} className="text-onextap-primary" />
-                  </div>
-                  <h3 className="text-[18px] font-bold text-onextap-dark dark:text-white mb-2">{title}</h3>
-                  <p className="text-[15px] text-onextap-dark/55 dark:text-white/50 leading-[1.65]">{desc}</p>
+                { emoji: '📋', title: 'One-Click Autofill', desc: 'Scans form fields using DOM analysis and pattern matching. Fills every field in one click, every time.' },
+                { emoji: '🗺', title: 'Smart Field Mapping', desc: 'Encounter an unusual field? Map it once — Onextap remembers for every future application automatically.' },
+                { emoji: '✦', title: 'AI Personalization', desc: 'Our AI reads the job description and suggests improvements to your answers before you submit.' },
+                { emoji: '👤', title: 'Multiple Profiles', desc: 'Different profile for design, engineering, or management roles. Switch between them effortlessly.' },
+                { emoji: '📈', title: 'Application Tracker', desc: 'Stay organized without a separate platform. Onextap automatically logs every application you submit.' },
+                { emoji: '🔒', title: 'Secure Storage', desc: 'Data stored locally on your device with optional encrypted cloud backup and seamless sync.' },
+              ].map(({ emoji, title, desc }) => (
+                <div
+                  key={title}
+                  className="bg-white p-8 transition-colors hover:bg-onextap-cream dark:bg-onextap-night-surface dark:hover:bg-onextap-night-card"
+                >
+                  <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-[10px] bg-onextap-olive-muted text-xl dark:bg-[rgba(90,122,58,0.2)]">{emoji}</div>
+                  <h3 className="mb-2.5 text-[16px] font-semibold tracking-tight text-onextap-dark dark:text-[#E8EFD8]">{title}</h3>
+                  <p className="text-[14px] font-light leading-relaxed text-onextap-secondary dark:text-[#9AB07A]">{desc}</p>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* Pricing */}
-        <section id="pricing" className="px-6 py-20 md:py-28 bg-onextap-dark/[0.02] dark:bg-white/[0.02] scroll-mt-20">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-14 reveal">
-              <p className="text-[12px] uppercase tracking-[0.18em] text-onextap-primary font-semibold mb-4">Pricing</p>
-              <h2 className="text-[32px] md:text-[42px] font-bold text-onextap-dark dark:text-white tracking-tight leading-[1.1]">
-                Simple, transparent pricing
-              </h2>
-              <p className="mt-4 text-[16px] text-onextap-dark/50 dark:text-white/50 max-w-lg mx-auto leading-relaxed">
-                Start free with fast standard AI, then upgrade for unlimited high-quality AI generation
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-              {/* Free plan */}
-              <div className="reveal-scale stagger-1 bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] p-8 flex flex-col feature-card-hover">
-                <p className="text-[12px] uppercase tracking-[0.16em] text-onextap-dark/45 dark:text-white/40 font-semibold">Free</p>
-                <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-[48px] font-bold text-onextap-dark dark:text-white leading-none">$0</span>
+        <section className="px-6 py-20 md:px-12 md:py-24">
+          <div className="mx-auto max-w-[1100px]">
+            <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-onextap-primary-light dark:text-onextap-olive-pale">How it works</p>
+            <h2 className="font-display mb-14 text-[36px] font-normal leading-[1.1] tracking-[-0.02em] text-onextap-dark md:text-[44px] md:mb-16 dark:text-[#E8EFD8]">
+              Three steps.
+              <br />
+              <em className="not-italic text-onextap-primary dark:text-onextap-olive-pale">Done.</em>
+            </h2>
+            <div className="grid grid-cols-1 gap-12 md:grid-cols-3 md:gap-12">
+              {[
+                { n: '01', t: 'Build your profile', d: 'Enter your details once or upload a resume. Onextap parses and structures everything automatically.' },
+                { n: '02', t: 'Open any job form', d: 'Navigate to any job application on any platform. The Onextap extension activates automatically.' },
+                { n: '03', t: 'Tap to apply', d: 'Hit autofill. Review your AI-personalized answers in seconds. Submit. Move to the next one.' },
+              ].map((step, si) => (
+                <div key={step.n} className="relative">
+                  <div className="font-display mb-4 text-[56px] font-normal leading-none tracking-[-0.03em] text-onextap-olive-pale dark:text-[rgba(90,122,58,0.35)] md:text-[72px]">
+                    {step.n}
+                  </div>
+                  <h3 className="mb-2.5 text-lg font-semibold text-onextap-dark dark:text-[#E8EFD8]">{step.t}</h3>
+                  <p className="text-[14px] font-light leading-relaxed text-onextap-secondary dark:text-[#9AB07A]">{step.d}</p>
+                  {si < 2 && (
+                    <div className="absolute right-0 top-9 hidden w-12 border-t border-dashed border-[rgba(42,60,28,0.25)] md:block dark:border-[rgba(200,216,168,0.2)]" style={{ right: '-1.5rem' }} aria-hidden />
+                  )}
                 </div>
-                <p className="mt-3 text-[15px] text-onextap-dark/50 dark:text-white/45">Perfect for getting started with job applications</p>
-                <ul className="mt-6 space-y-3.5 flex-1">
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="pricing" className="scroll-mt-20 bg-onextap-cream-dark px-6 py-20 md:px-12 md:py-24 dark:bg-onextap-night-surface">
+          <div className="mx-auto max-w-[1100px]">
+            <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-onextap-primary-light dark:text-onextap-olive-pale">Pricing</p>
+            <h2 className="font-display max-w-md text-[36px] font-normal leading-[1.1] tracking-[-0.02em] text-onextap-dark md:text-[44px] dark:text-[#E8EFD8]">
+              Simple,
+              <br />
+              <em className="not-italic text-onextap-primary dark:text-onextap-olive-pale">transparent.</em>
+            </h2>
+            <p className="mt-4 max-w-lg text-[16px] font-light leading-relaxed text-onextap-secondary dark:text-[#9AB07A]">
+              Start free with fast standard AI, then upgrade for unlimited high-quality AI generation.
+            </p>
+            <div className="mx-auto mt-14 grid max-w-[780px] grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="reveal-scale stagger-1 flex flex-col rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-9 transition-shadow hover:shadow-[0_8px_32px_rgba(42,60,28,0.08)] dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-onextap-muted dark:text-[#9AB07A]">Free</p>
+                <div className="font-display mt-6 text-[52px] font-normal leading-none tracking-[-0.02em] text-onextap-dark dark:text-[#E8EFD8]">$0</div>
+                <p className="mt-2 text-[13px] text-onextap-muted dark:text-[#9AB07A]">Forever free</p>
+                <ul className="mt-8 flex-1 space-y-0">
                   {[
                     'Unlimited autofill applications',
                     'Local data storage',
@@ -2132,29 +2242,34 @@ const PublicLandingPage = ({
                     'Smart field mapping',
                     '3 fast standard AI credits for personalized answers',
                     'Application tracking',
-                  ].map(f => (
-                    <li key={f} className="flex items-start gap-3 text-[14px] text-onextap-dark/65 dark:text-white/60">
-                      <CheckCircle size={16} className="text-onextap-primary shrink-0 mt-0.5" />
+                  ].map((f) => (
+                    <li
+                      key={f}
+                      className="flex items-center gap-2.5 border-b border-[rgba(42,60,28,0.12)] py-2 text-[14px] font-light text-onextap-secondary last:border-0 dark:border-[rgba(200,216,168,0.15)] dark:text-[#E8EFD8]/90"
+                    >
+                      <span className="shrink-0 text-xs text-onextap-primary-light dark:text-onextap-olive-pale" aria-hidden>
+                        →
+                      </span>
                       {f}
                     </li>
                   ))}
                 </ul>
-                <button onClick={() => scrollToSection('auth')} className="mt-8 w-full py-3.5 rounded-xl border-2 border-onextap-dark/10 dark:border-white/10 text-onextap-dark dark:text-white font-semibold text-[14px] hover:border-onextap-dark/20 dark:hover:border-white/20 hover:bg-onextap-dark/[0.02] dark:hover:bg-white/[0.04] transition-all">
-                  Get Started Free
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('auth')}
+                  className="mt-8 block w-full rounded-lg border-[1.5px] border-[rgba(42,60,28,0.25)] py-3.5 text-center text-[14px] font-medium text-onextap-dark transition-colors hover:bg-onextap-cream dark:border-[rgba(200,216,168,0.2)] dark:text-[#E8EFD8] dark:hover:bg-onextap-night-surface"
+                >
+                  Get started free
                 </button>
               </div>
-              {/* Premium plan */}
-              <div className="reveal-scale stagger-2 bg-white/80 dark:bg-white/[0.06] backdrop-blur-sm rounded-2xl border-2 border-onextap-primary/30 p-8 flex flex-col relative shadow-lg shadow-onextap-primary/[0.08] dark:shadow-onextap-primary/[0.15] feature-card-hover">
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 bg-onextap-primary text-white text-[11px] font-bold uppercase tracking-wider rounded-full">
+              <div className="reveal-scale stagger-2 relative flex flex-col rounded-[14px] border border-onextap-primary bg-onextap-primary p-9 text-white shadow-lg transition-shadow hover:shadow-xl dark:border-onextap-primary-dark dark:bg-onextap-primary-dark">
+                <span className="mb-5 inline-block w-fit rounded bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-onextap-primary">
                   Most Popular
-                </div>
-                <p className="text-[12px] uppercase tracking-[0.16em] text-onextap-primary font-semibold">Premium</p>
-                <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-[48px] font-bold text-onextap-dark dark:text-white leading-none">$5.00</span>
-                  <span className="text-[15px] text-onextap-dark/40 dark:text-white/35 ml-1">/month</span>
-                </div>
-                <p className="mt-3 text-[15px] text-onextap-dark/50 dark:text-white/45">Unlimited AI power for serious job seekers</p>
-                <ul className="mt-6 space-y-3.5 flex-1">
+                </span>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-onextap-olive-pale">Premium</p>
+                <div className="font-display mt-4 text-[52px] font-normal leading-none">$5</div>
+                <p className="mt-2 text-[13px] text-onextap-olive-pale">per month</p>
+                <ul className="mt-8 flex-1 space-y-0 text-white">
                   {[
                     'Everything in Free',
                     'Unlimited high-quality AI answer generation',
@@ -2163,14 +2278,23 @@ const PublicLandingPage = ({
                     'Encrypted cloud backup & sync',
                     'Priority support',
                     'Early access to new features',
-                  ].map(f => (
-                    <li key={f} className="flex items-start gap-3 text-[14px] text-onextap-dark/65 dark:text-white/60">
-                      <CheckCircle size={16} className="text-onextap-primary shrink-0 mt-0.5" />
+                  ].map((f) => (
+                    <li
+                      key={f}
+                      className="flex items-center gap-2.5 border-b border-[rgba(200,216,168,0.2)] py-2 text-[14px] font-light last:border-0"
+                    >
+                      <span className="shrink-0 text-xs text-onextap-olive-pale" aria-hidden>
+                        →
+                      </span>
                       {f}
                     </li>
                   ))}
                 </ul>
-                <button onClick={onOpenPremiumModal} className="mt-8 w-full py-3.5 rounded-xl bg-onextap-dark dark:bg-white text-white dark:text-onextap-dark font-semibold text-[14px] hover:bg-onextap-dark/90 dark:hover:bg-white/90 transition-colors shadow-md shadow-onextap-dark/15 dark:shadow-black/20">
+                <button
+                  type="button"
+                  onClick={onOpenPremiumModal}
+                  className="mt-8 block w-full rounded-lg bg-white py-3.5 text-center text-[14px] font-medium text-onextap-primary transition-colors hover:bg-onextap-olive-muted"
+                >
                   Upgrade to Premium
                 </button>
               </div>
@@ -2178,17 +2302,15 @@ const PublicLandingPage = ({
           </div>
         </section>
 
-        {/* FAQ */}
-        <section id="faq" className="px-6 py-20 md:py-28 scroll-mt-20">
-          <div className="max-w-3xl mx-auto">
-            <div className="text-center mb-14 reveal">
-              <p className="text-[12px] uppercase tracking-[0.18em] text-onextap-primary font-semibold mb-4">FAQ</p>
-              <h2 className="text-[32px] md:text-[42px] font-bold text-onextap-dark dark:text-white tracking-tight leading-[1.1]">
-                Frequently Asked Questions
-              </h2>
-              <p className="mt-4 text-[16px] text-onextap-dark/50 dark:text-white/50">Everything you need to know about Onextap</p>
-            </div>
-            <div className="space-y-3">
+        <section id="faq" className="scroll-mt-20 px-6 py-20 md:px-12 md:py-24">
+          <div className="mx-auto max-w-[720px]">
+            <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-onextap-primary-light dark:text-onextap-olive-pale">FAQ</p>
+            <h2 className="font-display mb-14 text-[36px] font-normal leading-[1.1] tracking-[-0.02em] text-onextap-dark md:text-[44px] md:mb-16 dark:text-[#E8EFD8]">
+              Questions,
+              <br />
+              <em className="not-italic text-onextap-primary dark:text-onextap-olive-pale">answered.</em>
+            </h2>
+            <div>
               {[
                 { q: 'How is my data stored and protected?', a: 'By default, all your data is stored locally on your device in the browser\'s secure storage. If you enable Cloud Sync, data is transmitted via SSL/TLS encryption to our secure database (Supabase). We never sell, rent, or trade your personal data.' },
                 { q: 'Do I have control over AI suggestions?', a: 'Absolutely. AI suggestions are just that — suggestions. You review every AI-generated answer before it\'s saved or used. The AI reads the job description context and your existing answers to suggest improvements, but you always have the final say.' },
@@ -2197,15 +2319,19 @@ const PublicLandingPage = ({
                 { q: 'Can I use different profiles for different job types?', a: 'Yes! You can create multiple profiles for different industries or job types and switch between them when applying. Each profile stores its own set of personal details, experience, and saved answers.' },
                 { q: 'Is Onextap an Applicant Tracking System (ATS)?', a: 'No. Onextap is a personal productivity tool and application copilot. We help you fill out applications faster — we don\'t manage hiring pipelines or act as an employer-side ATS. Your data stays with you.' },
               ].map(({ q, a }, i) => (
-                <div key={i} className={`reveal stagger-${i + 1} bg-white/60 dark:bg-white/[0.04] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] overflow-hidden transition-all duration-200 hover:bg-white/80 dark:hover:bg-white/[0.07]`}>
-                  <button onClick={() => toggleFaq(i)} className="w-full flex items-center justify-between gap-4 p-6 text-left">
-                    <span className="text-[15px] md:text-[16px] font-semibold text-onextap-dark dark:text-white">{q}</span>
-                    <ChevronDown size={20} className={`text-onextap-dark/40 dark:text-white/40 shrink-0 transition-transform duration-200 ${openFaq === i ? 'rotate-180' : ''}`} />
+                <div
+                  key={i}
+                  className={`reveal stagger-${i + 1} cursor-pointer border-b border-[rgba(42,60,28,0.12)] py-5 dark:border-[rgba(200,216,168,0.15)]`}
+                >
+                  <button type="button" onClick={() => toggleFaq(i)} className="flex w-full items-center justify-between gap-4 text-left">
+                    <span className="text-[15px] font-medium text-onextap-dark dark:text-[#E8EFD8]">{q}</span>
+                    <Plus
+                      size={18}
+                      className={`shrink-0 text-onextap-muted transition-transform duration-300 dark:text-[#9AB07A] ${openFaq === i ? 'rotate-45' : ''}`}
+                    />
                   </button>
                   {openFaq === i && (
-                    <div className="px-6 pb-6 -mt-1">
-                      <p className="text-[14px] md:text-[15px] text-onextap-dark/55 dark:text-white/50 leading-[1.7]">{a}</p>
-                    </div>
+                    <p className="mt-3 text-[14px] font-light leading-relaxed text-onextap-secondary dark:text-[#9AB07A]">{a}</p>
                   )}
                 </div>
               ))}
@@ -2213,31 +2339,39 @@ const PublicLandingPage = ({
           </div>
         </section>
 
-        {/* CTA Banner */}
-        <section className="px-6 py-20 md:py-28 bg-onextap-dark/[0.02] dark:bg-white/[0.02]">
-          <div className="max-w-3xl mx-auto text-center reveal">
-            <h2 className="text-[28px] md:text-[40px] font-bold text-onextap-dark dark:text-white tracking-tight leading-[1.1]">
-              Ready to transform your job search?
-            </h2>
-            <p className="mt-4 text-[16px] text-onextap-dark/50 dark:text-white/50 max-w-lg mx-auto leading-relaxed">
-              Join thousands of job seekers who are applying faster with Onextap
-            </p>
-            <button onClick={() => scrollToSection('auth')} className="mt-8 bg-onextap-dark dark:bg-white text-white dark:text-onextap-dark px-8 py-4 rounded-2xl text-[15px] font-semibold hover:bg-onextap-dark/90 dark:hover:bg-white/90 transition-all shadow-lg shadow-onextap-dark/15 dark:shadow-black/20 hover:shadow-xl inline-flex items-center gap-2.5 group">
-              Get Started Free <ArrowRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
-            </button>
+        <section className="bg-onextap-primary px-6 py-20 text-center text-white md:px-12 md:py-24 dark:bg-onextap-primary-dark">
+          <h2 className="font-display mx-auto max-w-lg text-[36px] font-normal leading-[1.1] tracking-[-0.02em] md:text-[44px]">
+            Ready to transform
+            <br />
+            your job <em className="not-italic text-onextap-olive-pale">search?</em>
+          </h2>
+          <p className="mx-auto mt-4 max-w-[440px] text-[16px] font-light leading-relaxed text-white/65">
+            Join thousands of job seekers applying faster with Onextap.
+          </p>
+          <button
+            type="button"
+            onClick={() => scrollToSection('auth')}
+            className="group mt-10 inline-flex items-center gap-2 rounded-lg bg-onextap-cream px-8 py-3.5 text-[15px] font-semibold text-onextap-primary transition-all hover:bg-white"
+          >
+            Get the Extension <ArrowRight size={18} className="transition-transform group-hover:translate-x-0.5" />
+          </button>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4 text-[13px] text-white/50">
+            <span>Available for</span>
+            <span className="rounded-full bg-white/10 px-3 py-1 text-[12px] text-white/80">Chrome</span>
+            <span className="rounded-full bg-white/10 px-3 py-1 text-[12px] text-white/80">Opera</span>
+            <span className="rounded-full bg-white/10 px-3 py-1 text-[12px] text-white/45 opacity-80">Safari — Soon</span>
           </div>
         </section>
 
-        {/* Auth */}
-        <section id="auth" className="px-6 py-20 md:py-28 bg-onextap-dark/[0.02] dark:bg-white/[0.02] scroll-mt-20">
-          <div className="max-w-md mx-auto text-center reveal-scale">
-            <h2 className="text-[28px] md:text-[36px] font-bold text-onextap-dark dark:text-white tracking-tight mb-2">
+        <section id="auth" className="scroll-mt-20 bg-onextap-cream px-6 py-20 md:px-12 md:py-24 dark:bg-onextap-night">
+          <div className="mx-auto max-w-md text-center reveal-scale">
+            <h2 className="mb-2 font-display text-[32px] font-normal tracking-tight text-onextap-dark md:text-[36px] dark:text-[#E8EFD8]">
               {authMode === 'signup' ? 'Create your account' : 'Welcome back'}
             </h2>
-            <p className="text-[15px] text-onextap-dark/45 dark:text-white/45 mb-8">
+            <p className="mb-8 text-[15px] text-onextap-muted dark:text-[#9AB07A]">
               {authMode === 'signup' ? 'Get started for free — no credit card required.' : 'Sign in to access your dashboard.'}
             </p>
-            <div className="bg-white/70 dark:bg-white/[0.05] backdrop-blur-sm rounded-2xl border border-onextap-dark/[0.06] dark:border-white/[0.06] p-8 shadow-sm space-y-4">
+            <div className="space-y-4 rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-8 shadow-sm dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card">
               {/* Google OAuth */}
               <button
                 onClick={handleGoogleSignIn}
@@ -2320,52 +2454,60 @@ const PublicLandingPage = ({
 
       </main>
 
-      {/* Footer */}
-      <footer className="px-6 pt-16 pb-10 border-t border-onextap-dark/[0.06] dark:border-white/[0.06]">
-        <div className="max-w-6xl mx-auto reveal">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-10 md:gap-8">
-            {/* Brand */}
-            <div className="md:col-span-1">
-              <div className="flex items-center gap-2.5 mb-4">
-                <img src={getIconUrl()} className="w-8 h-8 rounded-lg" alt="Onextap" />
-                <span className="font-bold text-onextap-dark dark:text-white text-[16px]">Onextap</span>
+      <footer className="bg-onextap-bark px-6 pb-9 pt-14 text-onextap-cream md:px-12">
+        <div className="reveal mx-auto max-w-[1100px]">
+          <div className="mb-12 grid grid-cols-1 gap-10 md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-12">
+            <div>
+              <div className="mb-3 flex items-center gap-2.5 text-[16px] font-semibold tracking-tight text-onextap-cream">
+                <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-onextap-olive-pale/40">
+                  <span className="absolute h-2 w-2 rounded-full border-[1.5px] border-onextap-olive-pale/40" />
+                </div>
+                Onextap
               </div>
-              <p className="text-[13px] text-onextap-dark/45 dark:text-white/40 leading-[1.7]">
+              <p className="mt-3 max-w-sm text-[14px] font-light leading-relaxed text-onextap-cream/55">
                 Your personal job application copilot. Apply faster with AI-powered autofill and personalization.
               </p>
             </div>
-            {/* Product */}
             <div>
-              <h4 className="text-[12px] uppercase tracking-[0.14em] text-onextap-dark/50 dark:text-white/40 font-semibold mb-4">Product</h4>
-              <div className="space-y-3">
-                <button onClick={() => scrollToSection('features')} className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">Features</button>
-                <button onClick={() => scrollToSection('pricing')} className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">Pricing</button>
-                <button onClick={() => scrollToSection('faq')} className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">FAQ</button>
+              <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-onextap-cream/40">Product</h4>
+              <div className="space-y-2.5">
+                <button type="button" onClick={() => scrollToSection('features')} className="block text-left text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
+                  Features
+                </button>
+                <button type="button" onClick={() => scrollToSection('pricing')} className="block text-left text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
+                  Pricing
+                </button>
+                <button type="button" onClick={() => scrollToSection('faq')} className="block text-left text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
+                  FAQ
+                </button>
               </div>
             </div>
-            {/* Support */}
             <div>
-              <h4 className="text-[12px] uppercase tracking-[0.14em] text-onextap-dark/50 dark:text-white/40 font-semibold mb-4">Support</h4>
-              <div className="space-y-3">
-                <a href="mailto:mazzah70@gmail.com" className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">Contact Us</a>
-                <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">Privacy Policy</a>
+              <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-onextap-cream/40">Support</h4>
+              <div className="space-y-2.5">
+                <a href="mailto:mazzah70@gmail.com" className="block text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
+                  Contact Us
+                </a>
+                <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="block text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
+                  Privacy Policy
+                </a>
               </div>
             </div>
-            {/* Get Started */}
             <div>
-              <h4 className="text-[12px] uppercase tracking-[0.14em] text-onextap-dark/50 dark:text-white/40 font-semibold mb-4">Get Started</h4>
-              <div className="space-y-3">
-                <button onClick={() => scrollToSection('auth')} className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">Install Extension</button>
-                <button onClick={() => scrollToSection('auth')} className="block text-[13px] text-onextap-dark/55 dark:text-white/50 hover:text-onextap-primary transition-colors">Sign In</button>
+              <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-onextap-cream/40">Get Started</h4>
+              <div className="space-y-2.5">
+                <button type="button" onClick={() => scrollToSection('auth')} className="block text-left text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
+                  Install Extension
+                </button>
+                <button type="button" onClick={() => scrollToSection('auth')} className="block text-left text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
+                  Sign In
+                </button>
               </div>
             </div>
           </div>
-          <div className="mt-12 pt-6 border-t border-onextap-dark/[0.06] dark:border-white/[0.06] flex flex-col md:flex-row items-center justify-between gap-3 text-[12px] text-onextap-dark/35 dark:text-white/30">
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-onextap-cream/10 pt-6 text-[13px] text-onextap-cream/35 md:flex-row">
             <p>&copy; {new Date().getFullYear()} Onextap. All rights reserved.</p>
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-onextap-primary" />
-              <span>Chrome &middot; Opera &middot; Safari coming soon</span>
-            </div>
+            <p className="text-[12px] text-onextap-cream/25">Chrome · Opera · Safari coming soon</p>
           </div>
         </div>
       </footer>
@@ -2800,28 +2942,25 @@ const DashboardView = ({ onClose }) => {
   }
 
   return (
-    <div className="w-full min-h-screen flex relative overflow-hidden bg-gradient-to-br from-[#f8f7f4] via-[#faf9f6] to-[#f0ebe3] dark:from-[#1c1b18] dark:via-[#1c1b18] dark:to-[#15140f] transition-colors duration-300">
-      {/* Soft gradient mesh background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-onextap-primary/10 dark:bg-onextap-primary/[0.08] blur-3xl animate-float-slow opacity-80" />
-        <div className="absolute top-1/3 -left-16 w-56 h-56 rounded-full bg-onextap-cream/50 dark:bg-onextap-cream/[0.04] blur-2xl animate-float opacity-70" style={{ animationDelay: '0.5s' }} />
-        <div className="absolute bottom-1/4 right-1/4 w-48 h-48 rounded-full bg-onextap-primary-light/10 dark:bg-onextap-primary-light/[0.06] blur-3xl animate-float-slow opacity-70" style={{ animationDelay: '1s' }} />
-        <div className="absolute top-1/2 left-1/3 w-80 h-80 rounded-full bg-onextap-primary/5 dark:bg-onextap-primary/[0.04] blur-3xl" />
+    <div className="relative flex min-h-screen w-full overflow-hidden bg-onextap-cream text-onextap-dark transition-colors duration-300 dark:bg-onextap-night dark:text-[#E8EFD8]">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-onextap-primary/[0.07] blur-3xl dark:bg-onextap-primary/[0.12]" />
+        <div className="absolute bottom-0 left-1/4 h-64 w-64 rounded-full bg-onextap-olive-muted/40 blur-3xl dark:opacity-20" />
       </div>
 
-      <aside className="w-72 bg-white/80 dark:bg-[#262520]/80 backdrop-blur-md border-r border-onextap-primary/15 dark:border-white/[0.06] flex flex-col fixed h-full z-10 shadow-xl shadow-onextap-dark/5 dark:shadow-black/20 transition-colors sidebar-enter">
-        <div className="p-6 flex items-center gap-3 border-b border-onextap-primary/15 dark:border-white/[0.06]">
-          <img src={getIconUrl()} alt="Logo" className="w-10 h-10 rounded-xl shadow-md ring-1 ring-white/60 dark:ring-white/10" />
-          <span className="font-bold text-xl text-onextap-dark dark:text-white tracking-tight">Onextap</span>
+      <aside className="sidebar-enter fixed z-10 flex h-full w-72 flex-col border-r border-[rgba(42,60,28,0.12)] bg-onextap-cream/95 backdrop-blur-md transition-colors dark:border-[rgba(200,216,168,0.12)] dark:bg-onextap-night-surface/95">
+        <div className="flex items-center gap-3 border-b border-[rgba(42,60,28,0.12)] p-6 dark:border-[rgba(200,216,168,0.12)]">
+          <img src={getIconUrl()} alt="Onextap" className="h-10 w-10 shrink-0 rounded-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/10" />
+          <span className="text-xl font-semibold tracking-tight text-onextap-dark dark:text-[#E8EFD8]">Onextap</span>
         </div>
         
-        <div className="p-5 border-b border-onextap-primary/15 dark:border-white/[0.06]">
+        <div className="border-b border-[rgba(42,60,28,0.12)] p-5 dark:border-[rgba(200,216,168,0.12)]">
           {isCheckingAuth ? (
-            <div className="w-full bg-onextap-primary/10 py-3 rounded-2xl text-sm font-medium flex items-center justify-center gap-2 text-onextap-dark/70 dark:text-white/70">
+            <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-onextap-olive-muted py-3 text-sm font-medium text-onextap-primary dark:bg-[rgba(90,122,58,0.2)] dark:text-onextap-olive-pale">
               <Activity className="animate-spin" size={16} /> Connecting...
             </div>
           ) : user ? (
-            <div className="bg-gradient-to-br from-white to-onextap-bg-light dark:from-white/[0.05] dark:to-white/[0.02] p-4 rounded-2xl border border-onextap-primary/20 dark:border-white/[0.08] shadow-sm">
+            <div className="rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-4 shadow-sm dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card">
               <div className="flex items-center gap-3 mb-3">
                 <div className="relative shrink-0">
                   <div className="w-10 h-10 bg-gradient-to-br from-onextap-primary/30 to-onextap-primary/10 text-onextap-primary rounded-xl flex items-center justify-center font-bold text-sm border border-onextap-primary/30 shadow-sm">
@@ -2883,21 +3022,22 @@ const DashboardView = ({ onClose }) => {
               key={i.id} 
               onClick={()=>setActiveNav(i.id)} 
               data-tour={`nav-${i.id}`}
-              className={`nav-item-enter w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-medium transition-all duration-200 ${
-                activeNav===i.id
-                  ? 'bg-gradient-to-r from-onextap-primary/15 to-onextap-primary/5 text-onextap-primary shadow-sm border border-onextap-primary/20'
-                  : 'text-onextap-dark/70 dark:text-white/60 hover:bg-white/60 dark:hover:bg-white/[0.05] hover:text-onextap-dark dark:hover:text-white hover:shadow-sm'
+              className={`nav-item-enter flex w-full items-center gap-3 rounded-lg px-4 py-3.5 text-sm font-medium transition-all duration-200 ${
+                activeNav === i.id
+                  ? 'bg-onextap-primary text-white shadow-sm dark:bg-onextap-primary-dark'
+                  : 'text-onextap-secondary hover:bg-onextap-olive-muted/60 dark:text-[#9AB07A] dark:hover:bg-white/[0.06] dark:hover:text-[#E8EFD8]'
               }`}
               style={{ animationDelay: `${0.2 + idx * 0.08}s` }}
             >
-              <i.icon size={18}/>{i.label}
+              <i.icon size={18} className={activeNav === i.id ? 'text-white opacity-95' : 'text-onextap-primary'} />
+              {i.label}
             </button>
           ))}
         </nav>
 
-        <div className="p-5 border-t border-onextap-primary/15 dark:border-white/[0.06]">
+        <div className="border-t border-[rgba(42,60,28,0.12)] p-5 dark:border-[rgba(200,216,168,0.12)]">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs text-onextap-dark/50 dark:text-white/40">
+            <div className="flex items-center gap-2 text-xs text-onextap-muted dark:text-[#9AB07A]">
               <Sparkles size={12} />
               <span>Onextap</span>
             </div>
@@ -2907,7 +3047,7 @@ const DashboardView = ({ onClose }) => {
           </div>
         </div>
       </aside>
-      <main className="flex-1 ml-72 p-8 relative z-10 main-content-enter">{renderContent()}</main>
+      <main className="main-content-enter relative z-10 ml-72 flex-1 p-8">{renderContent()}</main>
       
       {/* Account Settings Modal */}
       <AccountSettingsModal

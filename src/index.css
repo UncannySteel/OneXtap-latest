@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply font-sans antialiased text-onextap-dark bg-onextap-cream text-[15px] leading-relaxed;
+  }
+  html.dark body {
+    @apply bg-onextap-night text-[#E8EFD8];
+  }
+}
+
 html, body, #root {
   margin: 0;
   padding: 0;
@@ -54,8 +66,8 @@ html, body, #root {
 }
 
 @keyframes softPulse {
-  0%, 100% { opacity: 1; box-shadow: 0 4px 14px rgba(108, 117, 65, 0.25); }
-  50% { opacity: 0.98; box-shadow: 0 6px 20px rgba(108, 117, 65, 0.35); }
+  0%, 100% { opacity: 1; box-shadow: 0 4px 14px rgba(45, 74, 45, 0.22); }
+  50% { opacity: 0.98; box-shadow: 0 6px 20px rgba(45, 74, 45, 0.32); }
 }
 
 @keyframes fadeIn {
@@ -173,12 +185,12 @@ html, body, #root {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #faf9f6;
+  background: #F5F2EC;
   transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html.dark .splash-screen {
-  background: #1c1b18;
+  background: #1A2414;
 }
 
 .splash-screen.splash-exit {
@@ -192,7 +204,7 @@ html.dark .splash-screen {
   height: 72px;
   border-radius: 20px;
   animation: splashLogoBounce 1s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  filter: drop-shadow(0 8px 24px rgba(140, 150, 87, 0.25));
+  filter: drop-shadow(0 8px 24px rgba(45, 74, 45, 0.22));
 }
 
 @keyframes splashLogoBounce {
@@ -206,15 +218,15 @@ html.dark .splash-screen {
 .splash-text {
   margin-top: 20px;
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.03em;
-  color: #473f34;
+  color: #1A1A14;
   opacity: 0;
   animation: splashTextFade 0.6s ease 0.4s forwards;
 }
 
 html.dark .splash-text {
-  color: #e8e4dc;
+  color: #E8EFD8;
 }
 
 @keyframes splashTextFade {
@@ -227,7 +239,7 @@ html.dark .splash-text {
   width: 120px;
   height: 4px;
   border-radius: 4px;
-  background: rgba(140, 150, 87, 0.15);
+  background: rgba(45, 74, 45, 0.12);
   overflow: hidden;
   opacity: 0;
   animation: splashTextFade 0.4s ease 0.6s forwards;
@@ -236,7 +248,7 @@ html.dark .splash-text {
 .splash-bar-fill {
   height: 100%;
   border-radius: 4px;
-  background: linear-gradient(90deg, #8c9657, #a8b375);
+  background: linear-gradient(90deg, #2D4A2D, #5A7A3A);
   animation: splashBarFill 1s cubic-bezier(0.4, 0, 0.2, 1) 0.7s both;
 }
 
@@ -356,33 +368,18 @@ html.dark .splash-text {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #8c9657;
+  background: #2D4A2D;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6d7543;
-}
-
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #faf9f6;
-}
-
-.dark body,
-html.dark body {
-  background-color: #1c1b18;
+  background: #3D5C3D;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #6d7543;
+  background: #5A7A3A;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #8c9657;
+  background: #C8D8A8;
 }
