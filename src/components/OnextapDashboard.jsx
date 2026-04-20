@@ -2119,8 +2119,8 @@ const PublicLandingPage = ({
                 <div className="p-6">
                   <div className="mb-4 text-[13px] font-semibold text-onextap-dark dark:text-[#E8EFD8]">Senior Product Designer — Application</div>
                   {[
-                    { l: 'Full Name', v: 'Arjun Mehta' },
-                    { l: 'Email', v: 'arjun@email.com' },
+                    { l: 'Full Name', v: 'John Doe' },
+                    { l: 'Email', v: 'John@email.com' },
                     { l: 'Years of Experience', v: '5 years' },
                     { l: 'Cover Note (AI Generated)', v: "Tailored to this role's requirements...", tall: true },
                   ].map((row) => (
