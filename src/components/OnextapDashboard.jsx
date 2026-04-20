@@ -124,13 +124,26 @@ const getPasswordStrength = (password) => {
 const RACES = ["American Indian", "Asian", "Black or African American", "Native Hawaiian", "White", "Two or More"];
 const VETERAN_STATUS = ["I am not a protected veteran", "I am a protected veteran", "Decline to identify"];
 
-// Helper to get icon URL
+const BRAND_ICON = 'new-icon.jpeg';
+
+/** Brand mark (`public/new-icon.jpeg`); extension bundle includes same filename. */
 const getIconUrl = () => {
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
-    return chrome.runtime.getURL('icon.png');
+    return chrome.runtime.getURL(BRAND_ICON);
   }
-  return '/icon.png';
+  const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/';
+  const prefix = base.endsWith('/') ? base : `${base}/`;
+  return `${prefix}${BRAND_ICON}`;
 };
+
+const BrandIcon = ({ className = 'h-6 w-6', alt = '', invert = false }) => (
+  <img
+    src={getIconUrl()}
+    alt={alt}
+    draggable={false}
+    className={`object-contain ${invert ? 'brightness-0 invert' : ''} ${className}`.trim()}
+  />
+);
 
 // --- TOAST COMPONENT ---
 const Toast = ({ message, type = 'success', isVisible, onDismiss }) => {
@@ -265,11 +278,11 @@ const PremiumModal = ({ isOpen, onClose, user }) => {
 const OverviewPage = ({ user, onNavigate, isPremium }) => {
   return (
     <div className="mx-auto max-w-3xl animate-fade-in space-y-6">
-      <div className="relative overflow-hidden rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-10 text-center shadow-[0_8px_32px_rgba(42,60,28,0.06)] transition-colors dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card dark:shadow-black/20">
-        <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-gradient-to-bl from-onextap-olive-muted to-transparent blur-2xl dark:from-onextap-primary/20" />
+      <div className="relative overflow-hidden rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-10 text-center shadow-[0_8px_32px_rgba(42,60,28,0.06)] transition-colors dark:border-[rgba(200,216,168,0.12)] dark:bg-[#121a10] dark:shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
+        <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-gradient-to-bl from-onextap-olive-muted to-transparent blur-2xl dark:from-onextap-primary/25" />
         <div className="relative z-10">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-onextap-olive-pale bg-onextap-olive-muted px-4 py-2 dark:border-[rgba(90,122,58,0.4)] dark:bg-[rgba(90,122,58,0.2)]">
-            <Sparkles size={14} className="text-onextap-primary dark:text-onextap-olive-pale" />
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-onextap-olive-pale bg-onextap-olive-muted px-4 py-2 dark:border-[rgba(90,122,58,0.35)] dark:bg-[rgba(45,74,45,0.35)]">
+            <BrandIcon className="h-4 w-4 opacity-90 dark:brightness-0 dark:invert" alt="" />
             <span className="text-sm font-medium text-onextap-primary dark:text-onextap-olive-pale">Your job application hub</span>
           </div>
 
@@ -282,10 +295,10 @@ const OverviewPage = ({ user, onNavigate, isPremium }) => {
           
           <div className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-medium shadow-sm ${
             user 
-              ? 'bg-gradient-to-r from-onextap-primary/15 to-onextap-primary/5 text-onextap-primary border border-onextap-primary/25' 
-              : 'bg-white/80 dark:bg-white/[0.06] text-onextap-dark/60 dark:text-white/60 border border-onextap-primary/15 dark:border-white/[0.08]'
+              ? 'bg-gradient-to-r from-onextap-primary/15 to-onextap-primary/5 text-onextap-primary border border-onextap-primary/25 dark:from-onextap-primary/30 dark:to-onextap-primary/10 dark:text-onextap-olive-pale dark:border-onextap-primary/40' 
+              : 'bg-white/80 text-onextap-dark/60 border border-onextap-primary/15 dark:border-[rgba(200,216,168,0.12)] dark:bg-[#0f160c] dark:text-[#C8D0B8]'
           }`}>
-            <Cloud size={16} />
+            <BrandIcon className="h-4 w-4 shrink-0 opacity-90 dark:brightness-0 dark:invert" alt="" />
             {user ? `Signed in as ${user.user_metadata?.full_name || user.email?.split('@')[0]}` : "Local Mode (Sign in to Sync)"}
             {user && isPremium && <Crown size={14} className="text-amber-500" />}
           </div>
@@ -293,16 +306,16 @@ const OverviewPage = ({ user, onNavigate, isPremium }) => {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <button type="button" onClick={() => onNavigate?.('profiles')} className="group text-left rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-6 shadow-sm transition-all duration-300 hover:bg-onextap-cream hover:shadow-md dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card dark:hover:bg-onextap-night-surface">
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[10px] bg-onextap-olive-muted transition-colors group-hover:bg-onextap-olive-pale/40 dark:bg-[rgba(90,122,58,0.2)]">
-            <User size={22} className="text-onextap-primary dark:text-onextap-olive-pale" />
+        <button type="button" onClick={() => onNavigate?.('profiles')} className="group text-left rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-6 shadow-sm transition-all duration-300 hover:bg-onextap-cream hover:shadow-md dark:border-[rgba(200,216,168,0.12)] dark:bg-[#121a10] dark:hover:border-[rgba(200,216,168,0.18)] dark:hover:bg-[#1a2614] dark:hover:shadow-[0_8px_28px_rgba(0,0,0,0.35)]">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[10px] bg-onextap-olive-muted transition-colors group-hover:bg-onextap-olive-pale/40 dark:bg-[rgba(45,74,45,0.45)] dark:group-hover:bg-[rgba(90,122,58,0.35)]">
+            <BrandIcon className="h-6 w-6 opacity-95 dark:brightness-0 dark:invert" alt="" />
           </div>
           <h3 className="mb-1 font-semibold text-onextap-dark dark:text-[#E8EFD8]">My Profiles</h3>
           <p className="text-sm text-onextap-secondary dark:text-[#9AB07A]">Add your personal info, education, and experience</p>
         </button>
-        <button type="button" onClick={() => onNavigate?.('vault')} className="group text-left rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-6 shadow-sm transition-all duration-300 hover:bg-onextap-cream hover:shadow-md dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card dark:hover:bg-onextap-night-surface">
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[10px] bg-onextap-olive-muted transition-colors group-hover:bg-onextap-olive-pale/40 dark:bg-[rgba(90,122,58,0.2)]">
-            <PenTool size={22} className="text-onextap-primary dark:text-onextap-olive-pale" />
+        <button type="button" onClick={() => onNavigate?.('vault')} className="group text-left rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-6 shadow-sm transition-all duration-300 hover:bg-onextap-cream hover:shadow-md dark:border-[rgba(200,216,168,0.12)] dark:bg-[#121a10] dark:hover:border-[rgba(200,216,168,0.18)] dark:hover:bg-[#1a2614] dark:hover:shadow-[0_8px_28px_rgba(0,0,0,0.35)]">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[10px] bg-onextap-olive-muted transition-colors group-hover:bg-onextap-olive-pale/40 dark:bg-[rgba(45,74,45,0.45)] dark:group-hover:bg-[rgba(90,122,58,0.35)]">
+            <BrandIcon className="h-6 w-6 opacity-95 dark:brightness-0 dark:invert" alt="" />
           </div>
           <h3 className="mb-1 font-semibold text-onextap-dark dark:text-[#E8EFD8]">Answer Studio</h3>
           <p className="text-sm text-onextap-secondary dark:text-[#9AB07A]">
@@ -2459,9 +2472,7 @@ const PublicLandingPage = ({
           <div className="mb-12 grid grid-cols-1 gap-10 md:grid-cols-[2fr_1fr_1fr_1fr] md:gap-12">
             <div>
               <div className="mb-3 flex items-center gap-2.5 text-[16px] font-semibold tracking-tight text-onextap-cream">
-                <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-onextap-olive-pale/40">
-                  <span className="absolute h-2 w-2 rounded-full border-[1.5px] border-onextap-olive-pale/40" />
-                </div>
+                <img src={getIconUrl()} alt="" className="h-7 w-7 shrink-0 rounded-md object-contain" />
                 Onextap
               </div>
               <p className="mt-3 max-w-sm text-[14px] font-light leading-relaxed text-onextap-cream/55">
@@ -3016,8 +3027,8 @@ const DashboardView = ({ onClose }) => {
           )}
         </div>
 
-        <nav className="flex-1 p-5 space-y-2" data-tour="sidebar-nav">
-          {[{id:'overview', icon:Layout, label:'Overview'}, {id:'profiles', icon:User, label:'My Profiles'}, {id:'vault', icon:PenTool, label:'Answer Studio'}].map((i, idx) => (
+        <nav className="flex-1 space-y-2 p-5" data-tour="sidebar-nav">
+          {[{ id: 'overview', label: 'Overview' }, { id: 'profiles', label: 'My Profiles' }, { id: 'vault', label: 'Answer Studio' }].map((i, idx) => (
             <button 
               key={i.id} 
               onClick={()=>setActiveNav(i.id)} 
@@ -3029,7 +3040,7 @@ const DashboardView = ({ onClose }) => {
               }`}
               style={{ animationDelay: `${0.2 + idx * 0.08}s` }}
             >
-              <i.icon size={18} className={activeNav === i.id ? 'text-white opacity-95' : 'text-onextap-primary'} />
+              <BrandIcon className="h-[18px] w-[18px] shrink-0" invert={activeNav === i.id} alt="" />
               {i.label}
             </button>
           ))}
@@ -3038,7 +3049,7 @@ const DashboardView = ({ onClose }) => {
         <div className="border-t border-[rgba(42,60,28,0.12)] p-5 dark:border-[rgba(200,216,168,0.12)]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs text-onextap-muted dark:text-[#9AB07A]">
-              <Sparkles size={12} />
+              <BrandIcon className="h-3.5 w-3.5 shrink-0 opacity-85 dark:brightness-0 dark:invert" alt="" />
               <span>Onextap</span>
             </div>
             <button onClick={() => setDarkMode(!darkMode)} data-tour="dark-toggle" className="p-2 rounded-xl text-onextap-dark/40 dark:text-white/40 hover:text-onextap-dark dark:hover:text-white hover:bg-onextap-dark/[0.04] dark:hover:bg-white/[0.06] transition-all" aria-label="Toggle dark mode">

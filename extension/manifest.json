@@ -28,6 +28,6 @@
   },
   "action": {
     "default_popup": "index.html",
-    "default_icon": "icon.png"
+    "default_icon": "new-icon.jpeg"
   }
 }
