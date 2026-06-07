@@ -203,6 +203,11 @@ const PremiumModal = ({ isOpen, onClose, user }) => {
       return;
     }
 
+    if (!creditManager?.createCheckoutSession) {
+      setError('Payment service is not available. Please refresh the page and try again.');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -2938,10 +2943,10 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio }) => {
 
   useEffect(() => {
     getUser().then((u) => setPopupUser(u));
-    const { data: { subscription } } = onAuthStateChange((_, session) => {
+    const { unsubscribe } = onAuthStateChange((_, session) => {
       setPopupUser(session?.user || null);
     });
-    return () => subscription?.unsubscribe();
+    return () => unsubscribe?.();
   }, []);
 
   useEffect(() => {
@@ -3209,7 +3214,8 @@ const PublicLandingPage = ({
   isSigningIn,
   handleSignIn,
   handleGoogleSignIn,
-  onOpenPremiumModal
+  onOpenPremiumModal,
+  user,
 }) => {
   const [openFaq, setOpenFaq] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -3569,7 +3575,13 @@ const PublicLandingPage = ({
                 </ul>
                 <button
                   type="button"
-                  onClick={onOpenPremiumModal}
+                  onClick={() => {
+                    if (user) {
+                      onOpenPremiumModal();
+                    } else {
+                      scrollToSection('auth');
+                    }
+                  }}
                   className="mt-8 block w-full rounded-lg bg-white py-3.5 text-center text-[14px] font-medium text-onextap-primary transition-colors hover:bg-onextap-olive-muted"
                 >
                   Upgrade to Premium
@@ -4223,6 +4235,7 @@ const DashboardView = ({ onClose }) => {
         handleSignIn={handleSignIn}
         handleGoogleSignIn={handleGoogleSignIn}
         onOpenPremiumModal={() => setIsPremiumModalOpen(true)}
+        user={user}
       />
     );
   }
@@ -4235,10 +4248,15 @@ const DashboardView = ({ onClose }) => {
       </div>
 
       <aside className="sidebar-enter fixed z-10 flex h-full w-72 flex-col border-r border-[rgba(42,60,28,0.12)] bg-onextap-cream/95 backdrop-blur-md transition-colors dark:border-[rgba(200,216,168,0.12)] dark:bg-onextap-night-surface/95">
-        <div className="flex items-center gap-3 border-b border-[rgba(42,60,28,0.12)] p-6 dark:border-[rgba(200,216,168,0.12)]">
+        <button
+          type="button"
+          onClick={() => { window.location.href = DASHBOARD_URL; }}
+          className="flex items-center gap-3 border-b border-[rgba(42,60,28,0.12)] p-6 dark:border-[rgba(200,216,168,0.12)] w-full text-left hover:bg-onextap-primary/5 dark:hover:bg-white/[0.04] transition-colors duration-200"
+          title="Go to home page"
+        >
           <img src={getIconUrl()} alt="Onextap" className="h-10 w-10 shrink-0 rounded-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/10" />
           <span className="text-xl font-semibold tracking-tight text-onextap-dark dark:text-[#E8EFD8]">Onextap</span>
-        </div>
+        </button>
         
         <div className="border-b border-[rgba(42,60,28,0.12)] p-5 dark:border-[rgba(200,216,168,0.12)]">
           {isCheckingAuth ? (
