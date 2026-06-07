@@ -7,10 +7,6 @@ dist-dashboard/
 *.crx
 *.pem
 
-# Temporary build files (copied to root for build)
-background.js
-content.js
-
 # Environment variables
 .env
 .env.local

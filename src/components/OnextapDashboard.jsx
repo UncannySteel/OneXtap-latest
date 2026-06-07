@@ -1,14 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Layout, FileText, Shield, Plus, CheckCircle, 
   User, ExternalLink, Lock, Save, Activity, Trash2, Calendar, 
-  PenTool, Sparkles, Clipboard, ChevronLeft, Briefcase, GraduationCap, Flag,
+  PenTool, Sparkles, Clipboard, ChevronLeft, ChevronDown, ChevronUp, Briefcase, GraduationCap, Flag,
   MapPin, Award, Code, Cloud, LogOut, Terminal, Settings, X, AlertTriangle, Crown, ArrowRight,
-  CreditCard, Zap, Moon, Sun, Menu
+  CreditCard, Zap, Moon, Sun, Menu, Copy, RotateCcw, MessageSquare
 } from 'lucide-react';
-import { storage } from '../storage'; 
+import { storage } from '../storage';
+import {
+  loadProfileStore,
+  getActiveLegacyProfile,
+  saveLegacyUserProfile,
+  setActiveProfileId,
+  createProfile,
+  renameProfile,
+  deleteProfile,
+  listProfiles,
+  updateActiveProfileData,
+  MAX_PROFILE_NAME_LENGTH,
+  MAX_COVER_LETTERS_PER_PROFILE,
+} from '../profileStore';
 import { COUNTRIES, GENDERS } from '../../extension/constants';
-import { signIn as supaSignIn, signUp as supaSignUp, signOut as supaSignOut, onAuthStateChange, signInWithOAuth, getAccessToken } from '../auth';
+import { signIn as supaSignIn, signUp as supaSignUp, signOut as supaSignOut, onAuthStateChange, signInWithOAuth, getAccessToken, getUser } from '../auth';
 import { creditManager } from '../creditManager';
 
 // Fallback extension ID (e.g. for published extension). When opening dashboard from popup we pass the real ID via ?extensionId=
@@ -43,6 +56,23 @@ const ANSWER_STYLE_INSTRUCTIONS = {
   leadership: 'Leadership and ownership: show initiative, decision-making, and collaboration.',
 };
 
+const AI_MATCH_CATEGORY_ORDER = ['Strong Match', 'Good Match', 'Stretch Match', 'Low Match'];
+
+const AUTOFILL_SECTION_META = [
+  { key: 'personalInfo', label: 'Personal Info', icon: '👤' },
+  { key: 'education', label: 'Education', icon: '🎓' },
+  { key: 'workExperience', label: 'Work Experience', icon: '💼' },
+  { key: 'openEnded', label: 'Open-ended Answers', icon: '💬' },
+  { key: 'coverLetter', label: 'Cover Letter', icon: '📄' },
+];
+
+const DEFAULT_SECTION_TOGGLES = {
+  personalInfo: true,
+  education: true,
+  workExperience: true,
+  openEnded: true,
+  coverLetter: true,
+};
 
 // --- 1. CONFIGURATION ---
 const DEFAULT_PROFILE = {
@@ -292,7 +322,7 @@ const OverviewPage = ({ user, onNavigate, isPremium }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <button
           type="button"
           onClick={() => onNavigate?.('profiles')}
@@ -319,7 +349,495 @@ const OverviewPage = ({ user, onNavigate, isPremium }) => {
               : 'Fast standard AI generation with 3 credits, plus profile-tailored answer improvements'}
           </p>
         </button>
+        <button
+          type="button"
+          onClick={() => onNavigate?.('intel')}
+          className="group rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-6 text-left shadow-sm transition-all duration-300 hover:bg-onextap-cream hover:shadow-md dark:border-onextap-primary-light/25 dark:bg-onextap-night-card dark:hover:border-onextap-primary-light/40 dark:hover:bg-[#2a3824] dark:hover:shadow-[0_8px_28px_rgba(0,0,0,0.35)]"
+        >
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[10px] bg-onextap-olive-muted transition-colors group-hover:bg-onextap-olive-pale/40 dark:bg-onextap-primary/25 dark:group-hover:bg-onextap-primary/35">
+            <Briefcase size={22} className="text-onextap-primary dark:text-onextap-olive-pale" />
+          </div>
+          <h3 className="mb-1 font-semibold text-onextap-dark dark:text-[#E8EFD8]">Job Intelligence</h3>
+          <p className="text-sm text-onextap-secondary dark:text-[#9AB07A]">
+            AI-ranked opportunities for each resume profile, filtered to competitive matches.
+          </p>
+        </button>
       </div>
+    </div>
+  );
+};
+
+const JobIntelligencePage = ({ showToast }) => {
+  const [profiles, setProfiles] = useState([]);
+  const [activeProfileId, setActiveProfileId] = useState(null);
+  const [jobs, setJobs] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [hiddenLowMatches, setHiddenLowMatches] = useState(0);
+  const [feedSource, setFeedSource] = useState('');
+  const [lookbackDays, setLookbackDays] = useState(10);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [applications, setApplications] = useState([]);
+  const [isSyncingApplications, setIsSyncingApplications] = useState(false);
+  const [filters, setFilters] = useState({
+    remoteOnly: false,
+    visaRequired: false,
+    location: '',
+    seniority: '',
+  });
+  const [savedJobIds, setSavedJobIds] = useState([]);
+  const hasChrome = typeof chrome !== 'undefined' && chrome?.runtime?.sendMessage;
+
+  const sendToExtension = (action, payload = {}) =>
+    new Promise((resolve, reject) => {
+      if (!hasChrome) return reject(new Error('Extension context not available'));
+      const msg = { action, data: payload };
+      const cb = (res) => {
+        if (chrome.runtime?.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(res);
+      };
+      const id = getExtensionId();
+      if (id) chrome.runtime.sendMessage(id, msg, cb);
+      else chrome.runtime.sendMessage(msg, cb);
+    });
+
+  useEffect(() => {
+    const load = async () => {
+      const saved = await storage.get('onextap_resume_profiles');
+      const savedProfile = await storage.get('user_profile');
+      const savedJobs = await storage.get('onextap_saved_jobs');
+      const localApplications = await storage.get('onextap_job_applications');
+      const normalizedSaved = Array.isArray(savedJobs) ? savedJobs : [];
+      setSavedJobIds(normalizedSaved);
+      setApplications(Array.isArray(localApplications) ? localApplications : []);
+
+      if (Array.isArray(saved) && saved.length > 0) {
+        setProfiles(saved);
+        setActiveProfileId(saved[0].id);
+      } else {
+        const fallbackProfile = {
+          id: `resume-${Date.now()}`,
+          name: 'Primary Resume',
+          focusRole: savedProfile?.currentJob?.title || '',
+          yearsExperience: '',
+          needsVisaSponsorship: false,
+          wantsRemote: true,
+          domainTags: [],
+          skills: Array.isArray(savedProfile?.skills) ? savedProfile.skills : [],
+          source: 'user_profile',
+        };
+        setProfiles([fallbackProfile]);
+        setActiveProfileId(fallbackProfile.id);
+        await storage.set('onextap_resume_profiles', [fallbackProfile]);
+      }
+
+      if (!API_URL) return;
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        setIsSyncingApplications(true);
+        const res = await fetch(`${API_URL}/api/job-intelligence/applications`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(body.applications)) {
+          setApplications(body.applications);
+          await storage.set('onextap_job_applications', body.applications);
+        }
+      } catch {
+        // Keep local fallback only.
+      } finally {
+        setIsSyncingApplications(false);
+      }
+    };
+    load();
+  }, []);
+
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
+
+  const saveProfiles = async (nextProfiles) => {
+    setProfiles(nextProfiles);
+    await storage.set('onextap_resume_profiles', nextProfiles);
+  };
+
+  const addResumeProfile = async () => {
+    const next = {
+      id: `resume-${Date.now()}`,
+      name: `Resume ${profiles.length + 1}`,
+      focusRole: '',
+      yearsExperience: '',
+      needsVisaSponsorship: false,
+      wantsRemote: true,
+      domainTags: [],
+      skills: [],
+    };
+    const updated = [...profiles, next];
+    await saveProfiles(updated);
+    setActiveProfileId(next.id);
+    showToast?.('New resume profile added', 'success');
+  };
+
+  const updateActiveProfile = async (patch) => {
+    if (!activeProfile) return;
+    const updated = profiles.map((p) => (p.id === activeProfile.id ? { ...p, ...patch } : p));
+    await saveProfiles(updated);
+  };
+
+  const fetchMatches = async () => {
+    if (!activeProfile) return;
+    setIsLoading(true);
+    setError('');
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Please sign in to generate personalized matches.');
+      if (!API_URL) throw new Error('Missing VITE_API_URL for job intelligence API.');
+
+      const candidateProfile = {
+        ...activeProfile,
+        yearsExperience: Number(activeProfile.yearsExperience || 0),
+      };
+      const response = await fetch(`${API_URL}/api/job-intelligence/match-feed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          lookbackDays,
+          profileName: activeProfile.name,
+          candidateProfile,
+          filters,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+      setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+      setHiddenLowMatches(Number(data.hiddenLowMatchCount || 0));
+      setFeedSource(String(data.source || ''));
+      showToast?.('AI-ranked feed refreshed', 'success');
+    } catch (e) {
+      const msg = e?.message || 'Failed to generate recommendations';
+      setError(msg);
+      showToast?.(msg, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleSaveJob = async (jobId) => {
+    const next = savedJobIds.includes(jobId)
+      ? savedJobIds.filter((id) => id !== jobId)
+      : [...savedJobIds, jobId];
+    setSavedJobIds(next);
+    await storage.set('onextap_saved_jobs', next);
+  };
+
+  const getApplicationStatus = (jobId) =>
+    applications.find((a) => a.job_id === jobId)?.status || '';
+
+  const trackApplicationStatus = async (job, status) => {
+    if (!job?.id) return;
+    const nextRecord = {
+      job_id: job.id,
+      status,
+      profile_name: activeProfile?.name || 'Primary Resume',
+      company: job.company || '',
+      title: job.title || '',
+      url: job.url || '',
+      updated_at: new Date().toISOString(),
+    };
+    const nextLocal = [nextRecord, ...applications.filter((a) => a.job_id !== job.id)];
+    setApplications(nextLocal);
+    await storage.set('onextap_job_applications', nextLocal);
+
+    if (!API_URL) return;
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      await fetch(`${API_URL}/api/job-intelligence/applications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          jobId: job.id,
+          status,
+          profileName: activeProfile?.name || 'Primary Resume',
+          company: job.company || '',
+          title: job.title || '',
+          url: job.url || '',
+        }),
+      });
+    } catch {
+      // Local tracking still works; backend sync can happen later.
+    }
+  };
+
+  const handleQuickApply = async (job) => {
+    if (!job?.url) return;
+    try {
+      await sendToExtension('OPEN_JOB_AND_PREPARE_APPLY', {
+        url: job.url,
+        jobId: job.id,
+        title: job.title,
+        company: job.company,
+        profileName: activeProfile?.name || 'Primary Resume',
+      });
+      await trackApplicationStatus(job, 'in_progress');
+      showToast?.('Opened in extension for quick apply', 'success');
+    } catch (e) {
+      showToast?.(e?.message || 'Could not trigger extension quick apply', 'error');
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-6xl animate-fade-in space-y-5">
+      <div className="rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-6 shadow-sm dark:border-onextap-primary-light/25 dark:bg-onextap-night-card">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-onextap-dark dark:text-[#E8EFD8]">AI Job Intelligence</h2>
+            <p className="mt-1 text-sm text-onextap-secondary dark:text-[#9AB07A]">
+              Surfaces only competitive opportunities for each resume profile instead of a generic job board.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={addResumeProfile}
+            className="inline-flex items-center gap-2 rounded-xl bg-onextap-dark px-3.5 py-2 text-sm font-semibold text-white hover:bg-onextap-dark/90"
+          >
+            <Plus size={14} /> Add Resume Feed
+          </button>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-onextap-dark/60 dark:text-[#9AB07A]">Active Resume Profile</label>
+            <select
+              value={activeProfileId || ''}
+              onChange={(e) => setActiveProfileId(e.target.value)}
+              className="w-full rounded-lg border border-onextap-primary/30 bg-white p-2.5 text-sm focus:outline-none focus:border-onextap-primary"
+            >
+              {(profiles || []).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-onextap-dark/60 dark:text-[#9AB07A]">Freshness Window</label>
+            <select
+              value={lookbackDays}
+              onChange={(e) => setLookbackDays(Number(e.target.value))}
+              className="w-full rounded-lg border border-onextap-primary/30 bg-white p-2.5 text-sm focus:outline-none focus:border-onextap-primary"
+            >
+              <option value={7}>Last 7 days</option>
+              <option value={10}>Last 10 days</option>
+              <option value={14}>Last 14 days</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={fetchMatches}
+              disabled={!activeProfile || isLoading}
+              className="w-full rounded-lg bg-onextap-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-onextap-primary-dark disabled:opacity-60"
+            >
+              {isLoading ? 'Ranking jobs...' : 'Refresh Feed'}
+            </button>
+          </div>
+        </div>
+
+        {activeProfile && (
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+            <input
+              className="rounded-lg border border-onextap-primary/30 bg-white p-2.5 text-sm focus:outline-none focus:border-onextap-primary"
+              placeholder="Resume profile name"
+              value={activeProfile.name || ''}
+              onChange={(e) => updateActiveProfile({ name: e.target.value })}
+            />
+            <input
+              className="rounded-lg border border-onextap-primary/30 bg-white p-2.5 text-sm focus:outline-none focus:border-onextap-primary"
+              placeholder="Target role (e.g. Frontend Engineer)"
+              value={activeProfile.focusRole || ''}
+              onChange={(e) => updateActiveProfile({ focusRole: e.target.value })}
+            />
+            <input
+              className="rounded-lg border border-onextap-primary/30 bg-white p-2.5 text-sm focus:outline-none focus:border-onextap-primary"
+              placeholder="Years of experience"
+              value={activeProfile.yearsExperience || ''}
+              onChange={(e) => updateActiveProfile({ yearsExperience: e.target.value.replace(/[^\d.]/g, '') })}
+            />
+            <input
+              className="rounded-lg border border-onextap-primary/30 bg-white p-2.5 text-sm focus:outline-none focus:border-onextap-primary"
+              placeholder="Skills (comma separated)"
+              value={Array.isArray(activeProfile.skills) ? activeProfile.skills.join(', ') : ''}
+              onChange={(e) => updateActiveProfile({ skills: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+            />
+          </div>
+        )}
+
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <input
+            className="rounded-lg border border-onextap-primary/30 bg-white p-2.5 text-sm focus:outline-none focus:border-onextap-primary"
+            placeholder="Location filter"
+            value={filters.location}
+            onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value }))}
+          />
+          <select
+            value={filters.seniority}
+            onChange={(e) => setFilters((f) => ({ ...f, seniority: e.target.value }))}
+            className="rounded-lg border border-onextap-primary/30 bg-white p-2.5 text-sm focus:outline-none focus:border-onextap-primary"
+          >
+            <option value="">Any seniority</option>
+            <option value="Junior">Junior</option>
+            <option value="Mid-Senior">Mid-Senior</option>
+            <option value="Senior">Senior</option>
+            <option value="Staff">Staff</option>
+          </select>
+          <label className="flex items-center gap-2 rounded-lg border border-onextap-primary/20 bg-onextap-primary/5 px-3 text-sm">
+            <input
+              type="checkbox"
+              checked={filters.remoteOnly}
+              onChange={(e) => setFilters((f) => ({ ...f, remoteOnly: e.target.checked }))}
+            />
+            Remote only
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border border-onextap-primary/20 bg-onextap-primary/5 px-3 text-sm">
+            <input
+              type="checkbox"
+              checked={filters.visaRequired}
+              onChange={(e) => setFilters((f) => ({ ...f, visaRequired: e.target.checked }))}
+            />
+            Visa sponsorship
+          </label>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3">
+        {(jobs || []).length === 0 ? (
+          <div className="rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-6 text-sm text-onextap-secondary dark:border-onextap-primary-light/25 dark:bg-onextap-night-card">
+            No ranked opportunities yet. Configure a resume profile and click <span className="font-semibold">Refresh Feed</span>.
+          </div>
+        ) : (
+          jobs
+            .sort((a, b) => AI_MATCH_CATEGORY_ORDER.indexOf(a.category) - AI_MATCH_CATEGORY_ORDER.indexOf(b.category))
+            .map((job) => (
+              <div key={job.id} className="rounded-[14px] border border-[rgba(42,60,28,0.12)] bg-white p-5 shadow-sm dark:border-onextap-primary-light/25 dark:bg-onextap-night-card">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-onextap-dark dark:text-[#E8EFD8]">{job.title}</h3>
+                    <p className="mt-1 text-sm text-onextap-secondary dark:text-[#9AB07A]">{job.company}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-onextap-dark/70">
+                      <span className="inline-flex items-center gap-1"><MapPin size={12} /> {job.location}</span>
+                      <span className="inline-flex items-center gap-1"><Calendar size={12} /> {job.postedDaysAgo}d ago</span>
+                      <span className="inline-flex items-center gap-1"><Flag size={12} /> {job.seniority}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      job.category === 'Strong Match'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : job.category === 'Good Match'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {job.category}
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-onextap-dark dark:text-[#E8EFD8]">{job.finalScore}% fit</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm text-onextap-secondary dark:text-[#9AB07A]">
+                  {Array.isArray(job.reasons) && job.reasons.length ? job.reasons.join(' • ') : 'Potentially relevant based on profile match.'}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedJob((prev) => (prev?.id === job.id ? null : job))}
+                    className="rounded-lg border border-onextap-primary/30 px-3 py-1.5 text-xs font-semibold text-onextap-primary hover:bg-onextap-primary/10"
+                  >
+                    {selectedJob?.id === job.id ? 'Hide Match Details' : 'View Match Details'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSaveJob(job.id)}
+                    className="rounded-lg border border-onextap-primary/30 px-3 py-1.5 text-xs font-semibold text-onextap-primary hover:bg-onextap-primary/10"
+                  >
+                    {savedJobIds.includes(job.id) ? 'Saved' : 'Save Job'}
+                  </button>
+                  <a
+                    href={job.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg bg-onextap-dark px-3 py-1.5 text-xs font-semibold text-white hover:bg-onextap-dark/90"
+                  >
+                    Open Job <ExternalLink size={12} />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickApply(job)}
+                    className="rounded-lg bg-onextap-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-onextap-primary-dark"
+                  >
+                    Quick Apply
+                  </button>
+                  <select
+                    value={getApplicationStatus(job.id)}
+                    onChange={(e) => trackApplicationStatus(job, e.target.value)}
+                    className="rounded-lg border border-onextap-primary/30 bg-white px-2 py-1.5 text-xs focus:outline-none focus:border-onextap-primary"
+                  >
+                    <option value="">Track status</option>
+                    <option value="saved">Saved</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="applied">Applied</option>
+                    <option value="interview">Interview</option>
+                    <option value="offer">Offer</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+                {selectedJob?.id === job.id && (
+                  <div className="mt-4 rounded-xl border border-onextap-primary/20 bg-onextap-primary/5 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-onextap-dark/60">Match Breakdown</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                      <div>Required skills: <span className="font-semibold">{job.subScores?.requiredSkill ?? 0}</span></div>
+                      <div>Preferred skills: <span className="font-semibold">{job.subScores?.preferredSkill ?? 0}</span></div>
+                      <div>Semantic fit: <span className="font-semibold">{job.subScores?.semanticSimilarity ?? 0}</span></div>
+                      <div>Experience fit: <span className="font-semibold">{job.subScores?.experienceAlignment ?? 0}</span></div>
+                      <div>Seniority fit: <span className="font-semibold">{job.subScores?.seniorityFit ?? 0}</span></div>
+                      <div>Domain relevance: <span className="font-semibold">{job.subScores?.domainRelevance ?? 0}</span></div>
+                    </div>
+                    {!!(job.missingCriticalRequirements || []).length && (
+                      <p className="mt-2 text-xs text-amber-700">
+                        Missing critical requirements: {(job.missingCriticalRequirements || []).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))
+        )}
+      </div>
+
+      {hiddenLowMatches > 0 && (
+        <p className="text-center text-xs text-onextap-dark/55 dark:text-[#9AB07A]">
+          {hiddenLowMatches} low-match jobs are hidden to keep this feed focused on competitive opportunities.
+        </p>
+      )}
+      {!!feedSource && (
+        <p className="text-center text-xs text-onextap-dark/45 dark:text-[#9AB07A]">
+          Feed source: {feedSource === 'supabase' ? 'Supabase live job_openings' : 'sample fallback'}
+        </p>
+      )}
+      {isSyncingApplications && (
+        <p className="text-center text-xs text-onextap-dark/55 dark:text-[#9AB07A]">
+          Syncing application tracker...
+        </p>
+      )}
     </div>
   );
 };
@@ -333,10 +851,10 @@ const ProfilesPage = ({ showToast }) => {
 
   useEffect(() => {
     const loadData = async () => {
-      const saved = await storage.get('user_profile');
+      await loadProfileStore();
+      const saved = await getActiveLegacyProfile();
       if (saved) {
         const mergedProfile = { ...DEFAULT_PROFILE, ...saved };
-        // Deep merge safe-guards
         if (saved.education) mergedProfile.education = saved.education;
         if (saved.experience) mergedProfile.experience = saved.experience;
         if (saved.skills) mergedProfile.skills = saved.skills;
@@ -356,9 +874,8 @@ const ProfilesPage = ({ showToast }) => {
     setStatus('Saving...');
     
     try {
-      // Save using storage wrapper (handles local + Chrome storage)
-      await storage.set('user_profile', profile);
-  
+      await saveLegacyUserProfile(profile);
+
       // Broadcast to Extension (Direct Message) — popup reads from chrome.storage.local
       let syncOk = false;
       const extId = getExtensionId();
@@ -636,8 +1153,22 @@ const ProfilesPage = ({ showToast }) => {
   const emptyExperience = () => ({ company: '', title: '', start: '', end: '', startDate: '', endDate: '', description: '', duration: '', type: '', isCurrent: false });
   const emptyCertificate = () => ({ name: '', issuer: '', date: '', expiry: '' });
 
+  const reloadActiveProfile = async () => {
+    const saved = await getActiveLegacyProfile();
+    if (saved) {
+      setProfile({
+        ...DEFAULT_PROFILE,
+        ...saved,
+        education: saved.education || DEFAULT_PROFILE.education,
+        experience: saved.experience || DEFAULT_PROFILE.experience,
+        vault: saved.vault || DEFAULT_PROFILE.vault,
+      });
+    }
+  };
+
   return (
-    <div className="animate-fade-in max-w-4xl mx-auto">
+    <div className="animate-fade-in max-w-4xl mx-auto space-y-4">
+      <ProfileSwitcher onProfileChange={reloadActiveProfile} />
       <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-onextap-primary/15 p-8 shadow-lg shadow-onextap-dark/5 relative overflow-hidden">
         {/* Decorative gradient */}
         <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-onextap-primary/10 to-transparent rounded-full blur-2xl" />
@@ -970,6 +1501,25 @@ const VaultPage = ({ showToast, user }) => {
   const [premiumStatus, setPremiumStatus] = useState(false);
   const hasChrome = typeof chrome !== 'undefined' && chrome?.runtime?.sendMessage;
 
+  const syncProfileToExtension = async (profilePayload) => {
+    if (!hasChrome) return;
+    const extId = getExtensionId();
+    if (!extId) return;
+    await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        extId,
+        {
+          type: 'ONEXTAP_SYNC_DATA',
+          payload: profilePayload,
+        },
+        () => {
+          // Keep UI responsive even if extension sync fails.
+          resolve();
+        }
+      );
+    });
+  };
+
   const loadCredits = async () => {
     setCreditsError(null);
     try {
@@ -990,7 +1540,8 @@ const VaultPage = ({ showToast, user }) => {
 
   useEffect(() => {
     const load = async () => {
-      const saved = await storage.get('user_profile');
+      await loadProfileStore();
+      const saved = await getActiveLegacyProfile();
       if (saved) {
         setProfile({
           ...DEFAULT_PROFILE,
@@ -1006,7 +1557,8 @@ const VaultPage = ({ showToast, user }) => {
   const saveVault = async (newVault) => {
     const newProfile = { ...profile, vault: normalizeVaultItems(newVault) };
     setProfile(newProfile);
-    await storage.set('user_profile', newProfile);
+    await saveLegacyUserProfile(newProfile);
+    await syncProfileToExtension(newProfile);
     setTempItem({ question: '', answer: '' });
     setActiveVaultItemId(null);
     setHasAutoGeneratedOnce(false);
@@ -1079,7 +1631,8 @@ const VaultPage = ({ showToast, user }) => {
     );
     const newProfile = { ...profile, vault: normalizeVaultItems(updatedVault) };
     setProfile(newProfile);
-    await storage.set('user_profile', newProfile);
+    await saveLegacyUserProfile(newProfile);
+    await syncProfileToExtension(newProfile);
   };
 
   const sendToExtension = (action, payload = {}) =>
@@ -1298,8 +1851,20 @@ const VaultPage = ({ showToast, user }) => {
 
   const canImprove = !!user && !!tempItem.question?.trim();
 
+  const reloadVaultProfile = async () => {
+    const saved = await getActiveLegacyProfile();
+    if (saved) {
+      setProfile({
+        ...DEFAULT_PROFILE,
+        ...saved,
+        vault: normalizeVaultItems(saved.vault ?? DEFAULT_PROFILE.vault),
+      });
+    }
+  };
+
   return (
     <div className="animate-fade-in max-w-3xl mx-auto space-y-6">
+      <ProfileSwitcher onProfileChange={reloadVaultProfile} />
       {/* Header card */}
       <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-onextap-primary/15 p-8 shadow-lg shadow-onextap-dark/5 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-onextap-primary/10 to-transparent rounded-full blur-2xl" />
@@ -1737,66 +2302,719 @@ const AccountSettingsModal = ({ isOpen, onClose, user, onSignOut, onOpenPremiumM
 };
 
 
+// --- PROFILE SWITCHER (Feature 1) ---
+const ProfileSwitcher = ({ compact = false, onProfileChange }) => {
+  const [store, setStore] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newNameError, setNewNameError] = useState('');
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const dropdownRef = useRef(null);
+
+  const refresh = useCallback(async () => {
+    const next = await loadProfileStore();
+    setStore(next);
+    onProfileChange?.(next);
+    return next;
+  }, [onProfileChange]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    const onClick = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOpen(false);
+        setCreating(false);
+        setRenamingId(null);
+        setDeleteConfirmId(null);
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  if (!store) {
+    return (
+      <div className="h-10 animate-pulse rounded-xl bg-onextap-primary/10" />
+    );
+  }
+
+  const profiles = listProfiles(store);
+  const active = profiles.find((p) => p.id === store.activeProfileId);
+  const canDeleteAny = profiles.length > 1;
+
+  const handleSelect = async (id) => {
+    await setActiveProfileId(id);
+    await refresh();
+    setOpen(false);
+  };
+
+  const handleCreate = async () => {
+    try {
+      setNewNameError('');
+      await createProfile(newName);
+      setNewName('');
+      setCreating(false);
+      await refresh();
+    } catch (e) {
+      setNewNameError(e.message);
+    }
+  };
+
+  const handleRename = async (id) => {
+    try {
+      setRenameError('');
+      await renameProfile(id, renameValue);
+      setRenamingId(null);
+      setRenameValue('');
+      await refresh();
+    } catch (e) {
+      setRenameError(e.message);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteProfile(id);
+      setDeleteConfirmId(null);
+      await refresh();
+    } catch (e) {
+      setRenameError(e.message);
+    }
+  };
+
+  return (
+    <div className={`relative ${compact ? '' : 'mb-3'}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 rounded-xl border border-onextap-primary/20 bg-white/90 px-3 py-2.5 text-left text-sm font-semibold text-onextap-dark shadow-sm transition-all hover:border-onextap-primary/35 dark:bg-onextap-night-card dark:text-[#E8EFD8] dark:border-onextap-primary-light/25"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-onextap-primary" />
+          <span className="truncate">{active?.name || 'Default'}</span>
+        </span>
+        <ChevronDown size={16} className={`shrink-0 text-onextap-dark/50 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-onextap-primary/20 bg-white shadow-lg dark:bg-onextap-night-card dark:border-onextap-primary-light/25">
+          <div className="max-h-[240px] overflow-y-auto">
+            {profiles.map((p) => (
+              <div key={p.id} className="border-b border-onextap-primary/10 last:border-b-0">
+                {deleteConfirmId === p.id ? (
+                  <div className="px-3 py-2.5 text-xs text-onextap-dark/80 dark:text-[#E8EFD8]">
+                    Delete {p.name}? This cannot be undone.
+                    <div className="mt-2 flex gap-2">
+                      <button type="button" onClick={() => handleDelete(p.id)} className="rounded-lg bg-red-600 px-2.5 py-1 text-white font-medium">Delete</button>
+                      <button type="button" onClick={() => setDeleteConfirmId(null)} className="rounded-lg border border-onextap-primary/20 px-2.5 py-1">Cancel</button>
+                    </div>
+                  </div>
+                ) : renamingId === p.id ? (
+                  <div className="px-3 py-2.5">
+                    <input
+                      value={renameValue}
+                      onChange={(e) => { setRenameValue(e.target.value.slice(0, MAX_PROFILE_NAME_LENGTH)); setRenameError(''); }}
+                      className="w-full rounded-lg border border-onextap-primary/30 px-2 py-1.5 text-sm"
+                      placeholder="Profile name"
+                      maxLength={MAX_PROFILE_NAME_LENGTH}
+                    />
+                    <p className="mt-1 text-[10px] text-onextap-dark/45">{renameValue.length}/{MAX_PROFILE_NAME_LENGTH}</p>
+                    {renameError && <p className="mt-1 text-xs text-red-600">{renameError}</p>}
+                    <div className="mt-2 flex gap-2">
+                      <button type="button" onClick={() => handleRename(p.id)} className="rounded-lg bg-onextap-primary px-2.5 py-1 text-xs text-white font-medium">Save</button>
+                      <button type="button" onClick={() => { setRenamingId(null); setRenameError(''); }} className="rounded-lg border border-onextap-primary/20 px-2.5 py-1 text-xs">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`flex items-center gap-1 px-2 py-1.5 ${p.id === store.activeProfileId ? 'bg-onextap-primary/8' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelect(p.id)}
+                      className={`flex-1 truncate px-1 py-1 text-left text-sm ${p.id === store.activeProfileId ? 'font-semibold text-onextap-dark dark:text-[#E8EFD8]' : 'text-onextap-dark/70 dark:text-[#9AB07A]'}`}
+                    >
+                      {p.id === store.activeProfileId && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-onextap-primary" />}
+                      {p.name}
+                    </button>
+                    <button
+                      type="button"
+                      title="Rename"
+                      onClick={() => { setRenamingId(p.id); setRenameValue(p.name); setRenameError(''); }}
+                      className="rounded-lg p-1.5 text-onextap-dark/40 hover:bg-onextap-primary/10 hover:text-onextap-primary"
+                    >
+                      <Settings size={13} />
+                    </button>
+                    {canDeleteAny && !p.isDefault && (
+                      <button
+                        type="button"
+                        title="Delete"
+                        onClick={() => setDeleteConfirmId(p.id)}
+                        className="rounded-lg p-1.5 text-onextap-dark/40 hover:bg-red-50 hover:text-red-500"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-onextap-primary/15 bg-onextap-cream/50 dark:bg-onextap-night">
+            {creating ? (
+              <div className="px-3 py-2.5">
+                <input
+                  value={newName}
+                  onChange={(e) => { setNewName(e.target.value.slice(0, MAX_PROFILE_NAME_LENGTH)); setNewNameError(''); }}
+                  placeholder="Profile name"
+                  className="w-full rounded-lg border border-onextap-primary/30 px-2 py-1.5 text-sm"
+                  maxLength={MAX_PROFILE_NAME_LENGTH}
+                  autoFocus
+                />
+                <p className="mt-1 text-[10px] text-onextap-dark/45">{newName.length}/{MAX_PROFILE_NAME_LENGTH}</p>
+                {newNameError && <p className="mt-1 text-xs text-red-600">{newNameError}</p>}
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={handleCreate} className="rounded-lg bg-onextap-dark px-2.5 py-1 text-xs text-white font-medium">Create</button>
+                  <button type="button" onClick={() => { setCreating(false); setNewName(''); setNewNameError(''); }} className="rounded-lg border border-onextap-primary/20 px-2.5 py-1 text-xs">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-medium text-onextap-primary hover:bg-onextap-primary/10"
+              >
+                <Plus size={14} /> New Profile
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- WHAT TO FILL (Feature 3) ---
+const WhatToFillSection = ({ detectedSections, sectionToggles, setSectionToggles, hasCoverLetterTemplates }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const visibleSections = AUTOFILL_SECTION_META.filter((s) => {
+    if (s.key === 'coverLetter') {
+      return detectedSections.coverLetter && hasCoverLetterTemplates;
+    }
+    return detectedSections[s.key];
+  });
+
+  const enabledCount = visibleSections.filter((s) => sectionToggles[s.key]).length;
+  const totalCount = visibleSections.length;
+
+  const setAll = (value) => {
+    const next = { ...sectionToggles };
+    visibleSections.forEach((s) => { next[s.key] = value; });
+    setSectionToggles(next);
+  };
+
+  if (totalCount === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-onextap-primary/15 bg-white/80 dark:bg-onextap-night-card dark:border-onextap-primary-light/20">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-onextap-dark dark:text-[#E8EFD8]"
+      >
+        <span>What to fill</span>
+        {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      </button>
+      {expanded && (
+        <div className="border-t border-onextap-primary/10 px-3 py-2.5 space-y-2">
+          <div className="flex gap-3 text-xs">
+            <button type="button" onClick={() => setAll(true)} className="text-onextap-primary font-medium hover:underline">Select all</button>
+            <button type="button" onClick={() => setAll(false)} className="text-onextap-dark/50 font-medium hover:underline dark:text-[#9AB07A]">Deselect all</button>
+          </div>
+          {visibleSections.map((s) => (
+            <label key={s.key} className={`flex items-center gap-2.5 cursor-pointer text-sm ${sectionToggles[s.key] ? 'text-onextap-dark dark:text-[#E8EFD8]' : 'text-onextap-dark/40 line-through dark:text-[#9AB07A]/60'}`}>
+              <input
+                type="checkbox"
+                checked={!!sectionToggles[s.key]}
+                onChange={(e) => setSectionToggles((prev) => ({ ...prev, [s.key]: e.target.checked }))}
+                className="rounded border-onextap-primary/30 text-onextap-primary focus:ring-onextap-primary/30"
+              />
+              <span>{s.icon}</span>
+              <span>{s.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- COVER LETTER (Feature 2) ---
+const CoverLetterPanel = ({ showToast, user, compact = false }) => {
+  const [coverLetters, setCoverLetters] = useState([]);
+  const [activeTemplateId, setActiveTemplateId] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [originalText, setOriginalText] = useState('');
+  const [suggestionText, setSuggestionText] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState('');
+  const [hasJobDescription, setHasJobDescription] = useState(false);
+  const [coverFieldDetected, setCoverFieldDetected] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [addingTemplate, setAddingTemplate] = useState(false);
+  const saveDebounceRef = useRef(null);
+  const hasChrome = typeof chrome !== 'undefined' && chrome?.runtime?.sendMessage;
+
+  const loadTemplates = useCallback(async () => {
+    const store = await loadProfileStore();
+    const active = store.profiles[store.activeProfileId];
+    const templates = active?.coverLetters || [];
+    setCoverLetters(templates);
+    if (templates.length && !activeTemplateId) {
+      setActiveTemplateId(templates[0].id);
+      setOriginalText(templates[0].body || '');
+    }
+  }, [activeTemplateId]);
+
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+  useEffect(() => {
+    const checkPage = async () => {
+      if (!hasChrome) return;
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      } catch { /* restricted page */ }
+      chrome.tabs.sendMessage(tab.id, { action: 'SCRAPE_CONTEXT' }, (ctxRes) => {
+        const desc = ctxRes?.context?.description || '';
+        setHasJobDescription(desc.trim().length > 100);
+      });
+      chrome.tabs.sendMessage(tab.id, { action: 'DETECT_SECTIONS', profile: {} }, (detRes) => {
+        setCoverFieldDetected(!!detRes?.sections?.coverLetter);
+      });
+    };
+    checkPage();
+  }, [hasChrome]);
+
+  const persistTemplates = async (templates) => {
+    setCoverLetters(templates);
+    await updateActiveProfileData({ coverLetters: templates });
+  };
+
+  const debouncedSaveBody = (templateId, body) => {
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    saveDebounceRef.current = setTimeout(async () => {
+      const store = await loadProfileStore();
+      const active = store.profiles[store.activeProfileId];
+      const current = active?.coverLetters || [];
+      const next = current.map((t) => (t.id === templateId ? { ...t, body } : t));
+      await persistTemplates(next);
+    }, 500);
+  };
+
+  const handleAddTemplate = async () => {
+    if (coverLetters.length >= MAX_COVER_LETTERS_PER_PROFILE) {
+      showToast?.(`Maximum ${MAX_COVER_LETTERS_PER_PROFILE} templates per profile`, 'error');
+      return;
+    }
+    const name = (newTemplateName || `Template ${coverLetters.length + 1}`).trim().slice(0, 32);
+    const template = {
+      id: `cl-${Date.now()}`,
+      name,
+      body: '',
+      createdAt: new Date().toISOString(),
+    };
+    const next = [...coverLetters, template];
+    await persistTemplates(next);
+    setActiveTemplateId(template.id);
+    setExpandedId(template.id);
+    setOriginalText('');
+    setNewTemplateName('');
+    setAddingTemplate(false);
+    showToast?.('Template added', 'success');
+  };
+
+  const handleDeleteTemplate = async (id) => {
+    const next = coverLetters.filter((t) => t.id !== id);
+    await persistTemplates(next);
+    if (activeTemplateId === id) {
+      const first = next[0];
+      setActiveTemplateId(first?.id || null);
+      setOriginalText(first?.body || '');
+    }
+    showToast?.('Template removed', 'success');
+  };
+
+  const sendToExtension = (action, payload = {}) =>
+    new Promise((resolve, reject) => {
+      if (!hasChrome) return reject(new Error('Extension not available'));
+      const cb = (res) => {
+        if (chrome.runtime?.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(res);
+      };
+      if (chrome.runtime.id) chrome.runtime.sendMessage({ action, ...payload }, cb);
+      else chrome.runtime.sendMessage({ action, ...payload }, cb);
+    });
+
+  const handlePersonalize = async () => {
+    const template = coverLetters.find((t) => t.id === activeTemplateId);
+    if (!template?.body?.trim()) {
+      setGenerateError('Add a cover letter template first.');
+      return;
+    }
+    if (!user) {
+      setGenerateError('Sign in to use AI personalization.');
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerateError('');
+    setSuggestionText('');
+    setOriginalText(template.body);
+
+    try {
+      let company = '';
+      let description = '';
+      if (hasChrome) {
+        const scrapeRes = await sendToExtension('SCRAPE_ACTIVE_TAB');
+        if (scrapeRes?.success && scrapeRes?.context) {
+          company = scrapeRes.context.company || '';
+          description = scrapeRes.context.description || '';
+        }
+      }
+      if (!description?.trim()) {
+        setGenerateError('Open a job posting to personalize.');
+        setIsGenerating(false);
+        return;
+      }
+
+      const token = await getAccessToken();
+      if (!token) throw new Error('Please sign in first.');
+
+      const jdSnippet = String(description).substring(0, 6000);
+      const taskHint = `Rewrite the cover letter template for this specific job. Preserve the candidate's writing style and voice — do not make it generic. Reference the company and role by name. Weave in 2-4 key requirements from the job description. Keep length within ±10% of the original. First person. No headings or bullet points.`;
+
+      const res = await fetch(`${API_URL}/api/answer-vault/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          question: 'Cover letter for this job application',
+          draft: template.body,
+          jobContext: `${company ? `Company: ${company}\n\n` : ''}${jdSnippet}`,
+          taskHint,
+          styleHint: ANSWER_STYLE_INSTRUCTIONS.balanced,
+          model: ANSWER_STUDIO_MODEL,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Generation failed (${res.status})`);
+
+      const text = String(body?.text || '').trim();
+      if (!text) throw new Error('Empty response from AI');
+      setSuggestionText(text);
+
+      const next = coverLetters.map((t) =>
+        t.id === template.id ? { ...t, lastUsed: new Date().toISOString() } : t
+      );
+      await persistTemplates(next);
+      showToast?.('Cover letter personalized', 'success');
+    } catch (e) {
+      setGenerateError(e?.message || 'AI generation failed');
+      showToast?.(e?.message || 'Generation failed', 'error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCopySuggestion = async () => {
+    if (!suggestionText) return;
+    try {
+      await navigator.clipboard.writeText(suggestionText);
+      showToast?.('Copied to clipboard', 'success');
+    } catch {
+      showToast?.('Could not copy', 'error');
+    }
+  };
+
+  const handleAutofillSuggestion = async () => {
+    if (!suggestionText || !hasChrome) return;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      chrome.tabs.sendMessage(tab.id, { action: 'FILL_COVER_LETTER', text: suggestionText }, (res) => {
+        if (res?.success) showToast?.('Cover letter filled', 'success');
+        else showToast?.('No cover letter field found', 'error');
+      });
+    } catch {
+      showToast?.('Cannot access this page', 'error');
+    }
+  };
+
+  const activeTemplate = coverLetters.find((t) => t.id === activeTemplateId);
+
+  return (
+    <div className={`space-y-4 ${compact ? '' : 'max-w-3xl mx-auto'}`}>
+      {coverLetters.length === 0 && !addingTemplate ? (
+        <div className="rounded-2xl border border-dashed border-onextap-primary/25 bg-white/70 p-6 text-center dark:bg-onextap-night-card">
+          <FileText size={28} className="mx-auto mb-2 text-onextap-primary/60" />
+          <p className="text-sm text-onextap-dark/70 dark:text-[#9AB07A] mb-3">Add a cover letter template to get started.</p>
+          <button type="button" onClick={() => setAddingTemplate(true)} className="rounded-xl bg-onextap-primary px-4 py-2 text-sm font-semibold text-white">
+            Add template
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {coverLetters.map((t) => (
+              <div key={t.id} className="rounded-xl border border-onextap-primary/15 bg-white/80 dark:bg-onextap-night-card overflow-hidden">
+                <div className="flex w-full items-start justify-between gap-2 px-3 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExpandedId(expandedId === t.id ? null : t.id);
+                      setActiveTemplateId(t.id);
+                      setOriginalText(t.body || '');
+                      setSuggestionText('');
+                    }}
+                    className="flex-1 min-w-0 text-left"
+                  >
+                    <p className="text-sm font-semibold text-onextap-dark dark:text-[#E8EFD8]">{t.name}</p>
+                    <p className="text-xs text-onextap-dark/50 truncate dark:text-[#9AB07A]">{(t.body || '').slice(0, 60)}{(t.body || '').length > 60 ? '…' : ''}</p>
+                  </button>
+                  <button type="button" onClick={() => handleDeleteTemplate(t.id)} className="shrink-0 p-1 text-onextap-dark/30 hover:text-red-500"><Trash2 size={14} /></button>
+                </div>
+                {expandedId === t.id && (
+                  <div className="border-t border-onextap-primary/10 px-3 py-3 space-y-2">
+                    <input
+                      value={t.name}
+                      onChange={async (e) => {
+                        const name = e.target.value.slice(0, 32);
+                        const next = coverLetters.map((x) => (x.id === t.id ? { ...x, name } : x));
+                        await persistTemplates(next);
+                      }}
+                      className="w-full rounded-lg border border-onextap-primary/20 px-2 py-1.5 text-sm"
+                      placeholder="Template name"
+                    />
+                    <textarea
+                      value={t.id === activeTemplateId && originalText !== undefined ? originalText : t.body}
+                      onChange={(e) => {
+                        const body = e.target.value;
+                        setOriginalText(body);
+                        debouncedSaveBody(t.id, body);
+                      }}
+                      className="w-full rounded-lg border border-onextap-primary/20 px-2 py-2 text-sm h-32 resize-none"
+                      placeholder="Paste your base cover letter…"
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {addingTemplate ? (
+            <div className="rounded-xl border border-onextap-primary/15 bg-white/80 p-3 space-y-2 dark:bg-onextap-night-card">
+              <input value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value.slice(0, 32))} placeholder="Template name (e.g. Formal)" className="w-full rounded-lg border border-onextap-primary/20 px-2 py-1.5 text-sm" />
+              <div className="flex gap-2">
+                <button type="button" onClick={handleAddTemplate} className="rounded-lg bg-onextap-dark px-3 py-1.5 text-xs text-white font-medium">Save</button>
+                <button type="button" onClick={() => setAddingTemplate(false)} className="rounded-lg border border-onextap-primary/20 px-3 py-1.5 text-xs">Cancel</button>
+              </div>
+            </div>
+          ) : coverLetters.length < MAX_COVER_LETTERS_PER_PROFILE && (
+            <button type="button" onClick={() => setAddingTemplate(true)} className="text-sm font-medium text-onextap-primary flex items-center gap-1"><Plus size={14} /> Add template</button>
+          )}
+
+          <div className="relative">
+            <button
+              type="button"
+              disabled={!hasJobDescription || !activeTemplate?.body?.trim() || isGenerating || !user}
+              onClick={handlePersonalize}
+              title={!hasJobDescription ? 'Open a job posting to personalize.' : undefined}
+              className="w-full rounded-xl bg-gradient-to-br from-onextap-primary to-onextap-primary-dark py-3 text-sm font-bold text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? 'Personalizing…' : 'Personalize for this job'}
+            </button>
+            {!hasJobDescription && (
+              <p className="mt-1 text-[11px] text-onextap-dark/45 text-center dark:text-[#9AB07A]">Open a job posting to personalize.</p>
+            )}
+          </div>
+
+          {(suggestionText || isGenerating) && (
+            <div className={`grid gap-3 ${compact ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-onextap-dark/50 mb-1">Original</p>
+                <textarea value={originalText} onChange={(e) => { setOriginalText(e.target.value); if (activeTemplateId) debouncedSaveBody(activeTemplateId, e.target.value); }} className="w-full rounded-xl border border-onextap-primary/15 px-3 py-2 text-sm h-40 resize-none bg-white/80 dark:bg-onextap-night-card" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-onextap-dark/50 mb-1">AI Suggestion</p>
+                {isGenerating ? (
+                  <div className="h-40 rounded-xl border border-onextap-primary/15 bg-onextap-primary/5 animate-pulse" />
+                ) : (
+                  <textarea value={suggestionText} onChange={(e) => setSuggestionText(e.target.value)} className="w-full rounded-xl border border-onextap-primary/15 px-3 py-2 text-sm h-40 resize-none bg-white/80 dark:bg-onextap-night-card" />
+                )}
+                {!isGenerating && suggestionText && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={handleCopySuggestion} className="flex items-center gap-1 rounded-lg border border-onextap-primary/20 px-3 py-1.5 text-xs font-medium"><Copy size={12} /> Copy</button>
+                    {coverFieldDetected && (
+                      <button type="button" onClick={handleAutofillSuggestion} className="flex items-center gap-1 rounded-lg bg-onextap-dark px-3 py-1.5 text-xs font-medium text-white">Use this</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {generateError && (
+            <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 border border-red-200">
+              <span>{generateError}</span>
+              <button type="button" onClick={handlePersonalize} className="shrink-0 flex items-center gap-1 text-xs font-medium underline"><RotateCcw size={12} /> Retry</button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+const CoverLetterPage = ({ showToast, user }) => {
+  const [panelKey, setPanelKey] = useState(0);
+  return (
+    <div className="animate-fade-in">
+      <div className="mb-6">
+        <ProfileSwitcher onProfileChange={() => setPanelKey((k) => k + 1)} />
+      </div>
+      <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-onextap-primary/15 p-8 shadow-lg">
+        <h2 className="font-bold text-2xl text-onextap-dark tracking-tight mb-1">Cover Letter</h2>
+        <p className="text-onextap-dark/60 text-sm mb-6">Save templates per profile and personalize them with AI for each job.</p>
+        <CoverLetterPanel key={panelKey} showToast={showToast} user={user} />
+      </div>
+    </div>
+  );
+};
+
 // --- POPUP VIEW (Landing - Animated, two states: signed-in vs onboarding) ---
 const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio }) => {
+  const [popupUser, setPopupUser] = useState(null);
+  const [popupTab, setPopupTab] = useState('autofill');
   const [status, setStatus] = useState('Autofill Application');
   const [hasProfile, setHasProfile] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [savedAnswers, setSavedAnswers] = useState([]);
+  const [coverLetterCount, setCoverLetterCount] = useState(0);
+  const [detectedSections, setDetectedSections] = useState({});
+  const [sectionToggles, setSectionToggles] = useState({ ...DEFAULT_SECTION_TOGGLES });
+  const [popupToast, setPopupToast] = useState({ message: '', type: 'success', visible: false });
+  const [coverPanelKey, setCoverPanelKey] = useState(0);
+
+  const showPopupToast = (message, type = 'success') => setPopupToast({ message, type, visible: true });
+
+  const refreshProfileState = useCallback(async () => {
+    const profile = await getActiveLegacyProfile();
+    const has = !!profile && (profile.firstName || profile.email || profile.vault?.length);
+    setHasProfile(!!has);
+    setSavedAnswers(profile?.vault || []);
+    const store = await loadProfileStore();
+    const active = store.profiles[store.activeProfileId];
+    setCoverLetterCount((active?.coverLetters || []).length);
+    return profile;
+  }, []);
+
+  const detectSectionsOnPage = useCallback(async (profile) => {
+    if (!chrome?.tabs) return;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      chrome.tabs.sendMessage(tab.id, { action: 'DETECT_SECTIONS', profile }, (res) => {
+        if (res?.sections) setDetectedSections(res.sections);
+      });
+    } catch { /* restricted page */ }
+  }, []);
+
+  useEffect(() => {
+    getUser().then((u) => setPopupUser(u));
+    const { data: { subscription } } = onAuthStateChange((_, session) => {
+      setPopupUser(session?.user || null);
+    });
+    return () => subscription?.unsubscribe();
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    storage.get('user_profile').then((profile) => {
+    (async () => {
+      await loadProfileStore();
+      const profile = await refreshProfileState();
       if (mounted) {
-        const has = !!profile && (typeof profile === 'object' ? (profile.firstName || profile.email || profile.vault?.length) : true);
-        setHasProfile(!!has);
         setChecking(false);
+        if (profile) await detectSectionsOnPage(profile);
       }
-    });
+    })();
     return () => { mounted = false; };
-  }, []);
+  }, [refreshProfileState, detectSectionsOnPage]);
+
+  const visibleSections = AUTOFILL_SECTION_META.filter((s) => {
+    if (s.key === 'coverLetter') return detectedSections.coverLetter && coverLetterCount > 0;
+    return detectedSections[s.key];
+  });
+  const enabledSectionCount = visibleSections.filter((s) => sectionToggles[s.key]).length;
+  const autofillDisabled = visibleSections.length > 0 && enabledSectionCount === 0;
+
+  const autofillButtonLabel = (() => {
+    if (visibleSections.length === 0) return status;
+    if (enabledSectionCount < visibleSections.length) {
+      return `Autofill (${enabledSectionCount} of ${visibleSections.length} sections)`;
+    }
+    return status;
+  })();
 
   const handleAutofill = async () => {
+    if (autofillDisabled) return;
     setStatus('Loading...');
-    const profile = await storage.get('user_profile');
-    
-    if (!profile) { 
-      setStatus('No Profile - Open Dashboard'); 
-      setTimeout(() => setStatus('Autofill Application'), 3000);
-      return; 
-    }
-    
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if(tab?.id) {
-       try {
-         await chrome.scripting.executeScript({
-           target: { tabId: tab.id },
-           files: ['content.js']
-         });
-       } catch (err) {
-         console.error("Onextap: Failed to inject content script:", err);
-         setStatus('Error: Cannot access this page');
-         setTimeout(() => setStatus('Autofill Application'), 3000);
-         return;
-       }
+    const profile = await getActiveLegacyProfile();
 
-       chrome.tabs.sendMessage(tab.id, { action: "AUTOFILL_TRIGGERED", profile }, (res) => {
-         if (chrome.runtime.lastError) {
-           console.error("Onextap: Tab message error:", chrome.runtime.lastError);
-           setStatus('Error: ' + chrome.runtime.lastError.message);
-           setTimeout(() => setStatus('Autofill Application'), 3000);
-           return;
-         }
-         const filledCount = res?.filled;
-         const filledMsg =
-           typeof filledCount === 'number'
-             ? `Filled ${filledCount} field${filledCount === 1 ? '' : 's'}`
-             : null;
-         setStatus(
-           filledMsg ||
-             (res?.success === false ? 'Error: ' + (res?.error || 'Failed') : 'Done')
-         );
-         setTimeout(() => setStatus('Autofill Application'), 2000);
-       });
+    if (!profile) {
+      setStatus('No Profile - Open Dashboard');
+      setTimeout(() => setStatus('Autofill Application'), 3000);
+      return;
+    }
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      } catch (err) {
+        console.error('Onextap: Failed to inject content script:', err);
+        setStatus('Error: Cannot access this page');
+        setTimeout(() => setStatus('Autofill Application'), 3000);
+        return;
+      }
+
+      const sectionsPayload = visibleSections.length > 0
+        ? Object.fromEntries(visibleSections.map((s) => [s.key, !!sectionToggles[s.key]]))
+        : null;
+
+      chrome.tabs.sendMessage(tab.id, {
+        action: 'AUTOFILL_TRIGGERED',
+        profile,
+        sections: sectionsPayload,
+      }, (res) => {
+        if (chrome.runtime.lastError) {
+          setStatus('Error: ' + chrome.runtime.lastError.message);
+          setTimeout(() => setStatus('Autofill Application'), 3000);
+          return;
+        }
+        const filledCount = res?.filled;
+        const filledMsg = typeof filledCount === 'number'
+          ? `Filled ${filledCount} field${filledCount === 1 ? '' : 's'}`
+          : null;
+        setStatus(filledMsg || (res?.success === false ? 'Error: ' + (res?.error || 'Failed') : 'Done'));
+        setTimeout(() => setStatus('Autofill Application'), 2000);
+      });
     } else {
       setStatus('Error: No active tab');
       setTimeout(() => setStatus('Autofill Application'), 3000);
@@ -1818,56 +3036,101 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio }) => {
         <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-onextap-primary/[0.08] blur-2xl dark:bg-onextap-primary/[0.15]" />
       </div>
 
-      <header className="relative z-10 flex shrink-0 items-center justify-between px-4 py-4">
-        <div className="flex items-center gap-2.5 opacity-0 animate-fade-up animate-delay-100" style={{ animationFillMode: 'forwards' }}>
-          <img src={getIconUrl()} alt="Onextap" className="h-9 w-9 shrink-0 rounded-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/10" />
-          <span className="text-lg font-semibold tracking-tight text-onextap-dark dark:text-[#E8EFD8]">Onextap</span>
+      <header className="relative z-10 shrink-0 px-4 pt-3 pb-2 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <img src={getIconUrl()} alt="Onextap" className="h-8 w-8 shrink-0 rounded-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/10" />
+            <span className="text-base font-semibold tracking-tight text-onextap-dark dark:text-[#E8EFD8]">Onextap</span>
+          </div>
+          {hasProfile && (
+            <button
+              onClick={onLaunchDashboard}
+              className="flex items-center gap-1.5 text-onextap-dark/60 hover:text-onextap-primary hover:bg-white/60 py-1.5 px-2.5 rounded-xl text-xs font-medium transition-all"
+            >
+              <Layout size={14} className="shrink-0" />
+              Dashboard
+            </button>
+          )}
         </div>
         {hasProfile && (
-          <button
-            onClick={onLaunchDashboard}
-            className="opacity-0 animate-fade-up animate-delay-200 flex items-center gap-1.5 text-onextap-dark/60 hover:text-onextap-primary hover:bg-white/60 py-2 px-3 rounded-xl text-xs font-medium transition-all duration-300"
-            style={{ animationFillMode: 'forwards' }}
-          >
-            <Layout size={14} className="shrink-0" />
-            Dashboard
-          </button>
+          <ProfileSwitcher compact onProfileChange={async () => {
+            const profile = await refreshProfileState();
+            setCoverPanelKey((k) => k + 1);
+            if (profile) detectSectionsOnPage(profile);
+          }} />
+        )}
+        {hasProfile && (
+          <div className="flex gap-1 rounded-xl bg-white/60 p-1 dark:bg-onextap-night-card">
+            {[
+              { id: 'autofill', label: 'Autofill', icon: Clipboard },
+              { id: 'answers', label: 'Saved Answers', icon: MessageSquare },
+              { id: 'cover', label: 'Cover Letter', icon: FileText },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setPopupTab(t.id)}
+                className={`flex-1 flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-all ${
+                  popupTab === t.id
+                    ? 'bg-onextap-primary text-white shadow-sm'
+                    : 'text-onextap-dark/60 hover:bg-white/80 dark:text-[#9AB07A]'
+                }`}
+              >
+                <t.icon size={12} className="shrink-0" />
+                <span className="truncate">{t.label}</span>
+              </button>
+            ))}
+          </div>
         )}
       </header>
-      
-      <div className="flex-1 overflow-y-auto px-5 pb-6 flex flex-col items-center justify-center relative z-10 min-h-0">
+
+      <div className="flex-1 overflow-y-auto px-4 pb-4 relative z-10 min-h-0">
         {hasProfile ? (
-          /* --- Signed in: Open Answer Studio (primary) + Autofill (secondary) --- */
-          <div className="w-full space-y-5 max-w-[340px]">
-            <div className="text-center space-y-4 opacity-0 animate-fade-up animate-delay-200" style={{ animationFillMode: 'forwards' }}>
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-sm border border-onextap-primary/15 shadow-sm">
-                <CheckCircle size={14} className="shrink-0 text-onextap-primary" />
-                <span className="text-onextap-dark/90 text-sm font-medium">You&apos;re all set</span>
+          <div className="w-full space-y-4 max-w-[360px] mx-auto pt-1">
+            {popupTab === 'autofill' && (
+              <div className="space-y-4">
+                <WhatToFillSection
+                  detectedSections={detectedSections}
+                  sectionToggles={sectionToggles}
+                  setSectionToggles={setSectionToggles}
+                  hasCoverLetterTemplates={coverLetterCount > 0}
+                />
+                <button
+                  onClick={onLaunchAnswerStudio}
+                  className="w-full bg-gradient-to-br from-onextap-primary to-onextap-primary-dark text-white py-3 px-4 rounded-2xl font-bold text-sm shadow-md flex items-center justify-center gap-2"
+                >
+                  <PenTool size={16} />
+                  Open Answer Studio
+                </button>
+                <button
+                  onClick={handleAutofill}
+                  disabled={autofillDisabled}
+                  title={autofillDisabled ? 'Select at least one section to fill.' : undefined}
+                  className="w-full bg-white/90 text-onextap-dark border border-onextap-primary/20 py-3.5 px-4 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 hover:bg-white hover:border-onextap-primary/35 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <Clipboard size={18} className="shrink-0" />
+                  {autofillButtonLabel}
+                </button>
               </div>
-              <p className="text-onextap-dark/60 text-sm leading-relaxed">
-                Improve answers with AI, then autofill forms in one click.
-              </p>
-            </div>
-            <div className="space-y-4 opacity-0 animate-scale-in animate-delay-300" style={{ animationFillMode: 'forwards' }}>
-              <button 
-                onClick={onLaunchAnswerStudio}
-                className="w-full relative overflow-hidden bg-gradient-to-br from-onextap-primary via-onextap-primary to-onextap-primary-dark text-white py-4 px-5 rounded-2xl font-bold text-base shadow-lg shadow-onextap-primary/25 hover:shadow-xl hover:shadow-onextap-primary/30 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-3 group"
-              >
-                <span className="absolute inset-0 bg-[linear-gradient(110deg,transparent_40%,rgba(255,255,255,.15)_50%,transparent_60%)] bg-[length:200%_100%] animate-shine opacity-90" aria-hidden />
-                <PenTool size={20} className="shrink-0 relative z-10 group-hover:rotate-6 transition-transform" />
-                <span className="relative z-10">Open Answer Studio</span>
-              </button>
-              <p className="text-xs text-onextap-dark/45 text-center">
-                Open the dashboard for AI-powered answer improvement
-              </p>
-              <button 
-                onClick={handleAutofill}
-                className="w-full bg-white/90 backdrop-blur-sm text-onextap-dark border border-onextap-primary/20 py-3.5 px-4 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 hover:bg-white hover:border-onextap-primary/35 hover:shadow-md transition-all duration-300"
-              >
-                <Clipboard size={18} className="shrink-0" />
-                {status}
-              </button>
-            </div>
+            )}
+            {popupTab === 'answers' && (
+              <div className="space-y-3">
+                {savedAnswers.length === 0 ? (
+                  <p className="text-sm text-onextap-dark/60 text-center py-6">No saved answers yet. Open Answer Studio to add some.</p>
+                ) : (
+                  savedAnswers.map((item) => (
+                    <div key={item.id} className="rounded-xl border border-onextap-primary/15 bg-white/80 p-3 dark:bg-onextap-night-card">
+                      <p className="text-sm font-semibold text-onextap-dark dark:text-[#E8EFD8]">{item.question}</p>
+                      <p className="text-xs text-onextap-dark/60 mt-1 line-clamp-3 dark:text-[#9AB07A]">{item.answer}</p>
+                    </div>
+                  ))
+                )}
+                <button type="button" onClick={onLaunchAnswerStudio} className="w-full text-sm font-medium text-onextap-primary py-2">Manage in Answer Studio</button>
+              </div>
+            )}
+            {popupTab === 'cover' && (
+              <CoverLetterPanel key={coverPanelKey} showToast={showPopupToast} user={popupUser} compact />
+            )}
           </div>
         ) : (
           /* --- Not signed in: Welcome landing - Dribbble-inspired --- */
@@ -1919,6 +3182,12 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio }) => {
           </div>
         )}
       </div>
+      <Toast
+        message={popupToast.message}
+        type={popupToast.type}
+        isVisible={popupToast.visible}
+        onDismiss={() => setPopupToast((t) => ({ ...t, visible: false }))}
+      />
     </div>
   );
 };
@@ -2710,7 +3979,12 @@ const TourOverlay = ({ step, totalSteps, currentStep, onNext, onSkip, onDismiss 
 
 const DashboardView = ({ onClose }) => {
   const viewFromUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') : null;
-  const [activeNav, setActiveNav] = useState(viewFromUrl === 'vault' ? 'vault' : 'overview');
+  const [activeNav, setActiveNav] = useState(
+    viewFromUrl === 'vault' ? 'vault'
+      : viewFromUrl === 'intel' ? 'intel'
+      : viewFromUrl === 'cover' ? 'cover'
+      : 'overview'
+  );
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('onextap_dark_mode');
@@ -2854,7 +4128,7 @@ const DashboardView = ({ onClose }) => {
     await supaSignOut();
     setUser(null);
 
-    const keysToRemove = ['user_profile'];
+    const keysToRemove = ['user_profile', 'onextap_profiles'];
     try {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         await new Promise((resolve) => {
@@ -2922,6 +4196,8 @@ const DashboardView = ({ onClose }) => {
       case 'overview': return <OverviewPage key={contentKey} user={user} onNavigate={setActiveNav} isPremium={isPremiumUser} />;
       case 'profiles': return <ProfilesPage key={contentKey} showToast={showToast} />;
       case 'vault': return <VaultPage key={contentKey} showToast={showToast} user={user} />;
+      case 'cover': return <CoverLetterPage key={contentKey} showToast={showToast} user={user} />;
+      case 'intel': return <JobIntelligencePage key={contentKey} showToast={showToast} />;
       default: return <OverviewPage key={contentKey} user={user} onNavigate={setActiveNav} isPremium={isPremiumUser} />;
     }
   };
@@ -3027,7 +4303,7 @@ const DashboardView = ({ onClose }) => {
         </div>
 
         <nav className="flex-1 p-5 space-y-2" data-tour="sidebar-nav">
-          {[{id:'overview', icon:Layout, label:'Overview'}, {id:'profiles', icon:User, label:'My Profiles'}, {id:'vault', icon:PenTool, label:'Answer Studio'}].map((i, idx) => (
+          {[{id:'overview', icon:Layout, label:'Overview'}, {id:'profiles', icon:User, label:'My Profiles'}, {id:'vault', icon:PenTool, label:'Answer Studio'}, {id:'cover', icon:FileText, label:'Cover Letter'}, {id:'intel', icon:Briefcase, label:'Job Intelligence'}].map((i, idx) => (
             <button 
               key={i.id} 
               onClick={()=>setActiveNav(i.id)} 

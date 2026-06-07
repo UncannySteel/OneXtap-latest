@@ -23,8 +23,9 @@ export default function ExtensionBridge() {
             window.parent.postMessage({ type: 'PING_RESPONSE', requestId, success: true }, '*');
             break;
 
-          case 'GET_PROFILE':
-            const profile = await storage.get('user_profile');
+          case 'GET_PROFILE': {
+            const { getActiveLegacyProfile } = await import('../profileStore');
+            const profile = await getActiveLegacyProfile();
             window.parent.postMessage({ 
               type: 'GET_PROFILE_RESPONSE', 
               requestId, 
@@ -32,9 +33,11 @@ export default function ExtensionBridge() {
               data: profile 
             }, '*');
             break;
+          }
 
-          case 'GET_VAULT':
-            const profileData = await storage.get('user_profile');
+          case 'GET_VAULT': {
+            const { getActiveLegacyProfile } = await import('../profileStore');
+            const profileData = await getActiveLegacyProfile();
             const vault = profileData?.vault || [];
             window.parent.postMessage({ 
               type: 'GET_VAULT_RESPONSE', 
@@ -43,6 +46,7 @@ export default function ExtensionBridge() {
               data: vault 
             }, '*');
             break;
+          }
 
           case 'GENERATE_IMPROVED_ANSWER':
             // Forward to background script for AI generation

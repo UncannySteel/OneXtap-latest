@@ -9,6 +9,8 @@ A Chrome extension that autofills job applications using saved profiles and AI-p
 - **Resume Parsing** — Upload a resume to extract and populate profile data
 - **Answer Vault** — Save reusable answers for common application questions
 - **Answer Studio (AI)** — Generate tailored answers using Google Gemini, informed by the job description
+- **AI Job Intelligence** — Resume-specific, AI-ranked job feeds with competitive-fit categories (Strong/Good/Stretch)
+- **Application Tracking** — Save, track, and update application status from the dashboard
 - **Premium Subscription** — Upgrade via Dodo Payments for unlimited AI credits
 - **Cloud Sync** — Profile data syncs between the dashboard and extension via Supabase
 
@@ -149,6 +151,9 @@ After any code change, rebuild and reload the extension in Chrome.
 | POST | `/api/webhook` | Dodo Payments webhook handler |
 | GET | `/api/verify-premium` | Check premium status |
 | POST | `/api/cancel-subscription` | Cancel premium subscription |
+| POST | `/api/job-intelligence/match-feed` | Generate ranked, profile-specific match feed |
+| GET | `/api/job-intelligence/applications` | Fetch tracked applications |
+| POST | `/api/job-intelligence/applications` | Upsert application status |
 | GET | `/api/health` | Health check |
 
 ## Troubleshooting
