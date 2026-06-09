@@ -5,11 +5,16 @@ import manifest from './extension/manifest.json';
 import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 
+// Set BUILD_TARGET=web in Vercel environment variables.
+// Extension build (default, no env var): includes crx() plugin + relative base.
+// Web build (BUILD_TARGET=web): standard Vite SPA, no extension assumptions.
+const isWebBuild = process.env.BUILD_TARGET === 'web';
+
 export default defineConfig({
-  base: './', // Required for Chrome Extension: relative paths work; absolute "/" causes MIME errors
+  base: isWebBuild ? '/' : './',
   plugins: [
     react(),
-    crx({ manifest }), // This handles the Chrome Extension build logic
+    ...(isWebBuild ? [] : [crx({ manifest })]),
   ],
   server: {
     port: 5173,
@@ -22,8 +27,8 @@ export default defineConfig({
     postcss: {
       plugins: [tailwindcss(), autoprefixer()]
     }
-  }
+  },
+  build: {
+    chunkSizeWarningLimit: 1000,
+  },
 });
-
-
-
