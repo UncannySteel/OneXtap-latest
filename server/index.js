@@ -1214,6 +1214,12 @@ app.post('/api/create-checkout-session', requireAuth, async (req, res) => {
 
     const clientUrl = process.env.CLIENT_URL || 'https://www.onextap.com';
 
+    if (!dodo.checkoutSessions?.create) {
+      return res.status(500).json({
+        error: 'Payment service misconfigured. Please update the server SDK.',
+      });
+    }
+
     const session = await dodo.checkoutSessions.create({
       product_cart: [{ product_id: process.env.DODO_PRODUCT_ID, quantity: 1 }],
       customer: {

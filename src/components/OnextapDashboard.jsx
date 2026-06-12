@@ -27,6 +27,11 @@ import ExtensionBridge from './ExtensionBridge';
 
 // Fallback extension ID (e.g. for published extension). When opening dashboard from popup we pass the real ID via ?extensionId=
 const EXTENSION_ID_FALLBACK = "jipgjmkblebmogmipckjkegghoijeich";
+const CHROME_WEB_STORE_URL = `https://chromewebstore.google.com/detail/onextap/${EXTENSION_ID_FALLBACK}`;
+
+function openChromeWebStore() {
+  window.open(CHROME_WEB_STORE_URL, '_blank', 'noopener,noreferrer');
+}
 
 /** Get extension ID: from URL (?extensionId=) when dashboard opened from popup, then chrome.runtime.id, then fallback. */
 function getExtensionId() {
@@ -3286,7 +3291,7 @@ const PublicLandingPage = ({
             </button>
             <button
               type="button"
-              onClick={() => scrollToSection('auth')}
+              onClick={openChromeWebStore}
               className="rounded-md bg-onextap-primary px-5 py-2 text-[14px] font-medium text-white transition-colors hover:bg-onextap-primary-dark"
             >
               Get Extension
@@ -3338,7 +3343,7 @@ const PublicLandingPage = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => scrollToSection('auth')}
+                  onClick={openChromeWebStore}
                   className="w-full rounded-md bg-onextap-primary py-3 text-center text-[15px] font-medium text-white hover:bg-onextap-primary-dark"
                 >
                   Get Extension
@@ -3366,7 +3371,7 @@ const PublicLandingPage = ({
               <div className="mt-10 flex flex-wrap items-center gap-4">
                 <button
                   type="button"
-                  onClick={() => scrollToSection('auth')}
+                  onClick={openChromeWebStore}
                   className="group inline-flex items-center gap-2 rounded-lg bg-onextap-primary px-7 py-3.5 text-[15px] font-medium text-white shadow-sm transition-all hover:-translate-y-px hover:bg-onextap-primary-dark"
                 >
                   Get the Extension <ArrowRight size={18} className="transition-transform group-hover:translate-x-0.5" />
@@ -3640,7 +3645,7 @@ const PublicLandingPage = ({
           </p>
           <button
             type="button"
-            onClick={() => scrollToSection('auth')}
+            onClick={openChromeWebStore}
             className="group mt-10 inline-flex items-center gap-2 rounded-lg bg-onextap-cream px-8 py-3.5 text-[15px] font-semibold text-onextap-primary transition-all hover:bg-white"
           >
             Get the Extension <ArrowRight size={18} className="transition-transform group-hover:translate-x-0.5" />
@@ -3788,7 +3793,7 @@ const PublicLandingPage = ({
             <div>
               <h4 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-onextap-cream/40">Get Started</h4>
               <div className="space-y-2.5">
-                <button type="button" onClick={() => scrollToSection('auth')} className="block text-left text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
+                <button type="button" onClick={openChromeWebStore} className="block text-left text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
                   Install Extension
                 </button>
                 <button type="button" onClick={() => scrollToSection('auth')} className="block text-left text-[14px] font-light text-onextap-cream/65 transition-colors hover:text-onextap-cream">
@@ -4042,11 +4047,18 @@ const DashboardView = ({ onClose }) => {
         setIsPremiumUser(false);
         setContentKey((k) => k + 1);
       }
-      if (event === 'INITIAL_SESSION') {
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
         setIsCheckingAuth(false);
       }
     });
-    return () => unsubscribe();
+
+    // Fallback: never block the UI if auth listener doesn't fire promptly
+    const authTimeout = setTimeout(() => setIsCheckingAuth(false), 5000);
+
+    return () => {
+      clearTimeout(authTimeout);
+      unsubscribe();
+    };
   }, []);
 
   // Trigger guided tour only for brand-new accounts (created within the last 2 minutes)
@@ -4106,13 +4118,20 @@ const DashboardView = ({ onClose }) => {
         if (error) throw error;
         if (newUser) {
           setUser(newUser);
+          setIsCheckingAuth(false);
         } else {
           setAuthError('Check your email for a confirmation link.');
         }
       } else {
-        const { user: existingUser, error } = await supaSignIn(authEmail, authPassword);
+        const { user: existingUser, session, error } = await supaSignIn(authEmail, authPassword);
         if (error) throw error;
-        setUser(existingUser);
+        const signedInUser = existingUser || session?.user || null;
+        if (!signedInUser) {
+          setAuthError('Sign in succeeded but no session was returned. Please try again.');
+          return;
+        }
+        setUser(signedInUser);
+        setIsCheckingAuth(false);
       }
     } catch (error) {
       console.error('Auth failed:', error);
@@ -4224,29 +4243,45 @@ const DashboardView = ({ onClose }) => {
     }
   };
 
-  // Landing page when not signed in (same style as popup)
-  if (!isCheckingAuth && !user) {
+  // Auth loading — avoid showing a broken dashboard shell while session is restored
+  if (isCheckingAuth && !user) {
     return (
-      <PublicLandingPage
-        authMode={authMode}
-        setAuthMode={setAuthMode}
-        authName={authName}
-        setAuthName={setAuthName}
-        authEmail={authEmail}
-        setAuthEmail={setAuthEmail}
-        authPassword={authPassword}
-        setAuthPassword={setAuthPassword}
-        showPassword={showPassword}
-        setShowPassword={setShowPassword}
-        passwordStrength={passwordStrength}
-        setPasswordStrength={setPasswordStrength}
-        authError={authError}
-        isSigningIn={isSigningIn}
-        handleSignIn={handleSignIn}
-        handleGoogleSignIn={handleGoogleSignIn}
-        onOpenPremiumModal={() => setIsPremiumModalOpen(true)}
-        user={user}
-      />
+      <div className="flex min-h-screen w-full items-center justify-center bg-onextap-cream text-onextap-dark dark:bg-onextap-night dark:text-[#E8EFD8]">
+        <div className="flex items-center gap-3 rounded-xl border border-[rgba(42,60,28,0.12)] bg-white px-6 py-4 shadow-sm dark:border-[rgba(200,216,168,0.15)] dark:bg-onextap-night-card">
+          <Activity className="animate-spin text-onextap-primary" size={20} />
+          <span className="text-sm font-medium text-onextap-secondary dark:text-[#9AB07A]">Loading your account...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Landing page when not signed in (same style as popup)
+  if (!user) {
+    return (
+      <>
+        <PublicLandingPage
+          authMode={authMode}
+          setAuthMode={setAuthMode}
+          authName={authName}
+          setAuthName={setAuthName}
+          authEmail={authEmail}
+          setAuthEmail={setAuthEmail}
+          authPassword={authPassword}
+          setAuthPassword={setAuthPassword}
+          showPassword={showPassword}
+          setShowPassword={setShowPassword}
+          passwordStrength={passwordStrength}
+          setPasswordStrength={setPasswordStrength}
+          authError={authError}
+          isSigningIn={isSigningIn}
+          handleSignIn={handleSignIn}
+          handleGoogleSignIn={handleGoogleSignIn}
+          onOpenPremiumModal={() => setIsPremiumModalOpen(true)}
+          user={user}
+        />
+        <Toast message={toast.message} type={toast.type} isVisible={toast.visible} onDismiss={hideToast} />
+        <PremiumModal isOpen={isPremiumModalOpen} onClose={() => setIsPremiumModalOpen(false)} user={user} />
+      </>
     );
   }
 
@@ -4269,7 +4304,7 @@ const DashboardView = ({ onClose }) => {
         </button>
         
         <div className="border-b border-[rgba(42,60,28,0.12)] p-5 dark:border-[rgba(200,216,168,0.12)]">
-          {isCheckingAuth ? (
+          {isCheckingAuth && !user ? (
             <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-onextap-olive-muted py-3 text-sm font-medium text-onextap-primary dark:bg-[rgba(90,122,58,0.2)] dark:text-onextap-olive-pale">
               <Activity className="animate-spin" size={16} /> Connecting...
             </div>
