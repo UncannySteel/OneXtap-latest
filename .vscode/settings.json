@@ -7,5 +7,6 @@
   "search.exclude": {
     "**/node_modules": true,
     "**/dist": true
-  }
+  },
+  "snyk.advanced.autoSelectOrganization": true
 }

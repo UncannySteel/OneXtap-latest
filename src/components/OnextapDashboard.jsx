@@ -23,6 +23,7 @@ import {
 import { COUNTRIES, GENDERS } from '../../extension/constants';
 import { signIn as supaSignIn, signUp as supaSignUp, signOut as supaSignOut, onAuthStateChange, signInWithOAuth, getAccessToken, getUser } from '../auth';
 import { creditManager } from '../creditManager';
+import ExtensionBridge from './ExtensionBridge';
 
 // Fallback extension ID (e.g. for published extension). When opening dashboard from popup we pass the real ID via ?extensionId=
 const EXTENSION_ID_FALLBACK = "jipgjmkblebmogmipckjkegghoijeich";
@@ -204,7 +205,7 @@ const PremiumModal = ({ isOpen, onClose, user }) => {
     }
 
     if (!creditManager?.createCheckoutSession) {
-      setError('Payment service is not available. Please refresh the page and try again.');
+      setError('Payment service unavailable. Please refresh and try again.');
       return;
     }
 
@@ -1256,7 +1257,7 @@ const ProfilesPage = ({ showToast }) => {
 
         {/* LINKS */}
         <div className="pt-4 border-t border-onextap-primary/20">
-          <label className="block text-sm font-bold text-onextap-dark mb-3 flex items-center gap-2"><ExternalLink size={16} /> Links</label>
+          <label className="text-sm font-bold text-onextap-dark mb-3 flex items-center gap-2"><ExternalLink size={16} /> Links</label>
           <div className="space-y-3">
             {(profile.urls || []).map((urlItem, index) => (
               <div key={index} className="flex gap-2">
@@ -4033,11 +4034,12 @@ const DashboardView = ({ onClose }) => {
   // Initialize Supabase & Check Auth
   useEffect(() => {
     const { unsubscribe } = onAuthStateChange((event, session) => {
-      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user) {
         setUser(session.user);
-        creditManager.verifyPremium().then(p => setIsPremiumUser(p)).catch(console.warn);
+        // Premium check is deferred — only loads when user opens Account Settings or uses AI
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        setIsPremiumUser(false);
         setContentKey((k) => k + 1);
       }
       if (event === 'INITIAL_SESSION') {
@@ -4104,7 +4106,6 @@ const DashboardView = ({ onClose }) => {
         if (error) throw error;
         if (newUser) {
           setUser(newUser);
-          creditManager.verifyPremium().catch(console.warn);
         } else {
           setAuthError('Check your email for a confirmation link.');
         }
@@ -4112,7 +4113,6 @@ const DashboardView = ({ onClose }) => {
         const { user: existingUser, error } = await supaSignIn(authEmail, authPassword);
         if (error) throw error;
         setUser(existingUser);
-        creditManager.verifyPremium().catch(console.warn);
       }
     } catch (error) {
       console.error('Auth failed:', error);
@@ -4159,6 +4159,16 @@ const DashboardView = ({ onClose }) => {
 
   const [toast, setToast] = useState({ message: '', type: 'success', visible: false });
   const [isPremiumModalOpen, setIsPremiumModalOpen] = useState(false);
+
+  // Lazy premium check — fires once after login, non-blocking, doesn't delay the UI
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    creditManager.verifyPremium()
+      .then(p => { if (!cancelled) setIsPremiumUser(p); })
+      .catch(() => {}); // silent fail — UI shows free tier by default
+    return () => { cancelled = true; };
+  }, [user?.id]); // only re-runs when the actual user ID changes, not on every re-render
 
   // Handle ?payment=success after checkout redirect
   useEffect(() => {
@@ -4384,8 +4394,6 @@ const DashboardView = ({ onClose }) => {
 };
 
 // --- APP ROOT ---
-import ExtensionBridge from './ExtensionBridge';
-
 export default function App({ initialView = 'dashboard' }) {
   const [viewMode, setViewMode] = useState(initialView); 
   const [showSplash, setShowSplash] = useState(() => initialView === 'dashboard');
