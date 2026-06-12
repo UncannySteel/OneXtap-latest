@@ -2325,13 +2325,15 @@ const ProfileSwitcher = ({ compact = false, onProfileChange }) => {
   const [renameError, setRenameError] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const dropdownRef = useRef(null);
+  const onProfileChangeRef = useRef(onProfileChange);
+  onProfileChangeRef.current = onProfileChange;
 
   const refresh = useCallback(async () => {
     const next = await loadProfileStore();
     setStore(next);
-    onProfileChange?.(next);
+    onProfileChangeRef.current?.(next);
     return next;
-  }, [onProfileChange]);
+  }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -2585,11 +2587,14 @@ const CoverLetterPanel = ({ showToast, user, compact = false }) => {
     const active = store.profiles[store.activeProfileId];
     const templates = active?.coverLetters || [];
     setCoverLetters(templates);
-    if (templates.length && !activeTemplateId) {
-      setActiveTemplateId(templates[0].id);
-      setOriginalText(templates[0].body || '');
-    }
-  }, [activeTemplateId]);
+    setActiveTemplateId((currentId) => {
+      if (templates.length && !currentId) {
+        setOriginalText(templates[0].body || '');
+        return templates[0].id;
+      }
+      return currentId;
+    });
+  }, []);
 
   useEffect(() => { loadTemplates(); }, [loadTemplates]);
 
@@ -3931,8 +3936,8 @@ const TourOverlay = ({ step, totalSteps, currentStep, onNext, onSkip, onDismiss 
 
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-[48] pointer-events-auto" onClick={onDismiss} />
+      {/* Backdrop — visual only; don't block sidebar / page interaction */}
+      <div className="fixed inset-0 z-[48] pointer-events-none" />
       
       {/* Spotlight cutout */}
       <div style={spotlightStyle} />
@@ -4369,7 +4374,10 @@ const DashboardView = ({ onClose }) => {
           {[{id:'overview', icon:Layout, label:'Overview'}, {id:'profiles', icon:User, label:'My Profiles'}, {id:'vault', icon:PenTool, label:'Answer Studio'}, {id:'cover', icon:FileText, label:'Cover Letter'}, {id:'intel', icon:Briefcase, label:'Job Intelligence'}].map((i, idx) => (
             <button 
               key={i.id} 
-              onClick={()=>setActiveNav(i.id)} 
+              onClick={() => {
+                if (showTour) dismissTour();
+                setActiveNav(i.id);
+              }}
               data-tour={`nav-${i.id}`}
               className={`nav-item-enter flex w-full items-center gap-3 rounded-lg px-4 py-3.5 text-sm font-medium transition-all duration-200 ${
                 activeNav === i.id
