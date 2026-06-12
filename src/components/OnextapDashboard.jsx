@@ -27,7 +27,7 @@ import ExtensionBridge from './ExtensionBridge';
 
 // Fallback extension ID (e.g. for published extension). When opening dashboard from popup we pass the real ID via ?extensionId=
 const EXTENSION_ID_FALLBACK = "jipgjmkblebmogmipckjkegghoijeich";
-const CHROME_WEB_STORE_URL = `https://chromewebstore.google.com/detail/onextap/${EXTENSION_ID_FALLBACK}`;
+const CHROME_WEB_STORE_URL = `https://chromewebstore.google.com/detail/fpleipjggoiolomkcnchnlelbjcnoklj?utm_source=item-share-cb`;
 
 function openChromeWebStore() {
   window.open(CHROME_WEB_STORE_URL, '_blank', 'noopener,noreferrer');
