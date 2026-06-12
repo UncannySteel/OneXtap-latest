@@ -397,9 +397,120 @@ if (!window.__onextapAutofillLoaded) {
     return filled;
   }
 
+  // ── Page context scrape (company + description) ───────────────────────────
+  function scrapePageContext() {
+    let company = '';
+    const ogSite = document.querySelector('meta[property="og:site_name"]');
+    if (ogSite?.content?.trim()) company = ogSite.content.trim();
+    if (!company) {
+      const selectors = [
+        '[class*="company-name" i]',
+        '[class*="companyName" i]',
+        '[data-testid*="company" i]',
+        '.jobs-unified-top-card__company-name',
+        '[class*="employer" i]',
+        '[class*="organization" i]',
+        '[class*="school" i]',
+        '[class*="university" i]',
+      ];
+      for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el?.innerText?.trim()) {
+          company = el.innerText.trim();
+          break;
+        }
+      }
+    }
+    if (!company) {
+      const parts = (document.title || '').split(/\s*[\|\-—]\s*|\s+at\s+/i);
+      if (parts.length > 1) company = parts[parts.length - 1].trim();
+    }
+
+    const descSelectors = [
+      '[class*="job-description" i]',
+      '[class*="description" i]',
+      '[class*="personal-statement" i]',
+      '[class*="essay" i]',
+      '#job-details',
+      'article',
+      'main',
+    ];
+    let description = '';
+    let bestLen = 0;
+    for (const sel of descSelectors) {
+      const el = document.querySelector(sel);
+      const text = (el?.innerText || '').trim();
+      if (text.length > bestLen) {
+        bestLen = text.length;
+        description = text;
+      }
+    }
+    description = (description || document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 8000);
+    return { company, description };
+  }
+
+  // ── Detect autofill sections on the current page ──────────────────────────
+  function detectFormSections() {
+    const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
+    const sigs = inputs.map((el) => fieldSignature(el)).join(' ');
+    const has = (words) => words.some((w) => sigs.includes(w));
+    return {
+      personalInfo: has(['first name', 'lastname', 'email', 'phone', 'address', 'city', 'postal']),
+      education: has(['school', 'university', 'degree', 'gpa', 'graduation', 'major']),
+      workExperience: has(['employer', 'company', 'job title', 'experience', 'work history']),
+      openEnded: has(['why do you', 'tell us', 'describe', 'additional', 'question']),
+      coverLetter: has(['cover letter', 'coverletter', 'personal statement', 'statement of purpose', 'motivation', 'essay']),
+    };
+  }
+
+  // ── Fill cover letter / essay textarea ────────────────────────────────────
+  function fillCoverLetter(text) {
+    if (!text?.trim()) return false;
+    const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"]'));
+    const keywords = [
+      'cover letter',
+      'coverletter',
+      'personal statement',
+      'statement of purpose',
+      'motivation',
+      'essay',
+      'additional information',
+      'supporting document',
+    ];
+    for (const el of candidates) {
+      if (!isVisible(el)) continue;
+      const sig = fieldSignature(el);
+      if (keywords.some((kw) => sig.includes(kw))) {
+        setNativeValue(el, text);
+        el.focus?.();
+        return true;
+      }
+    }
+    // Fallback: largest empty textarea
+    let best = null;
+    let bestRows = 0;
+    for (const el of candidates) {
+      if (el.tagName !== 'TEXTAREA' || !isVisible(el)) continue;
+      if ((el.value || '').trim()) continue;
+      const rows = el.rows || 0;
+      if (rows >= bestRows) {
+        bestRows = rows;
+        best = el;
+      }
+    }
+    if (best) {
+      setNativeValue(best, text);
+      best.focus?.();
+      return true;
+    }
+    return false;
+  }
+
   // ── Message listener ───────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener(function onextapListener(msg, _sender, sendResponse) {
-    if (msg && msg.action === 'AUTOFILL_TRIGGERED') {
+    if (!msg?.action) return false;
+
+    if (msg.action === 'AUTOFILL_TRIGGERED') {
       try {
         const count = autofill(msg.profile);
         sendResponse({ success: true, filled: count });
@@ -407,10 +518,37 @@ if (!window.__onextapAutofillLoaded) {
         console.error('[Onextap] Autofill error:', err);
         sendResponse({ success: false, error: err.message });
       }
-      // Synchronous response — return false (or nothing)
       return false;
     }
-    // Message not for us; return false to signal we didn't handle it
+
+    if (msg.action === 'SCRAPE_CONTEXT') {
+      try {
+        sendResponse({ success: true, context: scrapePageContext() });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return false;
+    }
+
+    if (msg.action === 'DETECT_SECTIONS') {
+      try {
+        sendResponse({ success: true, sections: detectFormSections() });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return false;
+    }
+
+    if (msg.action === 'FILL_COVER_LETTER') {
+      try {
+        const ok = fillCoverLetter(msg.text || '');
+        sendResponse({ success: ok });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return false;
+    }
+
     return false;
   });
 

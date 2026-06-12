@@ -8,7 +8,9 @@ export const MAX_COVER_LETTERS_PER_PROFILE = 10;
 
 const LEGACY_PROFILE_KEY = 'user_profile';
 
-/** @typedef {{ id: string, name: string, body: string, createdAt: string, lastUsed?: string }} CoverLetterTemplate */
+/** @typedef {{ id: string, company: string, role: string, jdSnippet: string, body: string, createdAt: string }} CoverLetterVariant */
+
+/** @typedef {{ id: string, name: string, body: string, createdAt: string, lastUsed?: string, applicationType?: string, variants?: CoverLetterVariant[] }} CoverLetterTemplate */
 
 /**
  * @typedef {Object} StoredProfile
