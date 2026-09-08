@@ -1,5 +1,19 @@
 // Onextap background service worker (MV3)
 // Handles website↔extension sync, resume parsing, job-page scraping, and answer generation.
+//
+// Every message is accepted on both chrome.runtime.onMessage (from the popup)
+// and onMessageExternal (from the dashboard on an externally_connectable
+// origin). The message kind may be given as either `type` or `action`.
+// Every reply is { success: true, ... } or { success: false, error }:
+//
+//   ONEXTAP_SYNC_DATA        { payload }                  → {}            — writes payload to storage.local.user_profile
+//   PARSE_RESUME             { data: { fileData, fileName, fileType, token } }
+//                                                         → { data }      — proxies POST /api/parse-resume
+//   SCRAPE_ACTIVE_TAB        —                            → { context: { company, description } }
+//   GENERATE_IMPROVED_ANSWER { data: { token, ...body } } → { text }      — proxies POST /api/answer-vault/generate
+//
+// `token` is the caller's Supabase JWT: the two proxied calls hit authenticated
+// endpoints, and the worker holds no session of its own.
 
 const API_URL = (
   import.meta.env.VITE_API_URL ||
@@ -12,6 +26,18 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // ─── scrapeJobPage ────────────────────────────────────────────────────────────
 // Self-contained function serialized into the target page — NO closure variables.
+// It is passed to chrome.scripting.executeScript({ func }), so it may not
+// reference anything outside its own body (imports, module constants, helpers);
+// doing so throws in the page, not here.
+//
+// public/content.js has a near-identical scrapePageContext() for the same job.
+// Neither can call the other: this one must stay inline-serialisable, that one
+// runs from an injected file. That one also matches school / university /
+// essay markup for the college and scholarship application types, which this
+// one does not. A selector fix here usually belongs there too.
+//
+// Returns { company, description } — description whitespace-collapsed, capped
+// at 8000 chars.
 function scrapeJobPage() {
   // Derive company name
   let company = '';

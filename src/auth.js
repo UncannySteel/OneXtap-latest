@@ -1,7 +1,10 @@
 /**
  * Supabase Auth Helpers
- * Replaces puterBridge.js — provides sign-in, sign-up, sign-out,
- * session management, and auth state listeners.
+ * Sign-in, sign-up, sign-out, session management, and auth state listeners.
+ *
+ * Works in both contexts: on the web dashboard the session persists to
+ * localStorage; inside the extension it persists to chrome.storage.local
+ * via the adapter in supabaseClient.js.
  */
 import { supabase } from './supabaseClient';
 
@@ -10,8 +13,9 @@ import { supabase } from './supabaseClient';
  * The database trigger auto-creates a profile row with 3 free credits.
  * @param {string} email
  * @param {string} password
- * @param {string} [displayName]
- * @returns {Promise<{user: object|null, error: object|null}>}
+ * @param {string} [displayName] Stored as user metadata `full_name`.
+ * @returns {Promise<{user: object|null, session: object|null, error: object|null}>}
+ *   `session` is null when the project requires email confirmation.
  */
 export async function signUp(email, password, displayName) {
   const { data, error } = await supabase.auth.signUp({
@@ -42,7 +46,9 @@ export async function signIn(email, password) {
  * Sign in with OAuth provider (e.g. 'google').
  * In a Chrome extension context, uses chrome.identity.launchWebAuthFlow
  * so the popup doesn't close. On the web, uses the standard redirect flow.
- * @param {'google'|'github'|'discord'} provider
+ * Any provider enabled on the Supabase project works; only 'google' is
+ * wired into the UI today.
+ * @param {string} provider Supabase OAuth provider id, e.g. 'google'.
  * @returns {Promise<{error: object|null}>}
  */
 export async function signInWithOAuth(provider) {

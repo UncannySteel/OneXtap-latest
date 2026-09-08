@@ -81,7 +81,7 @@ const DEFAULT_SECTION_TOGGLES = {
   coverLetter: true,
 };
 
-// --- 1. CONFIGURATION ---
+// --- CONFIGURATION ---
 const DEFAULT_PROFILE = {
   firstName: '',
   lastName: '',
@@ -170,6 +170,18 @@ const getIconUrl = () => {
 };
 
 // --- TOAST COMPONENT ---
+/**
+ * Bottom-centre status toast. Renders nothing without both `isVisible` and a
+ * `message`.
+ *
+ * @param {object}   props
+ * @param {string}   props.message
+ * @param {'success'|'error'|'loading'} [props.type='success'] Picks the icon
+ *   and colours. 'success' and 'error' self-dismiss after 3s via `onDismiss`;
+ *   'loading' persists until the caller hides it.
+ * @param {boolean}  props.isVisible
+ * @param {() => void} props.onDismiss
+ */
 const Toast = ({ message, type = 'success', isVisible, onDismiss }) => {
   useEffect(() => {
     if (!isVisible || !message || type === 'loading') return;
@@ -198,6 +210,16 @@ const Toast = ({ message, type = 'success', isVisible, onDismiss }) => {
 };
 
 // --- PREMIUM MODAL (Dodo Payments Checkout) ---
+/**
+ * Premium upsell dialog. Starts a Dodo Payments checkout and navigates the
+ * whole window to the hosted checkout page, so this component unmounts on
+ * success — only failures render back into it as inline errors.
+ *
+ * @param {object} props
+ * @param {boolean} props.isOpen Returns null when false.
+ * @param {() => void} props.onClose
+ * @param {object|null} props.user Supabase user; checkout is refused without one.
+ */
 const PremiumModal = ({ isOpen, onClose, user }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -304,6 +326,15 @@ const PremiumModal = ({ isOpen, onClose, user }) => {
 
 // --- SUB-COMPONENTS ---
 
+/**
+ * Dashboard landing tab: greeting, plan state, and shortcuts into the other
+ * tabs. Read-only — it fetches nothing itself.
+ *
+ * @param {object} props
+ * @param {object|null} props.user Supabase user, for the greeting.
+ * @param {(nav: 'overview'|'profiles'|'vault'|'cover') => void} props.onNavigate
+ * @param {boolean} props.isPremium Resolved by the parent; drives the plan badge.
+ */
 const OverviewPage = ({ user, onNavigate, isPremium }) => {
   return (
     <div className="mx-auto max-w-3xl animate-fade-in space-y-6">
@@ -380,6 +411,19 @@ const OverviewPage = ({ user, onNavigate, isPremium }) => {
 };
 
 
+/**
+ * "My Profiles" tab — the full profile editor: personal details, address,
+ * education, experience, skills, URLs, and demographics.
+ *
+ * Owns resume upload: the file is base64'd, the session is pre-flighted
+ * against GET /api/me, then PARSE_RESUME goes to the service worker, and the
+ * parsed fields are merged over the existing profile rather than replacing it.
+ * Saving writes through profileStore and then pushes the profile to the
+ * extension with ONEXTAP_SYNC_DATA; a failed push is reported but not fatal.
+ *
+ * @param {object} props
+ * @param {(message: string, type?: 'success'|'error'|'loading') => void} props.showToast
+ */
 const ProfilesPage = ({ showToast }) => {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [status, setStatus] = useState('');
@@ -1004,7 +1048,7 @@ const ProfilesPage = ({ showToast }) => {
 };
 
 // Timeout for AI so it doesn't hang forever (seconds)
-const PUTER_AI_TIMEOUT_SEC = 90;
+const AI_TIMEOUT_SEC = 90;
 const EXTENSION_SCRAPE_TIMEOUT_MS = 10000;
 const CREDIT_API_TIMEOUT_MS = 10000;
 
@@ -1014,7 +1058,25 @@ const withTimeout = (promise, ms, message) =>
     new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms))
   ]);
 
-// --- VAULT PAGE (Answer Improver - Anthropic AI via backend) ---
+// --- VAULT PAGE (Answer Studio — Groq/Llama via POST /api/answer-vault/generate) ---
+/**
+ * "Answer Studio" tab — save reusable application answers and improve them
+ * with AI.
+ *
+ * Generation posts to /api/answer-vault/generate (Groq/Llama). Job context is
+ * scraped from the user's active tab via SCRAPE_ACTIVE_TAB, or typed in by
+ * hand; without either, the answer is generated untailored and the user is
+ * told so.
+ *
+ * Credit rule: one credit is deducted per *first* generation for an answer and
+ * buys three follow-up improvements (`remainingImprovements`), which are free.
+ * Premium accounts skip deduction entirely. Credits are deducted only after a
+ * successful generation, so a failed call costs nothing.
+ *
+ * @param {object} props
+ * @param {(message: string, type?: 'success'|'error'|'loading') => void} props.showToast
+ * @param {object|null} props.user Supabase user; generation requires one.
+ */
 const VaultPage = ({ showToast, user }) => {
   const normalizeVaultItems = (items = []) =>
     (Array.isArray(items) ? items : []).map((item) => ({
@@ -1325,7 +1387,7 @@ const VaultPage = ({ showToast, user }) => {
 
       const result = await withTimeout(
         generatePromise,
-        PUTER_AI_TIMEOUT_SEC * 1000,
+        AI_TIMEOUT_SEC * 1000,
         'AI is taking too long. Check your connection and try again.'
       );
       const improvedText = String(result?.text || '').trim();
@@ -1571,6 +1633,20 @@ const VaultPage = ({ showToast, user }) => {
 };
 
 // --- ACCOUNT SETTINGS MODAL ---
+/**
+ * Account dialog: plan status, subscription cancellation, data export/import,
+ * and sign-out.
+ *
+ * Signing out clears local storage before calling Supabase and then reloads
+ * the page, so no in-memory profile state survives into the next session.
+ *
+ * @param {object} props
+ * @param {boolean} props.isOpen Returns null when false.
+ * @param {() => void} props.onClose
+ * @param {object|null} props.user
+ * @param {() => void} props.onSignOut Parent-level teardown, run before reload.
+ * @param {() => void} props.onOpenPremiumModal Hands off to the upgrade flow.
+ */
 const AccountSettingsModal = ({ isOpen, onClose, user, onSignOut, onOpenPremiumModal }) => {
   const [credits, setCredits] = useState(null);
   const [creditsError, setCreditsError] = useState(null);
@@ -1840,7 +1916,18 @@ const AccountSettingsModal = ({ isOpen, onClose, user, onSignOut, onOpenPremiumM
 };
 
 
-// --- PROFILE SWITCHER (Feature 1) ---
+// --- PROFILE SWITCHER ---
+/**
+ * Dropdown for switching, creating, renaming and deleting profiles.
+ *
+ * Writes straight to profileStore; the parent learns about a change only
+ * through `onProfileChange`. Callers typically use that to bump a `key` and
+ * force the dependent panel to remount against the new active profile.
+ *
+ * @param {object} props
+ * @param {boolean} [props.compact=false] Denser styling for the popup.
+ * @param {() => void} [props.onProfileChange] Fired after any switch or edit.
+ */
 const ProfileSwitcher = ({ compact = false, onProfileChange }) => {
   const [store, setStore] = useState(null);
   const [open, setOpen] = useState(false);
@@ -2037,7 +2124,18 @@ const ProfileSwitcher = ({ compact = false, onProfileChange }) => {
   );
 };
 
-// --- WHAT TO FILL (Feature 3) ---
+// --- WHAT TO FILL ---
+/**
+ * Collapsible checklist of which form sections autofill should touch on the
+ * current page. A row is only offered when DETECT_SECTIONS found matching
+ * markup; the cover-letter row additionally needs a saved template.
+ *
+ * @param {object} props
+ * @param {Record<string, boolean>} props.detectedSections From DETECT_SECTIONS.
+ * @param {Record<string, boolean>} props.sectionToggles Current user choices.
+ * @param {(next: Record<string, boolean>) => void} props.setSectionToggles
+ * @param {boolean} props.hasCoverLetterTemplates
+ */
 const WhatToFillSection = ({ detectedSections, sectionToggles, setSectionToggles, hasCoverLetterTemplates }) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -2093,13 +2191,28 @@ const WhatToFillSection = ({ detectedSections, sectionToggles, setSectionToggles
   );
 };
 
-// --- COVER LETTER (Feature 2) ---
+// --- COVER LETTER ---
 const normalizeCoverLetterTemplates = (templates = []) =>
   templates.map((t) => ({
     ...t,
     variants: Array.isArray(t.variants) ? t.variants : [],
   }));
 
+/**
+ * Cover-letter manager, shared by the dashboard tab and the popup.
+ *
+ * Holds the templates for the active profile, generates per-application
+ * variants against scraped job context, and pushes the chosen text into the
+ * page with FILL_COVER_LETTER. Capped at MAX_COVER_LETTERS_PER_PROFILE.
+ *
+ * @param {object} props
+ * @param {(message: string, type?: 'success'|'error'|'loading') => void} props.showToast
+ * @param {object|null} props.user
+ * @param {boolean} [props.compact=false] Denser styling for the popup.
+ * @param {string} [props.applicationType='job'] Application type id; selects wording.
+ * @param {string} [props.documentLabel='Cover letter'] Display noun — becomes
+ *   "Personal Statement" or "Scholarship Essay" for other application types.
+ */
 const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 'job', documentLabel = 'Cover letter' }) => {
   const appTypeConfig = getApplicationTypeConfig(applicationType);
   const [coverLetters, setCoverLetters] = useState([]);
@@ -2579,6 +2692,17 @@ const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 
   );
 };
 
+/**
+ * Dashboard tab wrapper around CoverLetterPanel: adds the heading and a
+ * ProfileSwitcher, and remounts the panel (via `key`) whenever the active
+ * profile changes so it reloads that profile's templates.
+ *
+ * @param {object} props
+ * @param {(message: string, type?: 'success'|'error'|'loading') => void} props.showToast
+ * @param {object|null} props.user
+ * @param {string} [props.applicationType='job'] Drives the labels via
+ *   getApplicationTypeConfig.
+ */
 const CoverLetterPage = ({ showToast, user, applicationType = 'job' }) => {
   const appConfig = getApplicationTypeConfig(applicationType);
   const [panelKey, setPanelKey] = useState(0);
@@ -2597,6 +2721,19 @@ const CoverLetterPage = ({ showToast, user, applicationType = 'job' }) => {
 };
 
 // --- POPUP VIEW (Landing - Animated, two states: signed-in vs onboarding) ---
+/**
+ * The 400x600 extension popup: autofill trigger, section toggles, cover-letter
+ * fill, and links out to the dashboard.
+ *
+ * Injects content.js into the active tab on demand before each interaction
+ * (the script guards against double-injection itself), then drives it with
+ * DETECT_SECTIONS / AUTOFILL_TRIGGERED / FILL_COVER_LETTER.
+ *
+ * @param {object} props
+ * @param {(view?: string|null) => void} props.onLaunchDashboard Opens the
+ *   dashboard, in a new tab when running as an extension.
+ * @param {() => void} props.onLaunchAnswerStudio Same, deep-linked to the vault tab.
+ */
 const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio }) => {
   const [popupUser, setPopupUser] = useState(null);
   const [popupTab, setPopupTab] = useState('autofill');
@@ -2931,6 +3068,33 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio }) => {
   );
 };
 
+/**
+ * Signed-out marketing page with the inline sign-in / sign-up form.
+ *
+ * Fully controlled: every auth field and its setter is owned by DashboardView
+ * and passed down, so this component holds only presentational state (FAQ
+ * accordion, mobile menu, dark mode).
+ *
+ * @param {object} props
+ * @param {'signin'|'signup'} props.authMode
+ * @param {(mode: 'signin'|'signup') => void} props.setAuthMode
+ * @param {string} props.authName
+ * @param {(v: string) => void} props.setAuthName
+ * @param {string} props.authEmail
+ * @param {(v: string) => void} props.setAuthEmail
+ * @param {string} props.authPassword
+ * @param {(v: string) => void} props.setAuthPassword
+ * @param {boolean} props.showPassword
+ * @param {(v: boolean) => void} props.setShowPassword
+ * @param {'weak'|'medium'|'strong'|null} props.passwordStrength
+ * @param {(v: 'weak'|'medium'|'strong'|null) => void} props.setPasswordStrength
+ * @param {string} props.authError
+ * @param {boolean} props.isSigningIn
+ * @param {(e: Event) => void} props.handleSignIn Handles both sign-in and sign-up.
+ * @param {() => void} props.handleGoogleSignIn
+ * @param {() => void} props.onOpenPremiumModal
+ * @param {object|null} props.user
+ */
 const PublicLandingPage = ({
   authMode,
   setAuthMode,
@@ -3539,7 +3703,6 @@ const PublicLandingPage = ({
     </div>
   );
 };
-// --- DASHBOARD VIEW (Main Auth Logic — Supabase) ---
 // --- GUIDED TOUR ---
 const TOUR_STEPS = [
   {
@@ -3572,6 +3735,18 @@ const TOUR_STEPS = [
   },
 ];
 
+/**
+ * One step of the first-run guided tour: a dimmed backdrop plus a tooltip
+ * anchored to the step's target element, clamped to stay on screen.
+ *
+ * @param {object} props
+ * @param {{ target: string, title: string, desc: string, position: string, icon: Function }} props.step
+ * @param {number} props.totalSteps
+ * @param {number} props.currentStep Zero-based index, for the progress dots.
+ * @param {() => void} props.onNext Advances, or finishes on the last step.
+ * @param {() => void} props.onSkip Ends the tour immediately.
+ * @param {() => void} props.onDismiss Backdrop click.
+ */
 const TourOverlay = ({ step, totalSteps, currentStep, onNext, onSkip, onDismiss }) => {
   const [pos, setPos] = useState(null);
   const [targetRect, setTargetRect] = useState(null);
@@ -3722,6 +3897,22 @@ const TourOverlay = ({ step, totalSteps, currentStep, onNext, onSkip, onDismiss 
   );
 };
 
+// --- DASHBOARD VIEW (Main Auth Logic — Supabase) ---
+/**
+ * Root of the signed-in dashboard, and the app's auth boundary.
+ *
+ * Owns the Supabase session (via onAuthStateChange), the sign-in form state it
+ * passes down to PublicLandingPage, premium status, the active tab, the
+ * application type, and the guided tour. Renders PublicLandingPage until a
+ * session exists.
+ *
+ * Also handles the post-checkout `?payment=success` return by polling
+ * verify-premium until the Dodo webhook lands.
+ *
+ * @param {object} props
+ * @param {() => void} props.onClose Closes the surrounding window — meaningful
+ *   in the popup, a no-op on the web dashboard.
+ */
 const DashboardView = ({ onClose }) => {
   const viewFromUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') : null;
   const [activeNav, setActiveNav] = useState(
@@ -3790,7 +3981,8 @@ const DashboardView = ({ onClose }) => {
     const { unsubscribe } = onAuthStateChange((event, session) => {
       if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user) {
         setUser(session.user);
-        // Premium check is deferred — only loads when user opens Account Settings or uses AI
+        // Premium status is not read here — the lazy check keyed on user.id
+        // below fetches it once the user is set.
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsPremiumUser(false);
@@ -4196,6 +4388,17 @@ const DashboardView = ({ onClose }) => {
 };
 
 // --- APP ROOT ---
+/**
+ * App root. Picks the surface to render and shows the splash screen.
+ *
+ * Three outcomes, in order: `?mode=extension-bridge` renders ExtensionBridge
+ * (headless RPC, no UI); `initialView === 'popup'` renders PopupView; anything
+ * else renders DashboardView. popup.jsx decides which by sniffing the
+ * extension runtime and the `mode` query param.
+ *
+ * @param {object} props
+ * @param {'dashboard'|'popup'} [props.initialView='dashboard']
+ */
 export default function App({ initialView = 'dashboard' }) {
   const [viewMode, setViewMode] = useState(initialView); 
   const [showSplash, setShowSplash] = useState(() => initialView === 'dashboard');

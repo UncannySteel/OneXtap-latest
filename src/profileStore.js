@@ -22,6 +22,12 @@ const LEGACY_PROFILE_KEY = 'user_profile';
  */
 
 /**
+ * Load the profile store, migrating on first run.
+ *
+ * When no `onextap_profiles` key exists yet, the pre-multi-profile
+ * `user_profile` blob is folded into a single "Default" profile (its `vault`
+ * array becomes savedAnswers, everything else becomes autofillData) and
+ * written back before returning — so this is not a pure read.
  * @returns {Promise<{ profiles: Record<string, StoredProfile>, activeProfileId: string }>}
  */
 export async function loadProfileStore() {
@@ -105,11 +111,23 @@ export async function saveLegacyUserProfile(legacyProfile) {
   return store;
 }
 
+/**
+ * The active profile in the flat `user_profile` shape the content script and
+ * older UI code expect.
+ * @returns {Promise<Record<string, unknown>|null>} null when the active id
+ *   points at a missing profile.
+ */
 export async function getActiveLegacyProfile() {
   const store = await loadProfileStore();
   return profileToLegacyUserProfile(store);
 }
 
+/**
+ * Switch the active profile. Unknown ids are ignored (the store is returned
+ * unchanged) rather than throwing.
+ * @param {string} profileId
+ * @returns {Promise<{ profiles: Record<string, StoredProfile>, activeProfileId: string }>}
+ */
 export async function setActiveProfileId(profileId) {
   const store = await loadProfileStore();
   if (!store.profiles[profileId]) return store;
@@ -118,6 +136,14 @@ export async function setActiveProfileId(profileId) {
   return store;
 }
 
+/**
+ * Case-insensitive, whitespace-trimmed name collision check.
+ * @param {Record<string, StoredProfile>} profiles
+ * @param {string} name
+ * @param {string|null} [excludeId] Profile to skip — pass the id being renamed
+ *   so a profile does not collide with itself.
+ * @returns {boolean}
+ */
 export function profileNameExists(profiles, name, excludeId = null) {
   const normalized = String(name || '').trim().toLowerCase();
   return Object.entries(profiles).some(([id, p]) => {
@@ -126,6 +152,13 @@ export function profileNameExists(profiles, name, excludeId = null) {
   });
 }
 
+/**
+ * Create an empty profile and make it active.
+ * Names are trimmed to MAX_PROFILE_NAME_LENGTH before validation.
+ * @param {string} name
+ * @returns {Promise<{ store: { profiles: Record<string, StoredProfile>, activeProfileId: string }, profileId: string }>}
+ * @throws {Error} When the name is blank, or duplicates an existing profile.
+ */
 export async function createProfile(name) {
   const store = await loadProfileStore();
   const trimmed = String(name || '').trim().slice(0, MAX_PROFILE_NAME_LENGTH);
@@ -147,6 +180,14 @@ export async function createProfile(name) {
   return { store, profileId: id };
 }
 
+/**
+ * Rename a profile in place. Does not change which profile is active.
+ * @param {string} profileId
+ * @param {string} newName Trimmed to MAX_PROFILE_NAME_LENGTH.
+ * @returns {Promise<{ profiles: Record<string, StoredProfile>, activeProfileId: string }>}
+ * @throws {Error} When the profile is missing, the name is blank, or the name
+ *   duplicates a different profile.
+ */
 export async function renameProfile(profileId, newName) {
   const store = await loadProfileStore();
   const profile = store.profiles[profileId];
@@ -161,6 +202,14 @@ export async function renameProfile(profileId, newName) {
   return store;
 }
 
+/**
+ * Delete a profile and its data. When the deleted profile was active, the
+ * active id falls back to DEFAULT_PROFILE_ID, or to whichever profile remains.
+ * @param {string} profileId
+ * @returns {Promise<{ profiles: Record<string, StoredProfile>, activeProfileId: string }>}
+ * @throws {Error} When the profile is missing, is the Default profile, or is
+ *   the last remaining profile.
+ */
 export async function deleteProfile(profileId) {
   const store = await loadProfileStore();
   const profile = store.profiles[profileId];
@@ -182,6 +231,13 @@ export async function deleteProfile(profileId) {
   return store;
 }
 
+/**
+ * Merge a partial update into the active profile. Only the three keys below
+ * are honoured, and each is replaced wholesale rather than deep-merged; keys
+ * left undefined are untouched. No-ops when there is no active profile.
+ * @param {{ autofillData?: Record<string, unknown>, savedAnswers?: Array<object>, coverLetters?: CoverLetterTemplate[] }} patch
+ * @returns {Promise<{ profiles: Record<string, StoredProfile>, activeProfileId: string }>}
+ */
 export async function updateActiveProfileData(patch) {
   const store = await loadProfileStore();
   const active = store.profiles[store.activeProfileId];
@@ -200,6 +256,12 @@ export async function updateActiveProfileData(patch) {
   return store;
 }
 
+/**
+ * Flatten the store into a list for pickers. Synchronous — pass a store you
+ * already loaded.
+ * @param {{ profiles: Record<string, StoredProfile>, activeProfileId: string }} store
+ * @returns {Array<{ id: string, name: string, isDefault: boolean }>}
+ */
 export function listProfiles(store) {
   return Object.entries(store.profiles).map(([id, p]) => ({
     id,

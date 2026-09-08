@@ -1,28 +1,33 @@
 const isExtension = typeof chrome !== 'undefined' && chrome.storage;
 
 /**
- * Smart Storage Wrapper
- * - Chrome storage.local in the extension; localStorage on the web dashboard.
- * - Full `user_profile` JSON lives only in local/extension storage (not on `profiles` row today).
+ * Storage Wrapper
  *
- * Note: Credits are server-managed (see creditManager.js).
+ * One key/value API over two backends, picked at load time:
+ * chrome.storage.local inside the extension, localStorage on the web
+ * dashboard. Values are JSON-serialised on the web side; Chrome storage
+ * handles structured values itself.
+ *
+ * This is local-only — nothing here writes to Supabase. Profile data
+ * (`user_profile`, `onextap_profiles`) never leaves the device except when
+ * the dashboard pushes it to the extension over chrome.runtime messaging
+ * (ONEXTAP_SYNC_DATA). Credits and premium status are the exception: those
+ * are server-owned, never cached here (see creditManager.js).
  */
 export const storage = {
-  // --- GET DATA ---
+  /** @returns {Promise<any|null>} null when the key is unset. */
   get: async (key) => {
     return getLocal(key);
   },
 
-  // --- SET DATA ---
+  /** @returns {Promise<true>} Always resolves true; failures are not surfaced. */
   set: async (key, value) => {
-    // ALWAYS save to local (offline backup)
     await setLocal(key, value);
     return true;
   },
 
-  // --- REMOVE DATA ---
+  /** @returns {Promise<true>} Resolves true even when the key was absent. */
   remove: async (key) => {
-    // Remove from local storage
     await removeLocal(key);
     return true;
   },

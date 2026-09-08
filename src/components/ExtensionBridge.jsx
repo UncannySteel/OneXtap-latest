@@ -2,9 +2,26 @@ import React, { useEffect } from 'react';
 import { storage } from '../storage';
 
 /**
- * ExtensionBridge Component
- * Used when dashboard is loaded in bridge mode for popup communication
- * Handles requests from popup iframe for profile/vault data and AI generation
+ * ExtensionBridge — postMessage RPC endpoint for an embedded dashboard.
+ *
+ * Mounted (instead of the dashboard UI) when the app is loaded with
+ * `?mode=extension-bridge`; see the check in OnextapDashboard.jsx. Renders
+ * nothing. It listens for requests from `window.parent` and replies with a
+ * matching `*_RESPONSE` message carrying the same `requestId`:
+ *
+ *   PING                     → { success }
+ *   GET_PROFILE              → { data: active profile in legacy shape }
+ *   GET_VAULT                → { data: saved answers array }
+ *   GENERATE_IMPROVED_ANSWER → { text } — relayed to the service worker
+ *
+ * Unrecognised types and thrown errors both reply with type 'ERROR'.
+ * Announces itself to the parent with BRIDGE_READY on mount.
+ *
+ * NOTE: nothing in this repo currently loads the dashboard with that query
+ * param or embeds it in an iframe — the extension popup renders the dashboard
+ * directly and talks to the service worker over chrome.runtime. This is kept
+ * as an entry point for an external embedder; if none appears, it and the
+ * `?mode=extension-bridge` branch can both go.
  */
 export default function ExtensionBridge() {
   useEffect(() => {

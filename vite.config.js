@@ -5,16 +5,16 @@ import manifest from './extension/manifest.json';
 import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 
-// Set BUILD_TARGET=web in Vercel environment variables.
-// Extension build (default, no env var): includes crx() plugin + relative base.
-// Web build (BUILD_TARGET=web): standard Vite SPA, no extension assumptions.
-const isWebBuild = process.env.BUILD_TARGET === 'web';
-
+// Chrome extension build → dist/. `npm run build` / `npm run dev`.
+// Relative base because extension pages load from chrome-extension://.
+//
+// The web dashboard is a separate build: vite.dashboard.config.js → dist-dashboard/,
+// which is what vercel.json runs. Nothing deploys this config.
 export default defineConfig({
-  base: isWebBuild ? '/' : './',
+  base: './',
   plugins: [
     react(),
-    ...(isWebBuild ? [] : [crx({ manifest })]),
+    crx({ manifest }),
   ],
   server: {
     port: 5173,

@@ -1,7 +1,5 @@
 import { getAccessToken } from './auth';
 
-export const INITIAL_CREDITS = 3;
-
 const rawApiUrl =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
   (typeof import.meta !== 'undefined' && import.meta.env?.PROD ? 'https://www.onextap.com' : '');
@@ -55,7 +53,11 @@ export const creditManager = {
   /**
    * Get current credit balance from the server, with error details.
    * Use this when you need to show the user why credits failed to load.
+   *
+   * Premium accounts report `Infinity` rather than a number — guard with
+   * Number.isFinite before rendering or comparing.
    * @returns {Promise<{credits: number|null, error?: string}>}
+   *   `credits` is null when the request failed; `error` then holds why.
    */
   getCreditsWithStatus: async () => {
     try {
@@ -76,7 +78,8 @@ export const creditManager = {
 
   /**
    * Get current credit balance from the server.
-   * Returns 0 on error (for backward compat). Use getCreditsWithStatus for error details.
+   * Returns 0 on error (for backward compat) and Infinity for premium
+   * accounts. Use getCreditsWithStatus when you need the error reason.
    * @returns {Promise<number>}
    */
   getCredits: async () => {
@@ -114,18 +117,11 @@ export const creditManager = {
   },
 
   /**
-   * Get premium status from the server.
+   * Alias for verifyPremium — same request, same result.
+   * Kept because both names are already in use at call sites.
    * @returns {Promise<boolean>}
    */
-  isPremium: async () => {
-    try {
-      const data = await authFetch('/api/verify-premium');
-      return data.isPremium === true;
-    } catch (error) {
-      console.error('Error checking premium status:', error);
-      return false;
-    }
-  },
+  isPremium: async () => creditManager.verifyPremium(),
 
   /**
    * Refund one credit (when AI generation fails after deduction).
@@ -141,7 +137,11 @@ export const creditManager = {
   },
 
   /**
-   * Verify premium status with the server (Dodo Payments source of truth).
+   * Verify premium status via GET /api/verify-premium. The server re-checks
+   * the subscription against Dodo Payments (the source of truth) and clears
+   * a stale is_premium flag when the subscription is no longer active.
+   * Returns false rather than throwing when the request fails, so callers
+   * degrade to the free tier.
    * @returns {Promise<boolean>}
    */
   verifyPremium: async () => {

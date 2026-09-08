@@ -133,8 +133,10 @@ export async function updateProfile(userId, updates) {
 
 // ------------------------------------------------------------------
 // JWT Auth Middleware
-// Extracts the Supabase JWT from the Authorization header,
-// verifies it, and attaches req.userId + req.userEmail.
+// Extracts the Supabase JWT from the Authorization header, verifies it,
+// and attaches req.userId, req.userEmail and req.accessToken.
+// Responds 401 (never calls next()) when the header is missing or the
+// token fails verification.
 // ------------------------------------------------------------------
 export function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;

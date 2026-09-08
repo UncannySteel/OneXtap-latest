@@ -4,9 +4,17 @@
  * Injected on demand via chrome.scripting.executeScript({ files: ['content.js'] }).
  * Plain classic browser script — no import/export, no bundler globals.
  *
- * Message contract:
- *   Receives: { action: "AUTOFILL_TRIGGERED", profile }
- *   Responds: { success: true, filled: <count> }  |  { success: false, error: <msg> }
+ * Message contract — every handler replies synchronously (the listener
+ * returns false) and every reply is either { success: true, ... } or
+ * { success: false, error: <msg> }:
+ *
+ *   { action: "AUTOFILL_TRIGGERED", profile }  → { success, filled: <count> }
+ *   { action: "SCRAPE_CONTEXT" }               → { success, context: { company, description } }
+ *   { action: "DETECT_SECTIONS" }              → { success, sections: { personalInfo, education,
+ *                                                    workExperience, openEnded, coverLetter } }
+ *   { action: "FILL_COVER_LETTER", text }      → { success } — false when no field matched
+ *
+ * Messages without an `action` are ignored.
  */
 
 // ── Duplicate-injection guard ────────────────────────────────────────────────
@@ -319,7 +327,11 @@ if (!window.__onextapAutofillLoaded) {
   // ── Input type guard ───────────────────────────────────────────────────────
   /**
    * Returns true for input types we are allowed to fill.
-   * Skips password, hidden, file, submit, button, image, range, color, reset.
+   *
+   * Allowlist, not a blocklist — anything not listed is skipped. That
+   * deliberately excludes password, hidden, file, submit, button, image,
+   * range, color and reset, and also checkbox and radio, which need a
+   * checked-state decision rather than a value.
    *
    * @param {HTMLInputElement} el
    * @returns {boolean}
@@ -398,6 +410,25 @@ if (!window.__onextapAutofillLoaded) {
   }
 
   // ── Page context scrape (company + description) ───────────────────────────
+  /**
+   * Best-effort read of the employer/institution name and the longest body of
+   * descriptive text on the page, used as AI context.
+   *
+   * Company is resolved in priority order: og:site_name → known job-board
+   * selectors → the last segment of document.title split on | - — or " at ".
+   * Description picks whichever candidate selector yields the most text,
+   * falling back to document.body, then collapses whitespace and caps at
+   * 8000 chars.
+   *
+   * NOTE: scrapeJobPage() in extension/background.js does the same job for
+   * the service worker, which cannot call into this file — it must be a
+   * self-contained function it can serialise into the page. The two selector
+   * lists are intentionally not identical: this one also matches school /
+   * university / essay markup for the college and scholarship application
+   * types. Selector fixes usually need applying in both places.
+   *
+   * @returns {{ company: string, description: string }}
+   */
   function scrapePageContext() {
     let company = '';
     const ogSite = document.querySelector('meta[property="og:site_name"]');
@@ -450,6 +481,18 @@ if (!window.__onextapAutofillLoaded) {
   }
 
   // ── Detect autofill sections on the current page ──────────────────────────
+  /**
+   * Guess which parts of an application form this page contains, so the popup
+   * can show only the relevant "what to fill" toggles.
+   *
+   * Cheap heuristic: concatenate every field signature on the page into one
+   * string and keyword-match it. Each flag is a keyword hit, not proof a
+   * matching field exists — a page mentioning "company" in an unrelated input
+   * will set workExperience.
+   *
+   * @returns {{ personalInfo: boolean, education: boolean, workExperience: boolean,
+   *             openEnded: boolean, coverLetter: boolean }}
+   */
   function detectFormSections() {
     const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
     const sigs = inputs.map((el) => fieldSignature(el)).join(' ');
@@ -464,6 +507,18 @@ if (!window.__onextapAutofillLoaded) {
   }
 
   // ── Fill cover letter / essay textarea ────────────────────────────────────
+  /**
+   * Drop generated long-form text into the page's cover letter / personal
+   * statement / essay field, and focus it.
+   *
+   * Two passes: first any visible textarea or text input whose signature
+   * matches a cover-letter keyword, then — if none matched — the largest
+   * empty visible textarea by row count. Unlike autofill(), the keyword pass
+   * will overwrite a field that already has content.
+   *
+   * @param {string} text
+   * @returns {boolean} False when the text was blank or no field was found.
+   */
   function fillCoverLetter(text) {
     if (!text?.trim()) return false;
     const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"]'));

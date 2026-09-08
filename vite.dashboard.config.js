@@ -4,7 +4,10 @@ import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 import tailwindConfig from './tailwind.config.js';
 
-// Separate config for building dashboard as standalone website
+// Web dashboard build → dist-dashboard/. `npm run build:dashboard`, and the
+// buildCommand vercel.json runs on deploy. No crx() plugin and no extension
+// APIs — the same React app detects at runtime that chrome.* is absent.
+// The extension build is the separate vite.config.js.
 export default defineConfig({
   plugins: [
     react(),
