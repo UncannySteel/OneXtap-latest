@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Activity, FileText, Trash2, ChevronDown, Settings } from 'lucide-react';
-import { parseResumeFile, RESUME_ACCEPT_ATTR } from '../../resumeParse';
+import { Activity, FileText, Trash2, ChevronDown, Settings, UploadCloud } from 'lucide-react';
+import { parseResumeFile, RESUME_ACCEPT_ATTR, MAX_RESUME_LABEL } from '../../resumeParse';
 import { loadResumeStore, setActiveResumeId, saveParsedResume, renameResume, deleteResume, listResumes, MAX_RESUME_NAME_LENGTH, MAX_RESUMES } from '../../resumeStore';
+import { useFileDrop } from './useFileDrop';
 import { log as baseLog } from '../../logger';
 
 const log = baseLog.child('resume');
@@ -23,8 +24,12 @@ const log = baseLog.child('resume');
  * @param {object} props
  * @param {boolean} [props.compact=false] Denser styling for the popup.
  * @param {() => void} [props.onResumeChange] Fired after any switch or edit.
+ * @param {number} [props.refreshNonce=0] Bump to make the switcher re-read the
+ *   store. For a parent that wrote to it directly — the job matches page does,
+ *   from its own empty-state drop zone — and would otherwise be showing a
+ *   picker that has not noticed the upload it just performed.
  */
-const ResumeSwitcher = ({ compact = false, onResumeChange }) => {
+const ResumeSwitcher = ({ compact = false, onResumeChange, refreshNonce = 0 }) => {
   const [store, setStore] = useState(null);
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -46,7 +51,7 @@ const ResumeSwitcher = ({ compact = false, onResumeChange }) => {
     return next;
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refresh(); }, [refresh, refreshNonce]);
 
   useEffect(() => {
     const onClick = (e) => {
@@ -64,6 +69,80 @@ const ResumeSwitcher = ({ compact = false, onResumeChange }) => {
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
+
+  /**
+   * The upload itself, shared by the file picker and the drop zone.
+   *
+   * Everything specific to *how* the file arrived stays with the caller — the
+   * picker has to clear its input, the drop zone has to open the dropdown —
+   * because doing either in the wrong place is invisible until someone uses
+   * the other entry point.
+   *
+   * @param {File} file
+   */
+  const startUpload = useCallback(async (file) => {
+    if (!file) return;
+    setUploadError('');
+    setUploading(true);
+    try {
+      const result = await parseResumeFile(file);
+      if (!result.ok) {
+        setUploadError(result.error.message);
+        return;
+      }
+      // Adds it, or selects the copy already stored for these exact bytes —
+      // the same file twice is a select, not a duplicate-name error. The rule
+      // lives in resumeStore because ProfilesPage needs it identically.
+      await saveParsedResume(result);
+      await refresh();
+      setOpen(false);
+    } catch (e) {
+      log.warn('resume upload failed', { errName: e?.name });
+      setUploadError(e?.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  }, [refresh]);
+
+  /**
+   * Files dropped anywhere on the switcher.
+   *
+   * Opens the dropdown first, unconditionally: the spinner and every error
+   * message below render *inside* it, so a drop onto the collapsed button
+   * would otherwise parse a resume — or refuse to — with no visible sign
+   * either way.
+   *
+   * @param {File[]} files Never empty.
+   */
+  const handleDroppedFiles = useCallback((files) => {
+    setOpen(true);
+    setUploadError('');
+    if (files.length > 1) {
+      setUploadError('Drop one resume at a time.');
+      return;
+    }
+    // Recomputed here rather than read from `atCapacity`, which is derived
+    // below the loading guard and so does not exist yet at this point in the
+    // component. addResume would refuse anyway; this is for the wording.
+    const stored = store ? listResumes(store).length : 0;
+    if (stored >= MAX_RESUMES) {
+      setUploadError(`Limit of ${MAX_RESUMES} reached — delete one before uploading another.`);
+      return;
+    }
+    startUpload(files[0]);
+  }, [store, startUpload]);
+
+  const { isDragging, dropProps } = useFileDrop({
+    onDrop: handleDroppedFiles,
+    disabled: uploading,
+  });
+
+  // A new drag is a retry, so the last failure stops applying the moment one
+  // starts. Without this the footer reads "Drop to upload" over a red sentence
+  // about the file before it — two different answers to the same question.
+  useEffect(() => {
+    if (isDragging) setUploadError('');
+  }, [isDragging]);
 
   if (!store) {
     return (
@@ -88,28 +167,7 @@ const ResumeSwitcher = ({ compact = false, onResumeChange }) => {
     // Reset the input first: picking the SAME file twice fires no change event
     // otherwise, which reads to the user as the upload button being dead.
     if (event.target) event.target.value = '';
-    if (!file) return;
-
-    setUploadError('');
-    setUploading(true);
-    try {
-      const result = await parseResumeFile(file);
-      if (!result.ok) {
-        setUploadError(result.error.message);
-        return;
-      }
-      // Adds it, or selects the copy already stored for these exact bytes —
-      // the same file twice is a select, not a duplicate-name error. The rule
-      // lives in resumeStore because ProfilesPage needs it identically.
-      await saveParsedResume(result);
-      await refresh();
-      setOpen(false);
-    } catch (e) {
-      log.warn('resume upload failed', { errName: e?.name });
-      setUploadError(e?.message || 'Upload failed.');
-    } finally {
-      setUploading(false);
-    }
+    await startUpload(file);
   };
 
   const handleRename = async (id) => {
@@ -142,16 +200,29 @@ const ResumeSwitcher = ({ compact = false, onResumeChange }) => {
   };
 
   return (
-    <div className={`relative ${compact ? '' : 'mb-3'}`} ref={dropdownRef}>
+    <div className={`relative ${compact ? '' : 'mb-3'}`} ref={dropdownRef} {...dropProps}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 rounded-xl border border-onextap-primary/20 bg-white/90 px-3 py-2.5 text-left text-sm font-semibold text-onextap-dark shadow-sm transition-all hover:border-onextap-primary/35 dark:bg-onextap-night-card dark:text-[#E8EFD8] dark:border-onextap-primary-light/25"
+        className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold text-onextap-dark shadow-sm transition-all dark:text-[#E8EFD8] ${
+          isDragging
+            ? 'border-onextap-primary border-dashed bg-onextap-primary/10 dark:bg-onextap-primary/20 dark:border-onextap-primary-light'
+            : 'border-onextap-primary/20 bg-white/90 hover:border-onextap-primary/35 dark:bg-onextap-night-card dark:border-onextap-primary-light/25'
+        }`}
       >
-        <span className="flex items-center gap-2 min-w-0">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-onextap-primary" />
-          <span className="truncate">{active?.name || 'No resume selected'}</span>
-        </span>
+        {isDragging ? (
+          // Replaces the label rather than sitting beside it: mid-drag, which
+          // resume is currently selected is not the question being asked.
+          <span className="flex items-center gap-2 min-w-0 text-onextap-primary dark:text-onextap-olive-pale">
+            <UploadCloud size={16} className="shrink-0" />
+            <span className="truncate">Drop to upload</span>
+          </span>
+        ) : (
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-onextap-primary" />
+            <span className="truncate">{active?.name || 'No resume selected'}</span>
+          </span>
+        )}
         <ChevronDown size={16} className={`shrink-0 text-onextap-dark/50 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -242,6 +313,14 @@ const ResumeSwitcher = ({ compact = false, onResumeChange }) => {
                 ? <><Activity size={14} className="animate-spin" /> Parsing resume...</>
                 : <><FileText size={14} /> {atCapacity ? `Limit of ${MAX_RESUMES} reached` : 'Upload Resume'}</>}
             </button>
+            {!uploading && !atCapacity && (
+              // The only place the accepted types and the size cap are stated
+              // before an upload fails. Both are derived, not typed out, so
+              // they cannot drift from what the gate in resumeParse enforces.
+              <p className="px-3 pb-2.5 text-[11px] text-onextap-dark/50 dark:text-[#9AB07A]">
+                or drag a file onto the picker — PDF or image, up to {MAX_RESUME_LABEL}
+              </p>
+            )}
             {uploadError && <p className="px-3 pb-2.5 text-xs text-red-600">{uploadError}</p>}
           </div>
         </div>

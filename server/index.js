@@ -119,6 +119,25 @@ app.use(requestLogger);
 // ------------------------------------------------------------------
 app.post('/api/webhook', express.raw({ type: 'application/json' }), handleWebhook);
 
+// ------------------------------------------------------------------
+// Resume uploads carry the file itself, inline, as base64 — so this one route
+// needs a far bigger body than everything else.
+//
+// Mounted HERE, path-scoped and ahead of the global parser, for the same
+// mechanical reason the webhook is: body-parser marks a request parsed and
+// skips it thereafter, so whichever parser runs first owns the limit.
+//
+// Path-scoped and not global on purpose. express.json()'s 100kb default is
+// load-bearing for every other route — the AI generation routes lean on it as
+// their floor under an untrusted body (see the fabrication corpus caps below)
+// — and raising it globally would quietly hand that ceiling to all of them.
+//
+// 3mb, not 2mb: base64 is 4/3 the size of the bytes, so a 2 MB resume arrives
+// as ~2.7 MB of JSON. RESUME_MAX_BYTES (at the route) is what actually rejects
+// an oversized resume; this number only has to be loose enough that a legal
+// one is not cut off first, and tight enough to still be a ceiling.
+app.use('/api/parse-resume', express.json({ limit: '3mb' }));
+
 // JSON parser for all other routes
 app.use(express.json());
 
@@ -729,10 +748,43 @@ ${draft || 'None'}
 // ------------------------------------------------------------------
 // POST /api/parse-resume — extract structured profile from resume via Gemini
 // ------------------------------------------------------------------
+
+/**
+ * Largest resume file accepted, in decoded bytes.
+ *
+ * Mirrors MAX_RESUME_BYTES in src/resumeParse.js, which is what users actually
+ * hit — this is the server's own floor under a body that did not come from our
+ * client. Change one side, change both, and check the express.json() limit
+ * mounted on this path stays above 4/3 of it.
+ */
+const RESUME_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Decoded byte length of a base64 payload, without decoding it.
+ *
+ * `Buffer.from(s, 'base64')` would answer the same question by allocating the
+ * megabytes we are trying to decide whether to accept.
+ *
+ * @param {unknown} value
+ * @returns {number} 0 for anything that is not a string.
+ */
+function base64ByteLength(value) {
+  if (typeof value !== 'string' || !value) return 0;
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((value.length * 3) / 4) - padding);
+}
+
 app.post('/api/parse-resume', requireAuth, async (req, res) => {
   try {
     const { fileData, fileName, fileType } = req.body || {};
     if (!fileData) return res.status(400).json({ error: 'No file data provided' });
+
+    const byteLength = base64ByteLength(fileData);
+    if (byteLength > RESUME_MAX_BYTES) {
+      return res.status(413).json({
+        error: `Resume is too large (${(byteLength / (1024 * 1024)).toFixed(1)} MB). The limit is 2 MB.`,
+      });
+    }
 
     const systemInstruction = `You are a resume parser. Extract structured data from the resume text below and return ONLY valid JSON (no markdown fences, no explanation). Use this exact schema:
 {

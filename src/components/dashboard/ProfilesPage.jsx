@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Award, Briefcase, Code, ExternalLink, FileText, Flag, GraduationCap, MapPin, Plus, Save, Trash2, User } from 'lucide-react';
+import { Activity, Award, Briefcase, Code, ExternalLink, FileText, Flag, GraduationCap, MapPin, Plus, Save, Trash2, UploadCloud, User } from 'lucide-react';
 import { COUNTRIES, GENDERS } from '../../../extension/constants';
 import { getExtensionId } from '../../extensionClient';
 import { DEFAULT_PROFILE, RACES, VETERAN_STATUS } from '../../profileDefaults';
 import { getActiveLegacyProfile, loadProfileStore, saveLegacyUserProfile } from '../../profileStore';
-import { parseResumeFile, RESUME_ACCEPT_ATTR } from '../../resumeParse';
+import { parseResumeFile, RESUME_ACCEPT_ATTR, MAX_RESUME_LABEL } from '../../resumeParse';
 import { saveParsedResume } from '../../resumeStore';
 import ProfileSwitcher from '../shared/ProfileSwitcher';
+import { useFileDrop } from '../shared/useFileDrop';
 import { log as baseLog } from '../../logger';
 
 const log = baseLog.child('ui');
@@ -30,6 +31,13 @@ const ProfilesPage = ({ showToast }) => {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [status, setStatus] = useState('');
   const [isParsing, setIsParsing] = useState(false);
+  // Separate from `status`, which renders as the Save button's label. An
+  // upload failure is a sentence — "That file is 3.0 MB. The limit is 2 MB —
+  // export a smaller PDF…" — and putting one in a button both wrecks the
+  // layout and puts it nowhere near the control it is about. Drag-and-drop
+  // makes a rejected file far easier to attempt, so these now get their own
+  // line inside the upload panel.
+  const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
   const skillInputRef = useRef(null);
 
@@ -105,21 +113,27 @@ const ProfilesPage = ({ showToast }) => {
   // lives in src/resumeParse.js. The merge below is unchanged, byte for byte
   // apart from being two spaces shallower: it is the part users would notice
   // breaking, so the extraction deliberately stopped at its edge.
-  const handleFileUpload = async (event) => {
-    const file = event.target?.files?.[0];
-    // Reset the input first: picking the SAME file twice fires no change event
-    // otherwise, which reads to the user as the upload button being dead. This
-    // mirrors ResumeSwitcher.handleUpload — the two pickers must behave alike.
-    if (event.target) event.target.value = '';
+  /**
+   * The upload itself, shared by the file picker and the drop zone.
+   *
+   * How the file arrived stays with the caller — the picker has to clear its
+   * input — because doing that in the wrong place is invisible until someone
+   * uses the other entry point. Mirrors the same split in ResumeSwitcher.
+   *
+   * @param {File} file
+   */
+  const startUpload = async (file) => {
     if (!file) return;
 
+    setUploadError('');
     setIsParsing(true);
     setStatus('Parsing resume...');
 
     try {
       const result = await parseResumeFile(file);
       if (!result.ok) {
-        setStatus('Error: ' + result.error.message);
+        setUploadError(result.error.message);
+        setStatus('');
         setIsParsing(false);
         return;
       }
@@ -215,10 +229,45 @@ const ProfilesPage = ({ showToast }) => {
       setTimeout(() => setStatus(''), 3000);
     } catch (error) {
       log.error("Onextap: File upload error:", error);
-      setStatus('Error: ' + (error.message || 'Failed to read file. Please try again.'));
+      setUploadError(error.message || 'Failed to read file. Please try again.');
+      setStatus('');
       setIsParsing(false);
     }
   };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target?.files?.[0];
+    // Reset the input first: picking the SAME file twice fires no change event
+    // otherwise, which reads to the user as the upload button being dead. This
+    // mirrors ResumeSwitcher.handleUpload — the two pickers must behave alike.
+    if (event.target) event.target.value = '';
+    await startUpload(file);
+  };
+
+  /**
+   * Files dropped onto the upload panel.
+   * @param {File[]} files Never empty.
+   */
+  const handleDroppedFiles = (files) => {
+    setUploadError('');
+    if (files.length > 1) {
+      setUploadError('Drop one resume at a time.');
+      return;
+    }
+    startUpload(files[0]);
+  };
+
+  const { isDragging, dropProps } = useFileDrop({
+    onDrop: handleDroppedFiles,
+    disabled: isParsing,
+  });
+
+  // A new drag is a retry, so the last failure stops applying the moment one
+  // starts — otherwise the panel reads "Drop to upload" over a red sentence
+  // about the file before it. Mirrors the same effect in ResumeSwitcher.
+  useEffect(() => {
+    if (isDragging) setUploadError('');
+  }, [isDragging]);
 
 
   // Array Helpers (support undefined sections)
@@ -311,15 +360,26 @@ const ProfilesPage = ({ showToast }) => {
 
       <div className="max-h-[calc(100vh-14rem)] overflow-y-auto pr-2 space-y-8">
         {/* RESUME UPLOAD */}
-        <div className="p-5 bg-gradient-to-r from-onextap-primary/10 to-onextap-primary/5 rounded-2xl border border-onextap-primary/20">
+        <div
+          {...dropProps}
+          className={`p-5 rounded-2xl border transition-colors ${
+            isDragging
+              ? 'border-dashed border-onextap-primary bg-onextap-primary/15'
+              : 'border-onextap-primary/20 bg-gradient-to-r from-onextap-primary/10 to-onextap-primary/5'
+          }`}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-white rounded-xl shadow-sm">
-                <FileText className="text-onextap-primary" size={24} />
+                {isDragging
+                  ? <UploadCloud className="text-onextap-primary" size={24} />
+                  : <FileText className="text-onextap-primary" size={24} />}
               </div>
               <div>
-                <h4 className="font-bold text-onextap-dark">Upload Resume</h4>
-                <p className="text-sm text-onextap-dark/60">Auto-fill your profile from PDF or Image</p>
+                <h4 className="font-bold text-onextap-dark">{isDragging ? 'Drop to upload' : 'Upload Resume'}</h4>
+                <p className="text-sm text-onextap-dark/60">
+                  Auto-fill your profile from PDF or Image — drop one here, up to {MAX_RESUME_LABEL}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -329,6 +389,7 @@ const ProfilesPage = ({ showToast }) => {
               </label>
             </div>
           </div>
+          {uploadError && <p className="mt-3 text-sm text-red-600">{uploadError}</p>}
         </div>
 
         {/* BASIC INFO */}

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Activity, AlertTriangle, Briefcase, Building2, ChevronDown, Clock, ExternalLink, Info, MapPin, Sparkles } from 'lucide-react';
+import { Activity, AlertTriangle, Briefcase, Building2, ChevronDown, Clock, ExternalLink, Info, MapPin, Sparkles, UploadCloud } from 'lucide-react';
 import ResumeSwitcher from '../shared/ResumeSwitcher';
-import { getActiveResume } from '../../resumeStore';
+import { useFileDrop } from '../shared/useFileDrop';
+import { parseResumeFile, MAX_RESUME_LABEL } from '../../resumeParse';
+import { getActiveResume, saveParsedResume } from '../../resumeStore';
 import { rankJobs, explainJob, fetchJobsMeta } from '../../jobsApi';
 import { buildResumeProfile, missingKeywords, MATCHER_VERSION } from '../../matching/index.js';
 import { log as baseLog } from '../../logger';
@@ -989,10 +991,18 @@ const JobMatchesPage = ({ showToast }) => {
   const [loadError, setLoadError] = useState(null);
   const [actionError, setActionError] = useState(null);
 
-  // Bumped to force a re-run of the effect that reads it. Two of them, so the
-  // rank and the metadata read can be refreshed independently.
+  // Bumped to force a re-run of the effect that reads it. Three of them, so the
+  // rank, the metadata read and the resume picker can be refreshed
+  // independently.
   const [rankNonce, setRankNonce] = useState(0);
   const [metaNonce, setMetaNonce] = useState(0);
+  const [resumeNonce, setResumeNonce] = useState(0);
+
+  // ── Empty-state drop zone ─────────────────────────────────────────
+  // Its own upload state, not shared with ResumeSwitcher's: the two zones are
+  // separate elements and only one of them is ever mid-upload.
+  const [dropUploading, setDropUploading] = useState(false);
+  const [dropError, setDropError] = useState('');
 
   const [explanations, setExplanations] = useState({});
   const [openExplainId, setOpenExplainId] = useState(null);
@@ -1029,6 +1039,59 @@ const JobMatchesPage = ({ showToast }) => {
       });
     return () => { cancelled = true; };
   }, []);
+
+  /**
+   * A resume dropped onto the empty-state panel.
+   *
+   * The panel is the biggest, most obviously droppable target on the page and
+   * it is the thing that says "upload a resume", so it takes a drop rather
+   * than pointing at the picker above it.
+   *
+   * It writes to the store directly — the same two calls the picker makes —
+   * and then bumps `resumeNonce` so the picker re-reads and reports the new
+   * active resume back through `applyStore`. That keeps ONE path from store to
+   * `resume` state; this handler never calls `setResume` itself.
+   *
+   * No capacity check: this panel only renders when there are no resumes.
+   *
+   * @param {File[]} files Never empty.
+   */
+  const handleResumeDrop = useCallback(async (files) => {
+    setDropError('');
+    if (files.length > 1) {
+      setDropError('Drop one resume at a time.');
+      return;
+    }
+    setDropUploading(true);
+    try {
+      const result = await parseResumeFile(files[0]);
+      if (!result.ok) {
+        if (mountedRef.current) setDropError(result.error.message);
+        return;
+      }
+      await saveParsedResume(result);
+      if (!mountedRef.current) return;
+      setResumeNonce((n) => n + 1);
+      showToast?.('Resume parsed successfully', 'success');
+    } catch (e) {
+      log.warn('resume drop upload failed', { errName: e?.name });
+      if (mountedRef.current) setDropError(e?.message || 'Upload failed.');
+    } finally {
+      if (mountedRef.current) setDropUploading(false);
+    }
+  }, [showToast]);
+
+  const { isDragging: resumeDragging, dropProps: resumeDropProps } = useFileDrop({
+    onDrop: handleResumeDrop,
+    disabled: dropUploading,
+  });
+
+  // A new drag is a retry, so the last failure stops applying the moment one
+  // starts — otherwise the panel reads "Drop to upload" over a red sentence
+  // about the file before it. Mirrors the same effect in ResumeSwitcher.
+  useEffect(() => {
+    if (resumeDragging) setDropError('');
+  }, [resumeDragging]);
 
   // ── Pool metadata: the honest empty state and the footer both need it ──
 
@@ -1319,15 +1382,38 @@ const JobMatchesPage = ({ showToast }) => {
           </div>
         ) : (
           <>
-            <ResumeSwitcher onResumeChange={applyStore} />
+            <ResumeSwitcher onResumeChange={applyStore} refreshNonce={resumeNonce} />
 
             {!resume ? (
-              <div className="mt-4 rounded-2xl border border-dashed border-onextap-primary/25 bg-onextap-primary/[0.04] px-5 py-8 text-center dark:border-onextap-primary-light/25 dark:bg-white/[0.03]">
-                <Sparkles size={22} className="mx-auto mb-3 text-onextap-primary dark:text-onextap-olive-pale" />
-                <p className={STRONG_TEXT}>Upload a resume to see matches</p>
-                <p className={`mt-1 ${SUBTEXT}`}>
-                  Jobs are ranked against your resume. Nothing is ranked until there is one to rank against.
-                </p>
+              <div
+                {...resumeDropProps}
+                className={`mt-4 rounded-2xl border border-dashed px-5 py-8 text-center transition-colors ${
+                  resumeDragging
+                    ? 'border-onextap-primary bg-onextap-primary/10 dark:border-onextap-primary-light dark:bg-onextap-primary/20'
+                    : 'border-onextap-primary/25 bg-onextap-primary/[0.04] dark:border-onextap-primary-light/25 dark:bg-white/[0.03]'
+                }`}
+              >
+                {dropUploading ? (
+                  <>
+                    <Activity size={22} className="mx-auto mb-3 animate-spin text-onextap-primary dark:text-onextap-olive-pale" />
+                    <p className={STRONG_TEXT}>Parsing resume...</p>
+                    <p className={`mt-1 ${SUBTEXT}`}>Reading the file and pulling out your skills and experience.</p>
+                  </>
+                ) : (
+                  <>
+                    {resumeDragging
+                      ? <UploadCloud size={22} className="mx-auto mb-3 text-onextap-primary dark:text-onextap-olive-pale" />
+                      : <Sparkles size={22} className="mx-auto mb-3 text-onextap-primary dark:text-onextap-olive-pale" />}
+                    <p className={STRONG_TEXT}>
+                      {resumeDragging ? 'Drop to upload' : 'Drop a resume here, or use the picker above'}
+                    </p>
+                    <p className={`mt-1 ${SUBTEXT}`}>
+                      Jobs are ranked against your resume. Nothing is ranked until there is one to rank against.
+                    </p>
+                    <p className={`mt-2 text-xs ${SUBTEXT}`}>PDF or image, up to {MAX_RESUME_LABEL}.</p>
+                  </>
+                )}
+                {dropError && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{dropError}</p>}
               </div>
             ) : (
               <ResumeSummary resume={resume} profile={resumeProfile} />

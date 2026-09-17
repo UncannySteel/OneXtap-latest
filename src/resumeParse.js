@@ -83,6 +83,42 @@ const WORD_EXT = ['.doc', '.docx'];
  */
 export const RESUME_ACCEPT_ATTR = ACCEPTED_EXT.join(',');
 
+// ------------------------------------------------------------------
+// File size gate
+// ------------------------------------------------------------------
+// A fourth number that has to move with the other three, and this one has two
+// copies on the server: `RESUME_MAX_BYTES` in server/index.js (the enforced
+// one) and the `express.json()` limit mounted on /api/parse-resume (which must
+// stay ~4/3 of it, because base64 inflates the body by a third).
+//
+// The client copy exists so an oversized file costs nothing: no hash, no
+// base64, no upload, and a sentence naming the limit instead of a 413.
+
+/** Largest resume file accepted, in bytes. */
+export const MAX_RESUME_BYTES = 2 * 1024 * 1024;
+
+/** The cap as the user sees it, so error copy and UI hints cannot disagree. */
+export const MAX_RESUME_LABEL = '2 MB';
+
+/**
+ * Bytes as a short human string, for one purpose: telling someone how far over
+ * the limit they are. One decimal, because "2.4 MB" is actionable and
+ * "2.41 MB" is noise.
+ *
+ * Rounds UP, not to nearest. At one decimal a file one byte over the cap
+ * rounds to "2.0 MB", and "That file is 2.0 MB. The limit is 2 MB" reads as a
+ * bug in the limit rather than a fact about the file. Rounding up overstates
+ * by less than 0.1 MB and can never contradict the sentence it appears in.
+ *
+ * @param {number} bytes
+ * @returns {string}
+ */
+export function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(Math.ceil(bytes / (1024 * 1024) * 10) / 10).toFixed(1)} MB`;
+}
+
 /**
  * @typedef {Object} ResumeParseResult
  * @property {boolean} ok
@@ -139,6 +175,17 @@ export async function parseResumeFile(file) {
 
   const typeError = validateType(fileName, mimeType);
   if (typeError) return fail(typeError.code, typeError.message, meta);
+
+  // Before the hash and the base64, both of which read the whole file into
+  // memory twice over — there is no reason to do that to a file the server
+  // will refuse anyway.
+  if (fileSize > MAX_RESUME_BYTES) {
+    return fail(
+      'file-too-large',
+      `That file is ${formatFileSize(fileSize)}. The limit is ${MAX_RESUME_LABEL} — export a smaller PDF, or reduce the resolution if it is a scan or photo.`,
+      meta,
+    );
+  }
 
   // Hash BEFORE the network call, so a caller can check its cache and skip the
   // round trip entirely when it already has this exact file parsed.
