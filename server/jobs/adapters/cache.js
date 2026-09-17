@@ -16,6 +16,11 @@
  * provider keys and still needs a populated UI; it has to be set deliberately,
  * by name, and it is the kind of thing to grep for before a launch.
  *
+ * ALLOW_CACHE_SOURCE=false is the opposite lever and overrides everything: set
+ * it in any env file whose SUPABASE_URL points at a real project, so a manual
+ * ingest from a laptop (where NODE_ENV is not 'production') cannot seed the
+ * real pool with fiction.
+ *
  * What it IS for:
  *   - `npm test` — deterministic input, no network, no flake.
  *   - local dev with no ADZUNA_APP_ID, so the pipeline can be exercised end to
@@ -75,10 +80,27 @@ export const cacheAdapter = {
   id: 'cache',
 
   /**
-   * @returns {boolean} False in production unless ALLOW_CACHE_SOURCE is the
-   *   exact string 'true'. A truthy-looking value is not consent; see header.
+   * @returns {boolean} False when ALLOW_CACHE_SOURCE is the exact string
+   *   'false'; otherwise false in production unless it is the exact string
+   *   'true'. Only those two exact strings are read — neither a truthy-looking
+   *   nor a falsy-looking value counts as either answer. See header.
    */
   enabled() {
+    // An explicit opt-out wins over the NODE_ENV default, and is checked FIRST.
+    //
+    // Before this line existed, ALLOW_CACHE_SOURCE=false did nothing whatsoever:
+    // the flag was only ever read as an *enable*, so the fallback below decided
+    // alone and returned true on any machine without NODE_ENV=production. An
+    // operator who set it to 'false' got the opposite of what they asked for,
+    // with no warning. That is not hypothetical — a manual ingest run from a
+    // laptop against the production database put 40 example.com listings into
+    // the real pool while this file's own header said they must never go there.
+    //
+    // Why a kill switch is worth having when NODE_ENV=production already
+    // disables this: the dangerous case is precisely the machine where NODE_ENV
+    // is NOT production but SUPABASE_URL points at it — a laptop running
+    // `npm run server:dev`, which is how ingest gets triggered by hand.
+    if (process.env.ALLOW_CACHE_SOURCE === 'false') return false;
     if (process.env.ALLOW_CACHE_SOURCE === 'true') return true;
     return process.env.NODE_ENV !== 'production';
   },

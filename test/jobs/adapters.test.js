@@ -760,6 +760,33 @@ test('cache.enabled() is false in production unless explicitly allowed', () => {
   }
 });
 
+// The regression this guards: ALLOW_CACHE_SOURCE=false used to be read only as
+// an *enable*, so it was silently ignored and the NODE_ENV fallback returned
+// true anyway. A manual ingest from a laptop pointed at the production database
+// then wrote 40 synthetic example.com listings into the real pool.
+test('cache.enabled() honours an explicit ALLOW_CACHE_SOURCE=false outside production', () => {
+  const restore = snapshotEnv();
+  try {
+    // The exact shape of the incident: not production, flag says no.
+    process.env.NODE_ENV = 'development';
+    process.env.ALLOW_CACHE_SOURCE = 'false';
+    assert.equal(cacheAdapter.enabled(), false, 'an explicit opt-out must win over the dev default');
+
+    delete process.env.NODE_ENV;
+    assert.equal(cacheAdapter.enabled(), false, 'unset NODE_ENV is the laptop case, and must not re-enable it');
+
+    process.env.NODE_ENV = 'production';
+    assert.equal(cacheAdapter.enabled(), false, 'still off where it was already off');
+
+    // Only the exact string 'false' is an opt-out, mirroring the 'true' rule.
+    process.env.NODE_ENV = 'development';
+    process.env.ALLOW_CACHE_SOURCE = '0';
+    assert.equal(cacheAdapter.enabled(), true, 'a falsy-looking value is not an opt-out');
+  } finally {
+    restore();
+  }
+});
+
 test('cache.fetch serves fixtures without touching the network', async () => {
   const restore = snapshotEnv();
   const restoreFetch = stubFetch(async () => {
