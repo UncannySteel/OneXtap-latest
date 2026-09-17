@@ -199,6 +199,30 @@ test('a single source uses eq, several use in, unknown ones are dropped', async 
   assert.ok(!firstCall(junk, 'in'));
 });
 
+test('every registered adapter id survives the source filter', async () => {
+  // The drift this catches is invisible in production. A source missing from
+  // KNOWN_SOURCES is not rejected — normalizeSources drops it, no filter is
+  // applied, and the caller gets the whole pool back looking like a filter
+  // that matched everything. 'ats' shipped that way: the adapter ingested,
+  // the CHECK constraint allowed it, the UI offered the chip, and checking it
+  // silently widened the search instead of narrowing it.
+  //
+  // Asserted through fetchJobPool rather than by exporting KNOWN_SOURCES,
+  // because what matters is that a filter is APPLIED, not that a set contains
+  // a string.
+  const { ADAPTERS } = await import('../../server/jobs/adapters/index.js');
+
+  for (const adapter of ADAPTERS) {
+    const client = stubClient([]);
+    await fetchJobPool(client, { source: adapter.id });
+    assert.ok(
+      allCalls(client, 'eq').some((c) => c[1] === 'source' && c[2] === adapter.id),
+      `source=${adapter.id} is a registered adapter but built no filter — ` +
+        'add it to KNOWN_SOURCES in server/jobs/query.js'
+    );
+  }
+});
+
 test('since defaults to a 30-day floor and accepts an explicit date', async () => {
   const now = Date.now();
   const client = stubClient([]);

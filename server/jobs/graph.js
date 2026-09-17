@@ -390,7 +390,18 @@ export async function runRankGraph(params = {}) {
         // still gets a shaped answer rather than a rejected promise.
         lastError = err;
         degraded = true;
-        graphLog.warn('job pool fetch failed', { loop: loops, errName: err?.name });
+        // `reason`, not just `errName`. A Supabase failure's name is always
+        // 'Error'; the diagnosis is entirely in the message, and without it
+        // this line says a pool read failed and nothing about why — which is
+        // how a missing table reached production looking like a bare 502.
+        // `reason` is deliberate: server/logger.js redacts a bare `name` and
+        // `message` is not a field it knows, so this is the spelling that
+        // survives redaction (same as server/observability/opik.js).
+        graphLog.warn('job pool fetch failed', {
+          loop: loops,
+          errName: err?.name,
+          reason: String(err?.message || err).slice(0, ERROR_TEXT_CHARS),
+        });
         prefilterSpan?.update?.({
           output: { error: String(err?.message || err).slice(0, ERROR_TEXT_CHARS) },
         })?.end?.();
@@ -449,7 +460,10 @@ export async function runRankGraph(params = {}) {
     // at the route.
     lastError = err;
     degraded = true;
-    graphLog.error('rank graph failed', { errName: err?.name });
+    graphLog.error('rank graph failed', {
+      errName: err?.name,
+      reason: String(err?.message || err).slice(0, ERROR_TEXT_CHARS),
+    });
   }
 
   // A pool we could not read leaves `ranked` empty; a pool we read but could

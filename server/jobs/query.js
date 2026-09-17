@@ -91,8 +91,18 @@ export const JOB_COLUMNS = Object.freeze([
   'last_seen_at',
 ]);
 
-/** The sources the table's own CHECK constraint allows. */
-const KNOWN_SOURCES = new Set(['adzuna', 'remotive', 'wellfound', 'cache']);
+/**
+ * The sources the table's own CHECK constraint allows.
+ *
+ * THREE PLACES HOLD THIS LIST and they drift silently: the constraint in
+ * supabase/migrations/003_ats_source.sql, the adapter registry in
+ * server/jobs/adapters/index.js, and this set. Only the last one is on the
+ * read path, so a source missing from here is not an error — normalizeSources
+ * drops it and the caller gets the UNFILTERED pool back, which looks like a
+ * working filter that matches everything. 'ats' was missing for exactly that
+ * reason. A test below asserts this set against ADAPTERS.
+ */
+const KNOWN_SOURCES = new Set(['adzuna', 'remotive', 'ats', 'wellfound', 'cache']);
 
 /**
  * Escape the characters that are wildcards inside a SQL LIKE/ILIKE pattern.

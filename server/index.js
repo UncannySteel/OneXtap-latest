@@ -1538,10 +1538,25 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
     // answers 200 with an empty list is indistinguishable from a quiet market
     // to every dashboard, alert and log filter that will ever look at it, and
     // that is precisely the outage you most want to see.
+    //
+    // ═══ `error` IS TOP-LEVEL, AND NULL WHEN THERE IS NONE ═══
+    //
+    // It duplicates meta.error on purpose. Every generic HTTP client in this
+    // codebase and outside it reads a failure from `body.error` — authFetch in
+    // src/jobsApi.js does exactly `body.error || body.message` — so a 502
+    // whose only explanation lived under `meta` degraded to the string
+    // "HTTP 502" at the one moment the cause mattered. The other two 502s in
+    // this file already answer with a top-level `error`; this one now matches
+    // them, and the three job routes have one error contract between them.
+    //
+    // Always present rather than only on failure, so the sentence above about
+    // the body being one shape stays true: the shape is constant, the value
+    // varies. A 200 carries `error: null`.
     const jobs = outcome.jobs || [];
     const totalFailure = Boolean(outcome.error) && jobs.length === 0 && outcome.limited !== true;
 
     res.status(totalFailure ? 502 : 200).json({
+      error: outcome.error ? clientErrorMessage(outcome.error) : null,
       jobs,
       loops: outcome.loops ?? 0,
       reformulations: outcome.reformulations || [],
