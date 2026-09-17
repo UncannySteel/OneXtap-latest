@@ -84,7 +84,13 @@ exercised the path in the browser. Say so plainly when you have not.
   keyed to a user, and no table holds profile data — see rule 8.
 - `supabase/schema.sql` is applied by hand in the Supabase SQL Editor. There
   is no migration tool and no migration history. The file is idempotent, but
-  it drops and recreates the `on_auth_user_created` trigger.
+  it drops and recreates the `on_auth_user_created` trigger, so use the
+  numbered files in `supabase/migrations/` against an existing project and
+  keep `schema.sql` for bootstrapping a fresh one.
+- `supabase/migrations/README.md` is the only record of which migrations have
+  actually been applied to which project. Read it before assuming a table
+  exists; update it in the same commit as the apply. A missing `job_listings`
+  traced back to exactly this gap.
 - `server/` has its own `package.json` and `node_modules`; root deps are
   duplicated there for the Vercel build.
 - Four loggers, one per runtime, because the runtimes cannot share code:

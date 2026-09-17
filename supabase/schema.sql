@@ -44,17 +44,20 @@ alter table public.profiles enable row level security;
 alter table public.credit_transactions enable row level security;
 
 -- Profiles: users can read their own profile
+drop policy if exists "Users can view own profile" on public.profiles;
 create policy "Users can view own profile"
   on public.profiles for select
   using (auth.uid() = id);
 
 -- Profiles: users can update their own profile (limited fields)
+drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile"
   on public.profiles for update
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
 -- Credit transactions: users can view their own transactions
+drop policy if exists "Users can view own transactions" on public.credit_transactions;
 create policy "Users can view own transactions"
   on public.credit_transactions for select
   using (auth.uid() = user_id);
@@ -126,7 +129,10 @@ create table if not exists public.job_listings (
   -- Source-prefixed, e.g. 'adzuna:12345'. Two providers can and do hand out
   -- the same bare numeric id, so the prefix is what keeps them apart.
   job_id text not null unique,
-  source text not null check (source in ('adzuna', 'remotive', 'wellfound', 'cache')),
+  -- Kept in step with supabase/migrations/003_ats_source.sql, which widens this
+  -- same constraint on projects that already ran 001 with the four-value list.
+  -- A fresh project built from this file gets 'ats' here and does not need 003.
+  source text not null check (source in ('adzuna', 'remotive', 'ats', 'wellfound', 'cache')),
   source_id text not null,
   title text not null,
   url text not null,
