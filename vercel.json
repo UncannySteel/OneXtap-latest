@@ -6,5 +6,6 @@
     { "source": "/api/(.*)", "destination": "/api/index.js" },
     { "source": "/privacy-policy", "destination": "/privacy-policy.html" },
     { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  ],
+  "crons": [{ "path": "/api/jobs/ingest", "schedule": "0 6 * * *" }]
 }

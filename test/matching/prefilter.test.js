@@ -1,0 +1,151 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  buildResumeProfile,
+  prefilterJobs,
+  normalizeJobKeywords,
+  titleOverlap,
+} from '../../src/matching/prefilter.js';
+import { CV } from '../fixtures/jobs.js';
+
+const compactJob = {
+  id: 'j1',
+  title: 'Senior Backend Engineer',
+  company: 'Norwick Labs',
+  posted_at: '2026-01-02',
+  keywords: [
+    { t: 'python', w: 1, r: true },
+    { t: 'kubernetes', w: 1, r: true },
+    { t: 'kafka', w: 1, r: false },
+  ],
+};
+
+const expandedJob = {
+  ...compactJob,
+  keywords: [
+    { term: 'python', weight: 1, required: true },
+    { term: 'kubernetes', weight: 1, required: true },
+    { term: 'kafka', weight: 1, required: false },
+  ],
+};
+
+test('buildResumeProfile is total', () => {
+  for (const input of [null, undefined, 42, {}, { skills: 'nope' }]) {
+    const profile = buildResumeProfile(input);
+    assert.ok(profile.keywordSet instanceof Map);
+    assert.deepEqual(profile.titles, []);
+    assert.equal(profile.level, null);
+    assert.equal(profile.yearsExperience, null);
+  }
+});
+
+test('buildResumeProfile folds resume skills into job vocabulary', () => {
+  const profile = buildResumeProfile(CV);
+  // "K8s" on the resume must land on the same canonical term a JD's
+  // "Kubernetes" produces.
+  assert.ok(profile.keywordSet.has('kubernetes'));
+  assert.ok(profile.keywordSet.has('python'));
+  assert.ok(profile.keywordSet.has('postgresql'));
+  assert.ok(profile.keywordSet.has('rest api'));
+  assert.ok(profile.keywordSet.has('system design'));
+  // Education contributes at a discount.
+  assert.ok(profile.keywordSet.has('computer science') || profile.keywordSet.has('science'));
+  assert.equal(profile.yearsExperience, 7);
+  assert.equal(profile.level, 3); // "Senior Backend Engineer"
+});
+
+test('normalizeJobKeywords accepts both stored shapes identically', () => {
+  assert.deepEqual(normalizeJobKeywords(compactJob), normalizeJobKeywords(expandedJob));
+  assert.deepEqual(normalizeJobKeywords(null), []);
+  assert.deepEqual(normalizeJobKeywords({ keyword_terms: ['React', 'Vue'] }), [
+    { term: 'react', weight: 1, required: false, count: 1, category: 'frontend' },
+    { term: 'vue', weight: 1, required: false, count: 1, category: 'frontend' },
+  ]);
+});
+
+test('prefilterJobs produces identical ordering for both keyword shapes', () => {
+  const profile = buildResumeProfile(CV);
+  const compact = prefilterJobs(profile, [
+    compactJob,
+    { ...compactJob, id: 'j2', keywords: [{ t: 'php', w: 1, r: true }] },
+  ]);
+  const expanded = prefilterJobs(profile, [
+    expandedJob,
+    { ...expandedJob, id: 'j2', keywords: [{ term: 'php', weight: 1, required: true }] },
+  ]);
+  assert.deepEqual(
+    compact.map((row) => [row.job.id, row.prefilterScore, row.matchedTerms]),
+    expanded.map((row) => [row.job.id, row.prefilterScore, row.matchedTerms]),
+  );
+  assert.equal(compact[0].job.id, 'j1');
+  assert.ok(compact[0].prefilterScore > compact[1].prefilterScore);
+});
+
+test('prefilterJobs tie-break is deterministic and not sort-stability luck', () => {
+  const profile = buildResumeProfile(CV);
+  const shared = { title: 'Backend Engineer', keywords: [{ t: 'python', w: 1, r: true }] };
+  const jobs = [
+    { ...shared, id: 'bbb', posted_at: '2026-01-01' },
+    { ...shared, id: 'aaa', posted_at: '2026-01-01' },
+    { ...shared, id: 'ccc', posted_at: '2026-02-01' },
+  ];
+  const order = () => prefilterJobs(profile, jobs).map((row) => row.job.id);
+  // posted_at desc first, then id asc.
+  assert.deepEqual(order(), ['ccc', 'aaa', 'bbb']);
+  // Reversing the input must not change the output.
+  assert.deepEqual(prefilterJobs(profile, [...jobs].reverse()).map((r) => r.job.id), ['ccc', 'aaa', 'bbb']);
+  assert.deepEqual(order(), order());
+});
+
+test('prefilterJobs honours the limit and survives junk input', () => {
+  const profile = buildResumeProfile(CV);
+  const jobs = Array.from({ length: 40 }, (_, i) => ({
+    id: `j${i}`,
+    keywords: [{ t: 'python', w: 1, r: true }],
+  }));
+  assert.equal(prefilterJobs(profile, jobs).length, 30);
+  assert.equal(prefilterJobs(profile, jobs, { limit: 5 }).length, 5);
+  assert.deepEqual(prefilterJobs(null, null), []);
+  assert.deepEqual(prefilterJobs(profile, [null, undefined, 3]), []);
+});
+
+test('titleOverlap is bounded and empty-safe', () => {
+  assert.equal(titleOverlap('Backend Engineer', ['Senior Backend Engineer']), 1);
+  assert.equal(titleOverlap('Backend Engineer', ['Graphic Designer']), 0);
+  assert.equal(titleOverlap('', ['Backend Engineer']), 0);
+  assert.equal(titleOverlap('Backend Engineer', []), 0);
+  assert.equal(titleOverlap(null, null), 0);
+});
+
+test('normalizeJobKeywords merges duplicate terms instead of dropping the later one', () => {
+  // First-wins dedupe threw away the STRONGER signal: the second row carried
+  // required:true and weight 2 and was discarded whole. Reachable from any
+  // hand-built or externally-ingested keyword payload.
+  const merged = normalizeJobKeywords({
+    keywords: [
+      { t: 'python', r: false },
+      { t: 'Python', w: 2, r: true, c: 3 },
+      { term: 'python', weight: 0.5, required: false, count: 2 },
+      { t: 'docker', w: 1, r: true },
+    ],
+  });
+
+  assert.equal(merged.length, 2);
+  const python = merged[0];
+  assert.equal(python.term, 'python', 'the merged entry keeps its first-occurrence position');
+  assert.equal(python.required, true, 'required is the OR across occurrences');
+  assert.equal(python.weight, 2, 'weight is the max across occurrences');
+  assert.equal(python.count, 3, 'count is the max, not the sum — a duplicate row is an artifact');
+  assert.equal(merged[1].term, 'docker');
+});
+
+test('normalizeJobKeywords merges across the compact and expanded shapes', () => {
+  const merged = normalizeJobKeywords({
+    keywords: [{ term: 'kubernetes', weight: 1, required: false }],
+    keyword_terms: ['Kubernetes'],
+  });
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].weight, 1);
+  assert.equal(merged[0].count, 1);
+});

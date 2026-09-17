@@ -2,6 +2,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './components/OnextapDashboard';
+import ErrorBoundary from './components/ErrorBoundary';
+import { installGlobalErrorHandlers } from './logger';
+
+// Catches unhandled rejections and errors thrown outside React's render tree.
+installGlobalErrorHandlers();
 
 const isExtension = !!(window.chrome && chrome.runtime && chrome.runtime.id);
 const params = new URLSearchParams(window.location.search);
@@ -20,6 +25,8 @@ if (urlMode === 'dashboard') {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App initialView={startView} />
+    <ErrorBoundary>
+      <App initialView={startView} />
+    </ErrorBoundary>
   </React.StrictMode>
 );

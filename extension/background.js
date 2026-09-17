@@ -15,13 +15,17 @@
 // `token` is the caller's Supabase JWT: the two proxied calls hit authenticated
 // endpoints, and the worker holds no session of its own.
 
+import { log, installWorkerErrorHandlers } from './logger.js';
+
+installWorkerErrorHandlers();
+
 const API_URL = (
   import.meta.env.VITE_API_URL ||
   (import.meta.env.PROD ? 'https://www.onextap.com' : '')
 ).replace(/\/$/, '');
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('[Onextap] background service worker installed');
+  log.info('background service worker installed');
 });
 
 // ─── scrapeJobPage ────────────────────────────────────────────────────────────
@@ -145,8 +149,17 @@ async function handleMessage(msg, sendResponse) {
         });
         const body = await res.json();
         if (res.ok && body.data) {
-          sendResponse({ success: true, data: body.data });
+          // `text` is the raw transcription alongside the structured `data`.
+          // The corpus builder and the fabrication validator both diff against
+          // it, and the file bytes are discarded after this call — so if it is
+          // dropped here, the only way to recover it is another upload. Older
+          // server builds do not return it; forwarding undefined is harmless.
+          sendResponse({ success: true, data: body.data, text: body.text });
         } else {
+          log.error('resume parse rejected by server', {
+            status: res.status,
+            requestId: res.headers.get('X-Request-Id'),
+          });
           sendResponse({
             success: false,
             error: body.error || `Resume parse failed (${res.status})`,
@@ -154,6 +167,7 @@ async function handleMessage(msg, sendResponse) {
           });
         }
       } catch (err) {
+        log.error('resume parse request failed', err, { fileType, api: API_URL });
         sendResponse({ success: false, error: err.message });
       }
       return;
@@ -199,6 +213,7 @@ async function handleMessage(msg, sendResponse) {
           },
         });
       } catch (e) {
+        log.error('active tab scrape failed', e);
         sendResponse({ success: false, error: e.message });
       }
       return;
@@ -221,21 +236,28 @@ async function handleMessage(msg, sendResponse) {
         if (res.ok) {
           sendResponse({ success: true, text: respBody.text || respBody.answer || '' });
         } else {
+          log.error('answer generation rejected by server', {
+            status: res.status,
+            requestId: res.headers.get('X-Request-Id'),
+          });
           sendResponse({
             success: false,
             error: respBody.error || `Generation failed (${res.status})`,
           });
         }
       } catch (err) {
+        log.error('answer generation request failed', err, { api: API_URL });
         sendResponse({ success: false, error: err.message });
       }
       return;
     }
 
     // 5) Unknown message
+    log.warn('unknown message kind', { kind });
     sendResponse({ success: false, error: 'Unknown request' });
   } catch (outerErr) {
     // Safety net — never let an exception escape without a response
+    log.error('unhandled error in message handler', outerErr, { kind });
     sendResponse({ success: false, error: outerErr.message });
   }
 }

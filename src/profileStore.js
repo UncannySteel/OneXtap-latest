@@ -1,8 +1,7 @@
 import { storage } from './storage';
 
-export const PROFILES_STORAGE_KEY = 'onextap_profiles';
-export const ACTIVE_PROFILE_KEY = 'activeProfileId';
-export const DEFAULT_PROFILE_ID = 'default';
+const PROFILES_STORAGE_KEY = 'onextap_profiles';
+const DEFAULT_PROFILE_ID = 'default';
 export const MAX_PROFILE_NAME_LENGTH = 32;
 export const MAX_COVER_LETTERS_PER_PROFILE = 10;
 
@@ -59,7 +58,7 @@ export async function loadProfileStore() {
 /**
  * @param {{ profiles: Record<string, StoredProfile>, activeProfileId: string }} store
  */
-export async function saveProfileStore(store) {
+async function saveProfileStore(store) {
   await storage.set(PROFILES_STORAGE_KEY, store);
   await syncLegacyUserProfile(store);
 }
@@ -68,7 +67,7 @@ export async function saveProfileStore(store) {
  * Keep user_profile in sync so content script + existing code keep working.
  * @param {{ profiles: Record<string, StoredProfile>, activeProfileId: string }} store
  */
-export async function syncLegacyUserProfile(store) {
+async function syncLegacyUserProfile(store) {
   const merged = profileToLegacyUserProfile(store);
   if (merged) {
     await storage.set(LEGACY_PROFILE_KEY, merged);
@@ -79,7 +78,7 @@ export async function syncLegacyUserProfile(store) {
  * @param {{ profiles: Record<string, StoredProfile>, activeProfileId: string }} store
  * @returns {Record<string, unknown>|null}
  */
-export function profileToLegacyUserProfile(store) {
+function profileToLegacyUserProfile(store) {
   const active = store.profiles?.[store.activeProfileId];
   if (!active) return null;
   return {
@@ -144,7 +143,7 @@ export async function setActiveProfileId(profileId) {
  *   so a profile does not collide with itself.
  * @returns {boolean}
  */
-export function profileNameExists(profiles, name, excludeId = null) {
+function profileNameExists(profiles, name, excludeId = null) {
   const normalized = String(name || '').trim().toLowerCase();
   return Object.entries(profiles).some(([id, p]) => {
     if (excludeId && id === excludeId) return false;
@@ -268,20 +267,4 @@ export function listProfiles(store) {
     name: p.name,
     isDefault: !!p.isDefault || id === DEFAULT_PROFILE_ID,
   }));
-}
-
-/** Export full store for backup — includes profile structure. */
-export async function exportProfileData() {
-  return loadProfileStore();
-}
-
-/** Import from exported file — replaces store when valid. */
-export async function importProfileData(data) {
-  if (!data?.profiles || typeof data.profiles !== 'object') {
-    throw new Error('Invalid profile export format.');
-  }
-  const activeProfileId = data.activeProfileId || Object.keys(data.profiles)[0];
-  const store = { profiles: data.profiles, activeProfileId };
-  await saveProfileStore(store);
-  return store;
 }

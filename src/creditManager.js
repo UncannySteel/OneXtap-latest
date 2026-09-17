@@ -1,4 +1,7 @@
 import { getAccessToken } from './auth';
+import { log as baseLog } from './logger';
+
+const log = baseLog.child('credits');
 
 const rawApiUrl =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
@@ -56,7 +59,13 @@ export const creditManager = {
    *
    * Premium accounts report `Infinity` rather than a number — guard with
    * Number.isFinite before rendering or comparing.
-   * @returns {Promise<{credits: number|null, error?: string}>}
+   *
+   * `isPremium` here is the flag stored on the profile row, returned by the
+   * same request — so callers that need both need only this one call. It is
+   * NOT a fresh check against Dodo: verifyPremium() does that, and
+   * DashboardView runs it once per login, which is what keeps this flag
+   * honest. Credit spending is gated server-side regardless.
+   * @returns {Promise<{credits: number|null, isPremium: boolean, error?: string}>}
    *   `credits` is null when the request failed; `error` then holds why.
    */
   getCreditsWithStatus: async () => {
@@ -64,41 +73,17 @@ export const creditManager = {
       const data = await authFetch('/api/credits');
       return {
         credits: data.isPremium ? Infinity : data.credits,
+        isPremium: !!data.isPremium,
         error: undefined,
       };
     } catch (error) {
       const msg = error?.message || String(error);
-      console.error('[creditManager] Error getting credits:', msg);
+      log.error('[creditManager] Error getting credits:', msg);
       return {
         credits: null,
+        isPremium: false,
         error: msg,
       };
-    }
-  },
-
-  /**
-   * Get current credit balance from the server.
-   * Returns 0 on error (for backward compat) and Infinity for premium
-   * accounts. Use getCreditsWithStatus when you need the error reason.
-   * @returns {Promise<number>}
-   */
-  getCredits: async () => {
-    const { credits, error } = await creditManager.getCreditsWithStatus();
-    if (error) return 0;
-    return credits ?? 0;
-  },
-
-  /**
-   * Check if user can use AI (has credits or is premium).
-   * @returns {Promise<boolean>}
-   */
-  canUseAI: async () => {
-    try {
-      const data = await authFetch('/api/credits');
-      return data.isPremium || data.credits > 0;
-    } catch (error) {
-      console.error('Error checking AI availability:', error);
-      return false;
     }
   },
 
@@ -111,27 +96,35 @@ export const creditManager = {
     try {
       return await authFetch('/api/credits/deduct', { method: 'POST' });
     } catch (error) {
-      console.error('Error deducting credit:', error);
+      log.error('Error deducting credit:', error);
       return { success: false, remaining: 0, error: error.message };
     }
   },
 
   /**
-   * Alias for verifyPremium — same request, same result.
-   * Kept because both names are already in use at call sites.
-   * @returns {Promise<boolean>}
-   */
-  isPremium: async () => creditManager.verifyPremium(),
-
-  /**
-   * Refund one credit (when AI generation fails after deduction).
-   * @returns {Promise<{success: boolean, remaining: number, error?: string}>}
+   * Give back one credit after a generation that failed AFTER being charged.
+   *
+   * ═══ WHY THIS EXISTS ═══
+   *
+   * POST /api/credits/refund has been on the server since the beginning and
+   * had no client method at all. Every caller that deducts post-success has a
+   * window — the generation succeeded, the credit was spent, and then
+   * something downstream failed — in which the user has paid for nothing and
+   * nothing in the app can give it back. That is a silent, unreportable loss
+   * of the only scarce resource in the product.
+   *
+   * Shaped exactly like deductCredit, including returning a failure object
+   * rather than throwing: a refund runs on an error path, and a throw here
+   * would replace the error the user actually needs to see with a second one.
+   * Premium users are not charged and so are not refunded; the server says so.
+   *
+   * @returns {Promise<{success: boolean, remaining: number, isPremium?: boolean, error?: string}>}
    */
   refundCredit: async () => {
     try {
       return await authFetch('/api/credits/refund', { method: 'POST' });
     } catch (error) {
-      console.error('Error refunding credit:', error);
+      log.error('Error refunding credit:', error);
       return { success: false, remaining: 0, error: error.message };
     }
   },
@@ -149,7 +142,7 @@ export const creditManager = {
       const data = await authFetch('/api/verify-premium');
       return data.isPremium === true;
     } catch (error) {
-      console.warn('Premium verification failed:', error.message);
+      log.warn('Premium verification failed:', error.message);
       return false;
     }
   },

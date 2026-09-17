@@ -133,16 +133,6 @@ export async function signOut() {
 }
 
 /**
- * Get the current session (JWT + user).
- * Returns null if not signed in.
- * @returns {Promise<{session: object|null, error: object|null}>}
- */
-export async function getSession() {
-  const { data, error } = await supabase.auth.getSession();
-  return { session: data?.session ?? null, error };
-}
-
-/**
  * Get the current user from the session.
  * @returns {Promise<object|null>}
  */

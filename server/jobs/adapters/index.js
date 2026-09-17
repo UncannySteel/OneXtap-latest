@@ -1,0 +1,126 @@
+/**
+ * Job source adapters — the ingest cascade.
+ *
+ * ═══ THE CONTRACT ═══
+ *
+ *   {
+ *     id: string,
+ *     enabled(): boolean,
+ *     supportsPaging: boolean,
+ *     async fetch({ query, location, country, remote, limit, page, signal })
+ *         -> { items: RawItem[], hasMore: boolean, error: string|null },
+ *     toListing(rawItem): NormalizedListing | null
+ *   }
+ *
+ * Every adapter file declares its members in exactly that order, so the four
+ * read as one family and a missing member is visible by shape alone.
+ *
+ * ─── fetch() NEVER THROWS ───
+ *
+ * That is the entire point of this layer. The orchestrator runs sources in
+ * order and falls through to the next one; a throw from adapter #1 would take
+ * the whole run down and adapters #2-#4 would never be tried. So every network
+ * error, every 500, every unparseable body is caught and returned as
+ * `{ items: [], hasMore: false, error: '<reason>' }`.
+ *
+ * ─── BUT EMPTY IS NOT THE SAME AS FINE ───
+ *
+ * A failed fetch and a genuinely empty result page look identical from the row
+ * count. `error` is what separates them, and it is persisted to
+ * job_ingest_state.last_error and surfaced in the ingest API response. A dead
+ * Adzuna key must never be indistinguishable from a quiet job market — that is
+ * the failure mode where the product looks fine and silently serves nothing
+ * for a month.
+ *
+ * `error` is one of:
+ *   'timeout'  - AbortController fired; the provider did not answer in time
+ *   'quota'    - 429; rate limited or the plan's ceiling is hit
+ *   'bad_key'  - 401/403; credentials are wrong, missing, or revoked
+ *   'parse'    - a 200 whose body is not the JSON shape we expect
+ *   'network'  - 5xx, DNS, connection reset; the provider's problem
+ *   'disabled' - the adapter is registered but intentionally off
+ *
+ * ─── NO RETRY, NO BACKOFF ───
+ *
+ * Deliberate, and consistent with the rest of this repo, which retries nothing
+ * anywhere. A failed page is recorded and skipped; the cursor does not advance
+ * past it, and the next daily run picks it up. Retrying inside a function with
+ * a 45-second budget and a 60-second platform ceiling mostly converts one
+ * recorded failure into one killed run.
+ *
+ * ─── toListing() ───
+ *
+ * Provider field names -> the shared shape consumed by
+ * server/jobs/normalizeListing.js, which does the universal work (id prefix,
+ * truncation, keyword extraction, dedupe hash). Returns null to skip an item.
+ */
+import { adzunaAdapter } from './adzuna.js';
+import { remotiveAdapter } from './remotive.js';
+import { atsAdapter } from './ats.js';
+import { wellfoundAdapter } from './wellfound.js';
+import { cacheAdapter } from './cache.js';
+
+/**
+ * The contract above, as a type the adapter files can point at.
+ *
+ * @typedef {object} JobAdapter
+ * @property {string} id Stable source key; also the job_listings.source value
+ *   and the job_ingest_state primary key, so it is not free to rename.
+ * @property {() => boolean} enabled Whether this source should run at all.
+ * @property {boolean} supportsPaging False means one page exists; the
+ *   orchestrator wraps the cursor back to 1 after every run.
+ * @property {(opts?: object) => Promise<{items: object[], hasMore: boolean, error: string|null}>} fetch
+ *   Never throws; failures come back as an `error` reason.
+ * @property {(raw: unknown) => object|null} toListing Provider shape to the
+ *   shared listing shape; null skips the item.
+ */
+
+/**
+ * The closed set of reasons an adapter may report. Rendered in the ingest API
+ * response and stored in job_ingest_state.last_error, so widening it is a
+ * change to two contracts at once, not a local edit.
+ *
+ * Note that ingest.js additionally writes 'budget' and 'db: <message>' into
+ * its own perSource[].error — those are orchestrator states, not adapter
+ * reasons, and are deliberately outside this list.
+ */
+export const ERROR_REASONS = Object.freeze([
+  'timeout',
+  'quota',
+  'bad_key',
+  'parse',
+  'network',
+  'disabled',
+]);
+
+/**
+ * Order IS the cascade order. Adzuna first (widest coverage, paged), Remotive
+ * second (keyless, so it still works when Adzuna's key lapses), ATS third
+ * (Greenhouse/Lever/Ashby boards — narrow coverage, but the only source whose
+ * descriptions are the COMPLETE posting, so it runs before the placeholder and
+ * the fixtures), Wellfound fourth (a placeholder — see its header), cache last
+ * as the offline floor.
+ *
+ * @type {JobAdapter[]}
+ */
+export const ADAPTERS = [
+  adzunaAdapter,
+  remotiveAdapter,
+  atsAdapter,
+  wellfoundAdapter,
+  cacheAdapter,
+];
+
+/**
+ * Look up one adapter by its id.
+ *
+ * @param {string} id An adapter id, e.g. from the route's ?sources= parameter.
+ * @returns {JobAdapter|null} null for an unknown id — the caller filters those
+ *   out rather than failing the run, so a typo in ?sources= narrows the run
+ *   instead of breaking it.
+ */
+export function getAdapter(id) {
+  return ADAPTERS.find((a) => a.id === id) || null;
+}
+
+export { adzunaAdapter, remotiveAdapter, atsAdapter, wellfoundAdapter, cacheAdapter };

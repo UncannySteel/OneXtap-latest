@@ -31,9 +31,17 @@ Supabase holds only accounts and billing state: auth users, plus a `profiles` ro
 │   └── icon.png
 ├── src/                    # React frontend (dashboard + popup, one app)
 │   ├── components/
-│   │   ├── OnextapDashboard.jsx   # Dashboard, popup, landing page, guided tour
-│   │   └── ExtensionBridge.jsx    # postMessage RPC endpoint (?mode=extension-bridge)
+│   │   ├── OnextapDashboard.jsx   # App root: picks popup vs dashboard, splash screen
+│   │   ├── ExtensionBridge.jsx    # postMessage RPC endpoint (?mode=extension-bridge)
+│   │   ├── shared/                # Components rendered by BOTH surfaces
+│   │   ├── popup/                 # Extension popup screens
+│   │   └── dashboard/             # Web dashboard screens
 │   ├── popup.jsx           # React entry point
+│   ├── config.js           # API/dashboard URLs, extension ID, model name
+│   ├── extensionClient.js  # Extension ID / icon URL / web store helpers
+│   ├── profileDefaults.js  # Blank profile shape + option lists
+│   ├── answerStudio.js     # AI style presets and timeout budgets
+│   ├── autofillSections.js # Autofill section list + default toggles
 │   ├── auth.js             # Supabase auth helpers
 │   ├── supabaseClient.js   # Supabase client (chrome.storage session adapter)
 │   ├── creditManager.js    # Credit + premium API client
@@ -134,7 +142,7 @@ npm run build
 
 The dashboard messages the extension by ID. When it is opened from the popup the real ID arrives as `?extensionId=`, so this only matters for opening the dashboard directly — but it is worth setting.
 
-In `src/components/OnextapDashboard.jsx`, set `EXTENSION_ID_FALLBACK` to the ID you copied, then rebuild and reload the extension in `chrome://extensions/`.
+In `src/config.js`, set `EXTENSION_ID_FALLBACK` to the ID you copied, then rebuild and reload the extension in `chrome://extensions/`.
 
 ### 7. Start the backend
 
@@ -152,6 +160,30 @@ npm run build:dashboard  # Web dashboard build → dist-dashboard/
 ```
 
 After any code change, rebuild and reload the extension in Chrome.
+
+### Logging
+
+Nothing calls `console.*` directly; each runtime has a logger that redacts
+secrets and profile data before printing. Levels are `error`, `warn`, `info`,
+`debug`.
+
+```bash
+LOG_LEVEL=debug npm run server:dev
+```
+
+- **Server** — `LOG_LEVEL` (default `info` in production, `debug` otherwise).
+  Set `LOG_FORMAT=json` for one JSON object per line; this is automatic on
+  Vercel so log drains can parse it. Every response carries `X-Request-Id`,
+  and every log line inside that request repeats it as `rid`.
+- **Dashboard and popup** — `VITE_LOG_LEVEL` (default `warn` in a production
+  build). Recent warnings and errors are kept in memory; `__onextapIssues()`
+  in the console dumps them, and the error screen has a "Copy diagnostics"
+  button.
+- **Content script** — errors and warnings always print; set
+  `window.__onextapDebug = true` in the page console for the rest.
+
+When a user reports a failure, ask for the `X-Request-Id` or the copied
+diagnostics — that is what ties their report to a server log line.
 
 There are two separate builds from the same React source. `vite.config.js` produces the extension (crx plugin, relative base). `vite.dashboard.config.js` produces the standalone web dashboard — that is the build command in `vercel.json`, alongside `api/index.js`, which serves the Express app as a serverless function.
 

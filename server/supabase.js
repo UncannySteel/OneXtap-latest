@@ -5,6 +5,10 @@
  * manage profiles / credits on behalf of authenticated users.
  */
 import { createClient } from '@supabase/supabase-js';
+import { log } from './logger.js';
+
+const authLog = log.child('auth');
+const dbLog = log.child('db');
 
 /** Human-readable message for API JSON + logs (PostgREST / Postgres). */
 export function formatSupabaseError(err) {
@@ -28,14 +32,14 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  console.error(
+  dbLog.error(
     '[Supabase] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in server .env'
   );
 } else if (
   supabaseServiceKey.includes('PASTE_') ||
   supabaseServiceKey === 'eyJ...your-service-role-key...'
 ) {
-  console.error(
+  dbLog.error(
     '[Supabase] SUPABASE_SERVICE_ROLE_KEY appears to be a placeholder. Replace it with your real key from Supabase → Settings → API → service_role'
   );
 }
@@ -111,7 +115,7 @@ export async function getProfile(userId, userEmail = null) {
       description: 'Profile backfill: welcome credits (row was missing)',
     });
   if (backfillTxError) {
-    console.warn(
+    dbLog.warn(
       '[Supabase] credit_transactions backfill failed after profile insert:',
       formatSupabaseError(backfillTxError)
     );
@@ -151,7 +155,7 @@ export function requireAuth(req, res, next) {
     .getUser(token)
     .then(({ data, error }) => {
       if (error || !data?.user) {
-        console.error('[Auth] Token verification failed:', error?.message || 'No user in response');
+        authLog.error('token verification failed:', error?.message || 'No user in response');
         return res.status(401).json({ error: 'Invalid or expired token' });
       }
       req.userId = data.user.id;
@@ -160,7 +164,7 @@ export function requireAuth(req, res, next) {
       next();
     })
     .catch((err) => {
-      console.error('[Auth] Token verification error:', err?.message || err);
+      authLog.error('token verification error:', err?.message || err);
       res.status(401).json({ error: 'Token verification failed' });
     });
 }

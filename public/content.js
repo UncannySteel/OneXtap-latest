@@ -23,6 +23,31 @@
 if (!window.__onextapAutofillLoaded) {
   window.__onextapAutofillLoaded = true;
 
+  // ── Logging ────────────────────────────────────────────────────────────────
+  // Inline on purpose: this file is copied verbatim into the build and cannot
+  // import (see the header). It is the trimmed-down sibling of
+  // src/logger.js and extension/logger.js.
+  //
+  // This code runs inside a third-party page, so its output lands in that
+  // site's devtools console. Never log profile values, field values, or
+  // scraped page text here — only error names, messages, and counts. The
+  // richer diagnostics belong in the popup and the service worker.
+  //
+  // Errors and warnings always print. Set window.__onextapDebug = true in the
+  // page console for the verbose ones.
+  const log = {
+    error: (msg, err) => console.error('[Onextap]', msg, err ? errShape(err) : ''),
+    warn: (msg, err) => console.warn('[Onextap]', msg, err ? errShape(err) : ''),
+    debug: (msg, extra) => {
+      if (window.__onextapDebug) console.log('[Onextap]', msg, extra ?? '');
+    },
+  };
+
+  function errShape(err) {
+    if (!err || typeof err !== 'object') return { message: String(err) };
+    return { name: err.name, message: String(err.message || '').slice(0, 300) };
+  }
+
   // ── React/Vue-safe value setter ────────────────────────────────────────────
   /**
    * Sets the value of an input or textarea in a way that React and Vue detect,
@@ -402,7 +427,7 @@ if (!window.__onextapAutofillLoaded) {
         }
       } catch (fieldErr) {
         // One bad field must never abort the run
-        console.warn('[Onextap] Error filling field:', fieldErr);
+        log.warn('error filling field', fieldErr);
       }
     }
 
@@ -568,9 +593,10 @@ if (!window.__onextapAutofillLoaded) {
     if (msg.action === 'AUTOFILL_TRIGGERED') {
       try {
         const count = autofill(msg.profile);
+        log.debug('autofill complete', { filled: count });
         sendResponse({ success: true, filled: count });
       } catch (err) {
-        console.error('[Onextap] Autofill error:', err);
+        log.error('autofill failed', err);
         sendResponse({ success: false, error: err.message });
       }
       return false;
@@ -580,6 +606,7 @@ if (!window.__onextapAutofillLoaded) {
       try {
         sendResponse({ success: true, context: scrapePageContext() });
       } catch (err) {
+        log.error('page context scrape failed', err);
         sendResponse({ success: false, error: err.message });
       }
       return false;
@@ -589,6 +616,7 @@ if (!window.__onextapAutofillLoaded) {
       try {
         sendResponse({ success: true, sections: detectFormSections() });
       } catch (err) {
+        log.error('form section detection failed', err);
         sendResponse({ success: false, error: err.message });
       }
       return false;
@@ -599,6 +627,7 @@ if (!window.__onextapAutofillLoaded) {
         const ok = fillCoverLetter(msg.text || '');
         sendResponse({ success: ok });
       } catch (err) {
+        log.error('cover letter fill failed', err);
         sendResponse({ success: false, error: err.message });
       }
       return false;

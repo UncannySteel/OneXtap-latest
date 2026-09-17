@@ -32,3 +32,9 @@ yarn-error.log*
 
 # OS
 Thumbs.db
+
+# Backups of secret files — never committable
+.env.bak
+.env.*.bak
+server/.env.bak
+*.env.bak

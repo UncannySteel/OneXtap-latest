@@ -395,20 +395,21 @@
     <main class="container">
       <span class="badge">Legal</span>
       <h1>Privacy Policy</h1>
-      <p class="subtitle">Last Updated: February 2026</p>
+      <p class="subtitle">Last Updated: September 2026</p>
 
       <div class="section">
         <span class="section-number">1</span>
         <h2>Data Ownership & Local-First Philosophy</h2>
         <p>Onextap is built on the principle of <strong>Data Sovereignty</strong>. By default, all personal information, resume data, and application history are stored locally on your device within the browser's secure storage.</p>
+        <p>Stored locally is not the same as never transmitted. When you use an AI feature, the relevant text is sent out to be processed — sections 2 and 4 set out exactly what is sent, to whom, and what is kept.</p>
       </div>
 
       <div class="section">
         <span class="section-number">2</span>
         <h2>Data Collection and Usage</h2>
         <p><strong>Personal Information:</strong> We do not sell, rent, or trade your personal data. Data is used solely to facilitate the autofill functionality of job applications.</p>
-        <p><strong>AI Processing:</strong> When you use the "AI Refine" feature, the job description and your selected saved answer are sent to our secure AI partners (Anthropic/Google). This data is processed in a "stateless" manner and is not used to train global AI models.</p>
-        <p><strong>Cloud Sync (Optional):</strong> If you enable Cloud Backup, your data is transmitted via SSL/TLS encryption to our secure database (Supabase) to allow syncing across your devices.</p>
+        <p><strong>AI Processing:</strong> When you generate or improve an answer, your question, your draft answer, and the job description from the page you have open are sent to <strong>Groq</strong> for processing. When you upload a resume, the file is sent to <strong>Google</strong> (Gemini) to extract structured profile data. This data is processed in a "stateless" manner and is not used to train global AI models. When you use Job Matches, your resume text is also sent to Groq for ranking, and a copy of that request is retained by our observability provider — section 4 explains this in full.</p>
+        <p><strong>Account &amp; Billing Data:</strong> If you create an account, your email address, credit balance, and subscription status are stored in our database (Supabase), transmitted via SSL/TLS encryption. Your profile data — personal details, saved answers, and cover letters — is <strong>not</strong> uploaded and remains on your device.</p>
       </div>
 
       <div class="section">
@@ -416,14 +417,25 @@
         <h2>Third-Party Services</h2>
         <p>Onextap interacts with the following services:</p>
         <ul>
-          <li><strong>Supabase:</strong> For encrypted authentication and cloud storage.</li>
-          <li><strong>Anthropic/Google:</strong> For natural language processing and resume parsing.</li>
+          <li><strong>Supabase:</strong> For encrypted authentication and billing records (credits and subscription status).</li>
+          <li><strong>Groq:</strong> For generating and improving application answers, and for ranking job listings against your resume.</li>
+          <li><strong>Google (Gemini):</strong> For parsing uploaded resumes into structured profile data.</li>
+          <li><strong>Opik (Comet):</strong> For recording AI requests so we can diagnose and improve them. These records include resume text and are retained — see section 4.</li>
           <li><strong>Dodo Payments:</strong> For secure payment processing (we never see or store your credit card details).</li>
         </ul>
       </div>
 
       <div class="section">
         <span class="section-number">4</span>
+        <h2>Job Matching &amp; AI Observability</h2>
+        <p><strong>What is sent when you match jobs:</strong> Job Matches ranks listings against your resume. To do that, the text of your active resume — your summary, work history, and skills — is sent to <strong>Groq</strong> together with the job listings being considered, so that a language model can score each one and write the short explanation you see next to it. This happens only when you use the feature. We do not store your resume text in our database.</p>
+        <p><strong>What is recorded, and for how long:</strong> To debug ranking quality and catch failures, those AI requests and their responses are recorded with <strong>Opik</strong>, an AI observability service operated by Comet. <strong>These records include the resume text that was sent, and unlike the AI requests themselves they are retained rather than discarded after the request completes.</strong> They are accessible to the Onextap team. We use them only to diagnose and improve how the product works. We do not sell them, do not use them for advertising, and do not use them to build a profile of you.</p>
+        <p><strong>When nothing is sent:</strong> Resume and profile text leaves your device only when you use an AI feature — uploading a resume for parsing, generating or improving an answer, personalizing a cover letter, or matching jobs. Autofill itself is entirely local: filling a form uses only the copy of your profile stored in your browser.</p>
+        <p><strong>Your choices:</strong> You can use Onextap's autofill and local profile features without ever invoking an AI feature. If you would like the records described above deleted, contact us at the address below and we will remove them.</p>
+      </div>
+
+      <div class="section">
+        <span class="section-number">5</span>
         <h2>Security</h2>
         <p>We employ industry-standard encryption. Your "Master Profile" is yours alone. We do not have "backdoor" access to your locally stored data.</p>
       </div>
