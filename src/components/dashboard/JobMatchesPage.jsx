@@ -427,14 +427,36 @@ const ResumeSummary = ({ resume, profile }) => (
  * release, and a source the pool has never seen must not appear at all.
  * Unchecked everywhere means "all of them" — see the note under the row.
  *
+ * ═══ WHICH SOURCES ARE HIDDEN ═══
+ *
+ * A source is dropped only when it is BOTH switched off server-side AND holds
+ * nothing in the pool. Both halves matter, and the second is the one that is
+ * easy to get wrong:
+ *
+ *   - `wellfound` and `cache` are off with 0 rows, so they are not filters at
+ *     all — checking one asks for a subset that cannot exist. They were also
+ *     actively misleading: `cache` names an internal fixture source of
+ *     synthetic listings to someone who has no idea what it is, and neither
+ *     has anything to do with the jobs on screen.
+ *   - `ats` is off right now (its board list is unset in this deploy) and
+ *     still holds hundreds of real, searchable listings from when it last ran.
+ *     Hiding it on "off" alone would take away a filter that works. Off is not
+ *     the same as empty, and only the pair is grounds for hiding.
+ *
+ * `enabled !== false` rather than `=== true`, so a meta response that omits
+ * the field still shows the source: the failure mode of something unrecognised
+ * is to appear, not to vanish silently.
+ *
  * @param {object} props
- * @param {Array<{id: string, count: number, lastError?: string}>|undefined} props.sources
+ * @param {Array<{id: string, count: number, enabled?: boolean, lastError?: string}>|undefined} props.sources
  * @param {boolean} props.loading
  * @param {string[]} props.selected
  * @param {(sourceId: string) => void} props.onToggle
  */
 const SourceFilters = ({ sources, loading, selected, onToggle }) => {
-  const available = asObjectArray(sources);
+  const available = asObjectArray(sources).filter(
+    (source) => source.enabled !== false || finiteOr(source.count, 0) > 0
+  );
   return (
     <div className="mt-4">
       <span className={FIELD_LABEL}>Sources</span>
@@ -688,6 +710,11 @@ const RunTransparency = ({ result, meta, returnedCount, open, onToggle, onRetryM
                   : 'keyword matcher only'}
               {result?.cached === true && ' · served from cache'}
               {Number.isFinite(result?.meta?.matcherVersion) && ` · matcher v${result.meta.matcherVersion}`}
+              {/* Why the run stopped, when it stopped early. Without this a run
+                  cut short by its own clock is indistinguishable from one that
+                  simply found nothing better to say — same short list, same
+                  flat scores, no way to tell which. */}
+              {result?.meta?.budgetExhausted === true && ' · stopped early to stay within the time budget'}
             </dd>
           </div>
 

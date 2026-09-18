@@ -57,7 +57,6 @@
 import { adzunaAdapter } from './adzuna.js';
 import { remotiveAdapter } from './remotive.js';
 import { atsAdapter } from './ats.js';
-import { wellfoundAdapter } from './wellfound.js';
 import { cacheAdapter } from './cache.js';
 
 /**
@@ -97,9 +96,26 @@ export const ERROR_REASONS = Object.freeze([
  * Order IS the cascade order. Adzuna first (widest coverage, paged), Remotive
  * second (keyless, so it still works when Adzuna's key lapses), ATS third
  * (Greenhouse/Lever/Ashby boards — narrow coverage, but the only source whose
- * descriptions are the COMPLETE posting, so it runs before the placeholder and
- * the fixtures), Wellfound fourth (a placeholder — see its header), cache last
- * as the offline floor.
+ * descriptions are the COMPLETE posting, so it runs before the fixtures),
+ * cache last as the offline floor.
+ *
+ * ═══ WELLFOUND IS NOT HERE, AND SHOULD NOT BE ADDED ═══
+ *
+ * It was, as a permanently-disabled placeholder, and was removed because a
+ * source that can never return a row is not a source — it reached the pool
+ * filter UI as a checkbox nobody could usefully tick and a warning triangle
+ * for a fault nobody had. The reasoning it carried is worth more than the
+ * stub was, so it is kept here:
+ *
+ * There is no public Wellfound jobs API. AngelList's `api.angel.co` endpoints
+ * were switched off during the rebrand and nothing replaced them; the current
+ * API surface is recruiter-side and gated behind a partnership. DO NOT WRITE A
+ * SCRAPER: it breaches their terms — in a product that asks users for their
+ * employment history — and their listings are client-rendered behind bot
+ * detection, so it would mean shipping a headless browser into a function
+ * measured in seconds. If Wellfound ever ships a real feed, add an adapter
+ * then; until then its absence is the decision, and this paragraph is the
+ * record of it.
  *
  * @type {JobAdapter[]}
  */
@@ -107,7 +123,6 @@ export const ADAPTERS = [
   adzunaAdapter,
   remotiveAdapter,
   atsAdapter,
-  wellfoundAdapter,
   cacheAdapter,
 ];
 
@@ -123,4 +138,4 @@ export function getAdapter(id) {
   return ADAPTERS.find((a) => a.id === id) || null;
 }
 
-export { adzunaAdapter, remotiveAdapter, atsAdapter, wellfoundAdapter, cacheAdapter };
+export { adzunaAdapter, remotiveAdapter, atsAdapter, cacheAdapter };

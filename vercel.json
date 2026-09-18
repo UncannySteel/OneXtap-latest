@@ -2,10 +2,29 @@
   "version": 2,
   "buildCommand": "vite build --config vite.dashboard.config.js",
   "outputDirectory": "dist-dashboard",
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.js" },
-    { "source": "/privacy-policy", "destination": "/privacy-policy.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/privacy-policy",
+      "destination": "/privacy-policy.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
-  "crons": [{ "path": "/api/jobs/ingest", "schedule": "0 6 * * *" }]
+  "crons": [
+    {
+      "path": "/api/jobs/ingest",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }

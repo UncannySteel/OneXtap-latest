@@ -69,6 +69,36 @@ export const ENOUGH_GOOD_MATCHES = 5;
 export const MAX_LOOPS = 2;
 
 /**
+ * Wall-clock budget for one whole rank, in milliseconds.
+ *
+ * ═══ WHY A GRAPH THAT CANNOT THROW STILL NEEDS A CLOCK ═══
+ *
+ * Every failure in this graph degrades: a dead provider, a malformed response
+ * and an unreadable pool all produce a complete, keyword-scored list. None of
+ * them produces an error. That covers every way the work can go WRONG and none
+ * of the ways it can simply go LONG — and a rank that is still going when the
+ * browser stops listening is, from the user's side, indistinguishable from a
+ * crash. It is worse than a crash, in fact: the invocation keeps burning, the
+ * hourly rate limit is still consumed, and nothing is cached, so the retry the
+ * user reaches for is a full cold re-run of the thing that just failed them.
+ *
+ * MAX_LOOPS bounds the WORK (18 completions) but not the TIME, and the two
+ * stopped tracking each other the moment a provider started rate-limiting:
+ * 18 completions is ~20s against a healthy account and ~200s against a 429ing
+ * one. This is the bound that holds either way.
+ *
+ * Sized against the smallest ceiling above it — a Vercel Hobby function is
+ * capped at 60s — with room left for the pool read, the cache write and two
+ * 2s trace flushes. The budget gates whether ANOTHER loop starts; it never
+ * interrupts one in flight, because a half-scored batch is not a thing this
+ * graph can return. So the real ceiling is this value plus one loop's
+ * overshoot, which is what the headroom is for.
+ */
+const _budget = Number.parseInt(process.env.RANK_BUDGET_MS || '', 10);
+export const RANK_BUDGET_MS =
+  Number.isFinite(_budget) && _budget >= 1_000 ? _budget : 40_000;
+
+/**
  * Which skill categories to reach into when broadening.
  *
  * Adjacency, not a flat union: a backend profile broadened into `cloud` and
@@ -347,6 +377,14 @@ export async function runRankGraph(params = {}) {
     ? Math.max(0, Math.min(requestedLoops, MAX_LOOPS))
     : MAX_LOOPS;
 
+  // Lowered only, never raised: a caller may ask for a tighter budget than the
+  // deploy's, but not a looser one, so no request can opt itself past the
+  // platform ceiling RANK_BUDGET_MS is sized against.
+  const requestedBudget = Number.parseInt(options.budgetMs, 10);
+  const budgetMs = Number.isFinite(requestedBudget)
+    ? Math.max(0, Math.min(requestedBudget, RANK_BUDGET_MS))
+    : RANK_BUDGET_MS;
+
   const { fetchJobs, callModel } = deps;
   const trace =
     deps.trace ||
@@ -364,6 +402,7 @@ export async function runRankGraph(params = {}) {
   };
 
   let loops = 0;
+  let budgetExhausted = false;
   let degraded = false;
   let ranked = [];
   let scoredBy = 'keyword';
@@ -372,8 +411,10 @@ export async function runRankGraph(params = {}) {
 
   try {
     for (;;) {
+      const loopStarted = Date.now();
+
       // ── STEP 2: prefilter ────────────────────────────────────────────
-      const prefilterStarted = Date.now();
+      const prefilterStarted = loopStarted;
       const prefilterSpan = trace?.span?.({
         name: 'prefilter',
         type: SpanType.Tool,
@@ -436,6 +477,37 @@ export async function runRankGraph(params = {}) {
       const good = ranked.filter((r) => r.score >= GOOD_SCORE).length;
       if (good >= ENOUGH_GOOD_MATCHES || loops >= maxLoops) break;
 
+      // Checked HERE, after a full pass has produced a rankable list and
+      // before another one is started. Earlier would risk returning nothing;
+      // later would spend a whole loop deciding it had no time for it.
+      //
+      // The test is PREDICTIVE, and it has to be. "Am I over budget yet" lets a
+      // loop start at 39s of a 40s budget and run for another 40, which is how
+      // a bound that looks correct still overruns the platform ceiling it was
+      // sized against. The estimate is the duration of the loop just finished:
+      // self-calibrating, needs no constant to drift out of date, and is the
+      // best evidence available for what the next one costs — the loops do the
+      // same work against the same provider in the same conditions.
+      //
+      // `degraded` is set too: a result that stopped short of its own strategy
+      // is not the answer the graph would have given with time to finish, and
+      // every consumer of `degraded` already means exactly that.
+      const elapsedMs = Date.now() - startedAt;
+      const lastLoopMs = Date.now() - loopStarted;
+      if (elapsedMs + lastLoopMs >= budgetMs) {
+        budgetExhausted = true;
+        degraded = true;
+        graphLog.warn('rank budget exhausted, returning what is ranked so far', {
+          loop: loops,
+          budgetMs,
+          elapsedMs,
+          lastLoopMs,
+          good,
+          jobs: ranked.length,
+        });
+        break;
+      }
+
       // ── STEP 5: reformulateQuery ─────────────────────────────────────
       const reformulateStarted = Date.now();
       const reformulateSpan = trace?.span?.({
@@ -489,6 +561,7 @@ export async function runRankGraph(params = {}) {
     sources: summarizeSources(ranked),
     timings,
     poolSize,
+    budgetExhausted,
     matcherVersion: MATCHER_VERSION,
   };
   if (lastError) result.error = String(lastError?.message || lastError).slice(0, ERROR_TEXT_CHARS);

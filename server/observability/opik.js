@@ -107,6 +107,12 @@ export const SpanType = Object.freeze({
 export const MAX_FLUSH_MS = 2000;
 
 /**
+ * Opik Cloud's API base. The SDK carries this same value as its default; we
+ * restate it because we now always pass apiUrl explicitly — see getOpikClient.
+ */
+const OPIK_CLOUD_API_URL = 'https://www.comet.com/opik/api';
+
+/**
  * Default cap on a single string in a span payload.
  *
  * Sized to keep a job description or a prompt preview readable in the Opik UI
@@ -204,13 +210,29 @@ export function getOpikClient() {
       projectName: process.env.OPIK_PROJECT_NAME || 'onextap',
       workspaceName: process.env.OPIK_WORKSPACE || 'default',
     };
-    // Self-hosted installs need an explicit base URL. Opik Cloud does not, and
-    // passing the key as undefined is not the same as omitting it — the SDK
-    // would take it as "no default, use nothing".
+    // ═══ apiUrl IS ALWAYS PASSED, EVEN FOR OPIK CLOUD ═══
+    //
+    // The obvious version of this sets apiUrl only for self-hosted installs and
+    // lets Opik Cloud fall through to the SDK's own default. That is what this
+    // did, and it meant tracing was silently off for the life of the deploy.
+    //
+    // The SDK imports `dotenv/config` itself, so it re-reads the same .env we
+    // did and builds its own config from process.env — and it strips only
+    // `undefined`, not ''. A line reading `OPIK_URL_OVERRIDE=` with nothing
+    // after it therefore does not mean "unset": it overwrites the SDK's own
+    // default with an empty string, and the constructor throws
+    // "OPIK_URL_OVERRIDE is not set" — naming the variable that IS set as the
+    // one that is not. Our guard below never sees it, because the SDK's read
+    // happens independently of the options we pass.
+    //
+    // So resolve it here and always pass a concrete value. The SDK's env read
+    // cannot then contribute anything, and an empty line in a .env is inert
+    // instead of load-bearing.
     const urlOverride = process.env.OPIK_URL_OVERRIDE;
-    if (typeof urlOverride === 'string' && urlOverride.trim() !== '') {
-      options.apiUrl = urlOverride.trim();
-    }
+    options.apiUrl =
+      typeof urlOverride === 'string' && urlOverride.trim() !== ''
+        ? urlOverride.trim()
+        : OPIK_CLOUD_API_URL;
     cachedClient = new Opik(options);
   } catch (err) {
     cachedClient = null;

@@ -456,7 +456,7 @@ function thinkingConfigForGeminiModel(modelId) {
   return undefined;
 }
 
-async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4, inlineData, models }) {
+async function callGemini({ prompt, systemInstruction, maxTokens = 1024, temperature = 0.4, inlineData, models, timeoutMs = 90000 }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Server missing GEMINI_API_KEY');
   const userParts = [{ text: prompt }];
@@ -493,7 +493,7 @@ async function callGemini({ prompt, systemInstruction, maxTokens = 1024, tempera
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const aiRes = await fetch(url, {
@@ -1396,7 +1396,16 @@ app.get('/api/jobs/meta', requireAuth, async (_req, res) => {
       // broken, whatever a partial write or an older ingest left behind.
       // last_status itself is not forwarded: the client renders a cause, not a
       // state machine, and `lastError === null` already means healthy.
-      entry.lastError = row.last_status === 'ok' ? null : row.last_error || null;
+      // 'disabled' is NOT an error, and rendering it as one was a live bug: the
+      // dashboard drew a warning triangle beside wellfound and cache — two
+      // sources that are off on purpose and documented as such — which reads
+      // as "this integration is broken" for something nobody broke. `enabled`
+      // already carries "off"; `lastError` is reserved for a run that TRIED
+      // and failed, which is the only thing worth drawing attention to.
+      entry.lastError =
+        row.last_status === 'ok' || row.last_status === 'disabled'
+          ? null
+          : row.last_error || null;
       if (!byId.has(row.source)) {
         byId.set(row.source, entry);
         registry.push(entry);
@@ -1476,6 +1485,80 @@ app.get('/api/jobs/meta', requireAuth, async (_req, res) => {
 //
 // If you are here to add `minMatch` to the request body, the change you
 // actually want is on the client.
+/**
+ * How long one ranking completion may take, and which provider answers it.
+ *
+ * ═══ WHY RANKING DOES NOT USE THE 90s GEMINI BOUND ═══
+ *
+ * callGemini defaults to 90s because parse-resume sends a whole PDF and one
+ * slow parse is better than a failed upload. Ranking is the opposite trade: it
+ * makes several calls inside a budget the browser is already counting down
+ * (RANK_BUDGET_MS in server/jobs/graph.js), so a single call allowed to run
+ * 90s would spend the entire request on one batch of fifteen jobs.
+ */
+const GEMINI_RANK_TIMEOUT_MS = 25_000;
+
+/**
+ * The provider chain for ranking: Gemini first, Groq second.
+ *
+ * ═══ WHY TWO PROVIDERS AND NOT A BIGGER PLAN ═══
+ *
+ * Both accounts are on free tiers, and — this is the useful part — they are
+ * rationed along different axes and metered SEPARATELY. Groq caps tokens per
+ * minute (8k), which a 30-job pass exhausts before it finishes. Gemini caps
+ * requests per minute, which the same pass barely touches now that a batch is
+ * fifteen jobs and a pass is two calls. So Gemini leads because this workload
+ * is shaped to its limit rather than against it, and Groq is not a worse
+ * duplicate of it but a second, independent budget to reach for when Gemini's
+ * is spent.
+ *
+ * The reach is gated by shouldTryFallbackModel — the same predicate Gemini's
+ * own model chain and the Groq chain use, so "is this transient" has one
+ * answer across all three. A non-transient failure (a bad key, a malformed
+ * request) propagates instead, because retrying it on another provider would
+ * turn one clear error into two vague ones.
+ *
+ * Failing THAT, the error reaches rankBatch, which keyword-scores the batch and
+ * marks it degraded. No provider outage produces an error page.
+ *
+ * RANK_PROVIDER=groq forces the old single-provider behaviour.
+ *
+ * @returns {(req: {system: string, user: string, maxTokens?: number,
+ *   temperature?: number}) => Promise<string>}
+ */
+function createRankModelCaller() {
+  const groqCaller = createGroqModelCaller();
+  if (String(process.env.RANK_PROVIDER || 'gemini').toLowerCase() === 'groq') {
+    return groqCaller;
+  }
+
+  return async function callModel({ system, user, maxTokens, temperature }) {
+    try {
+      // Flash only, deliberately: callGemini's default chain falls back to
+      // gemini-2.5-pro, which is slower per call AND more tightly rationed on
+      // the free tier — the two things a bounded, batched scoring pass can
+      // least afford. Groq below is the better second stop.
+      const { text } = await callGemini({
+        prompt: user,
+        systemInstruction: system,
+        maxTokens,
+        temperature,
+        models: [GEMINI_MODEL],
+        timeoutMs: GEMINI_RANK_TIMEOUT_MS,
+      });
+      return text;
+    } catch (error) {
+      const status = error?.statusCode ?? error?.status;
+      if (!shouldTryFallbackModel(status, error?.message)) throw error;
+      rankLog.warn('gemini unavailable for rank batch, trying groq', {
+        errName: error?.name,
+        status: status ?? null,
+      });
+      return groqCaller({ system, user, maxTokens, temperature });
+    }
+  };
+}
+
 app.post('/api/jobs/rank', requireAuth, async (req, res) => {
   try {
     const body = req.body || {};
@@ -1515,7 +1598,7 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
         runRankGraph({
           resumeProfile,
           filters,
-          deps: { fetchJobs, callModel: createGroqModelCaller(), trace },
+          deps: { fetchJobs, callModel: createRankModelCaller(), trace },
         }),
       // Over the hourly limit: still a list, still ordered, just scored by the
       // local matcher. Never an error — see rankWithCache.
@@ -1572,6 +1655,11 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
         matcherVersion: outcome.matcherVersion ?? MATCHER_VERSION,
         sources: outcome.sources || [],
         timings: outcome.timings || null,
+        // True when the graph stopped looping because it ran out of wall clock
+        // rather than because it was satisfied. Without this the run footer
+        // cannot tell "we looked twice and this is what there is" apart from
+        // "we ran out of time", and those deserve different sentences.
+        budgetExhausted: outcome.budgetExhausted === true,
         rateLimitPerHour: RANK_LIMIT_PER_HOUR,
         rateRemaining: outcome.rateRemaining ?? null,
         limitResetAt: outcome.limitResetAt ?? null,

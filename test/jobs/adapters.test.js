@@ -21,7 +21,6 @@ process.env.LOG_LEVEL = 'error';
 const { adzunaAdapter, configuredCountries, cursorToTarget } = await import('../../server/jobs/adapters/adzuna.js');
 const { remotiveAdapter } = await import('../../server/jobs/adapters/remotive.js');
 const { atsAdapter, configuredBoards, cursorToBoard } = await import('../../server/jobs/adapters/ats.js');
-const { wellfoundAdapter } = await import('../../server/jobs/adapters/wellfound.js');
 const { cacheAdapter } = await import('../../server/jobs/adapters/cache.js');
 const { ADAPTERS, getAdapter, ERROR_REASONS } = await import('../../server/jobs/adapters/index.js');
 
@@ -715,23 +714,12 @@ test('ats.fetch survives a null or wrong-typed argument', async () => {
 });
 
 // ------------------------------------------------------------------
-// Wellfound
+// Wellfound — removed. See the note above ADAPTERS in adapters/index.js for
+// why there is no Wellfound source and why a scraper is not the answer.
 // ------------------------------------------------------------------
 
-test('wellfound is registered but permanently disabled', async () => {
-  assert.equal(wellfoundAdapter.enabled(), false);
-  assert.ok(getAdapter('wellfound'), 'it stays in the cascade so the API can say why');
-
-  // No network stub: it must not call fetch at all.
-  const restoreFetch = stubFetch(async () => {
-    throw new Error('wellfound must never make a request — there is no API');
-  });
-  try {
-    const result = await wellfoundAdapter.fetch({ page: 1 });
-    assert.deepEqual(result, { items: [], hasMore: false, error: 'disabled' });
-  } finally {
-    restoreFetch();
-  }
+test('wellfound is not a registered source', () => {
+  assert.equal(getAdapter('wellfound'), null);
 });
 
 // ------------------------------------------------------------------
@@ -856,7 +844,7 @@ test('cached_jobs.json parses and contains only fake listings', () => {
 // ------------------------------------------------------------------
 
 test('ADAPTERS is the cascade, in order, and every entry honours the contract', () => {
-  assert.deepEqual(ADAPTERS.map((a) => a.id), ['adzuna', 'remotive', 'ats', 'wellfound', 'cache']);
+  assert.deepEqual(ADAPTERS.map((a) => a.id), ['adzuna', 'remotive', 'ats', 'cache']);
 
   for (const adapter of ADAPTERS) {
     assert.equal(typeof adapter.id, 'string');

@@ -290,7 +290,13 @@ test('an empty job list is an empty result, not an LLM call', async () => {
 // Batching
 // ------------------------------------------------------------------
 test('jobs are split into batches of BATCH_SIZE and each is one model call', async () => {
-  const jobs = makeJobs(13);
+  // Sized FROM BATCH_SIZE rather than to a literal: two full batches and a
+  // short one, whatever BATCH_SIZE currently is. The previous spelling asserted
+  // [5, 5, 3] and so stopped testing the split the moment BATCH_SIZE was tuned
+  // — it failed for the one reason a test named after a constant should not.
+  const REMAINDER = 3;
+  const total = BATCH_SIZE * 2 + REMAINDER;
+  const jobs = makeJobs(total);
   const sizes = [];
   const callModel = async ({ user }) => {
     const ids = jobIdsInPrompt(user);
@@ -300,9 +306,9 @@ test('jobs are split into batches of BATCH_SIZE and each is one model call', asy
 
   const { batches, llmCalls } = await rankBatch({ jobs, resumeProfile: PROFILE, callModel });
 
-  assert.equal(batches, Math.ceil(13 / BATCH_SIZE));
+  assert.equal(batches, Math.ceil(total / BATCH_SIZE));
   assert.equal(llmCalls, batches);
-  assert.deepEqual(sizes.sort((a, b) => b - a), [5, 5, 3]);
+  assert.deepEqual(sizes.sort((a, b) => b - a), [BATCH_SIZE, BATCH_SIZE, REMAINDER]);
 });
 
 test('no more than RANK_CONCURRENCY batches are in flight at once', async () => {
@@ -413,7 +419,9 @@ test('keywordResult is shaped exactly like an LLM result', async () => {
 });
 
 test('spans are opened per batch when a trace is given, and no span call throws', async () => {
-  const jobs = makeJobs(11);
+  // Three batches by construction, at any BATCH_SIZE — see the note on the
+  // batching test above.
+  const jobs = makeJobs(BATCH_SIZE * 2 + 1);
   const opened = [];
   const trace = {
     span(options) {
@@ -430,6 +438,6 @@ test('spans are opened per batch when a trace is given, and no span call throws'
     trace,
   });
 
-  assert.equal(opened.length, 3);
+  assert.equal(opened.length, Math.ceil((BATCH_SIZE * 2 + 1) / BATCH_SIZE));
   assert.ok(opened.every((n) => n === 'rank_batch'));
 });

@@ -44,26 +44,57 @@ const rankLog = log.child('rank');
 /**
  * Jobs per model call.
  *
- * Five is small enough that one bad response costs five jobs rather than
- * thirty, and that each job gets enough of the model's attention to be scored
- * on its own merits instead of being ranked against its batch-mates. It is
- * large enough that the prompt's instructions are amortised over more than one
- * or two listings.
+ * ═══ WHY THIS WENT UP FROM FIVE ═══
+ *
+ * Five was chosen so one bad response cost five jobs rather than thirty, and so
+ * each job got the model's attention on its own merits rather than being ranked
+ * against its batch-mates. Both of those are still true and still good reasons.
+ * They were outweighed by a third thing neither anticipated: the prompt is
+ * ~917 tokens of instructions, and at five jobs a batch it is re-sent six times
+ * to score thirty jobs. That is ~5,500 tokens spent restating the rules and
+ * ~3,500 on the actual listings — the instructions cost more than the data.
+ *
+ * On a free provider tier that is the difference between working and not. Both
+ * providers this app can use are capped in a way that punishes small batches,
+ * and they are capped along DIFFERENT axes, which is what makes one number
+ * suit both: Groq limits tokens per minute, so re-sending the prompt six times
+ * exhausts the budget before the jobs are scored; Gemini limits requests per
+ * minute, so six calls where two would do spends the budget on round trips.
+ * Fifteen amortises the prompt across a batch that both tiers can actually
+ * afford — measured at 2 calls and ~8.4k tokens for a 30-job pass, against 6
+ * calls and ~16k before.
+ *
+ * The quality argument above is the real cost of this, and it is not free:
+ * fifteen listings in one context do get compared with each other more than
+ * five did. It is accepted deliberately, because the alternative on these tiers
+ * is not "better scores" — it is a keyword fallback for two thirds of the list,
+ * which is worse on the same axis and dishonest about it besides.
  */
-export const BATCH_SIZE = 5;
+export const BATCH_SIZE = 15;
 
 /**
  * Batches in flight at once.
  *
- * Three, not "all of them": a 30-job prefilter is six batches, and firing six
- * concurrent completions at a provider is the fastest way to meet its rate
- * limiter. Three keeps the wall-clock roughly a third of serial while leaving
- * headroom for the other routes sharing the same account.
+ * Two, not three, and the reason changed with BATCH_SIZE. It used to be about
+ * wall-clock: three kept a six-batch pass to roughly a third of serial. At
+ * fifteen jobs a batch a 30-job pass is only two batches, so concurrency above
+ * two buys nothing at all on the common path — and on both free tiers a burst
+ * is precisely what trips the limiter, because the whole burst is weighed
+ * against the window at once. Two issues the pass in a single wave without
+ * bursting.
  */
-export const RANK_CONCURRENCY = 3;
+export const RANK_CONCURRENCY = 2;
 
-/** Output budget per batch. Five compact JSON objects fit comfortably. */
-export const RANK_MAX_TOKENS = 1800;
+/**
+ * Output budget per batch.
+ *
+ * Scaled with BATCH_SIZE: a scored job costs ~120 output tokens, so fifteen
+ * need ~1,800 and this leaves genuine headroom above that. Undersizing it is
+ * not a smaller answer but a TRUNCATED one — the JSON array stops mid-object,
+ * the parse recovers what it can, and the rest of the batch silently falls to
+ * the keyword scorer. This must be raised alongside BATCH_SIZE, never after.
+ */
+export const RANK_MAX_TOKENS = 3000;
 
 /** Low, because this is a judgement task and we want it repeatable. */
 export const RANK_TEMPERATURE = 0.2;

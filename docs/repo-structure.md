@@ -110,7 +110,6 @@ popup codebase.
 │   │   │   ├── index.js       #   the cascade, in order
 │   │   │   ├── adzuna.js      #   keyed; snippet descriptions only
 │   │   │   ├── remotive.js    #   keyless; full descriptions + tags
-│   │   │   ├── wellfound.js   #   registered but disabled — no public API
 │   │   │   ├── cache.js       #   offline fixtures; OFF in production
 │   │   │   └── httpJson.js    #   shared timeout + status→reason mapping
 │   │   ├── ingest.js          # Daily cron run: budget, cursor, upsert

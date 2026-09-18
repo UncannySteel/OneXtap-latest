@@ -167,7 +167,7 @@ test('runIngest never throws, whatever it is handed', async () => {
       // Anything unrecognised falls back to the full cascade in cascade order.
       assert.deepEqual(
         report.perSource.map((s) => s.id),
-        ['adzuna', 'remotive', 'ats', 'wellfound', 'cache'],
+        ['adzuna', 'remotive', 'ats', 'cache'],
         `junk: ${JSON.stringify(junk) ?? String(junk)}`,
       );
     }

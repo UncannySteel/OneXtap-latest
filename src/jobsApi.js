@@ -38,8 +38,25 @@ const log = baseLog.child('jobs');
  * read, a prefilter, and up to three rounds of batched LLM calls. The default
  * fetch timeouts elsewhere in this app are sized for a single completion and
  * would abort a healthy rank.
+ *
+ * ═══ WHY THIS SITS ABOVE THE PLATFORM CEILING, NOT BELOW IT ═══
+ *
+ * This was 60000, which was exactly the wrong number: the serverless function
+ * running the rank is itself capped at 60s (vercel.json `maxDuration`), so the
+ * two deadlines fired together and the client's won the tie. The user got
+ * "Ranking timed out" — a message that names no cause and carries no request
+ * id — in place of the 504 the platform was about to return, which names both.
+ * Racing your own backend to report its failure first loses information for
+ * nothing.
+ *
+ * So this is deliberately LONGER than the function can live. The server is
+ * bounded on its own side now (RANK_BUDGET_MS in server/jobs/graph.js) and
+ * answers with a short, honestly-degraded list rather than going quiet, so in
+ * practice this timer should never fire at all. It is the backstop for a
+ * request that never reaches the function — a dead network, a proxy that
+ * swallowed it — which is the only case the client is the right place to time.
  */
-export const RANK_TIMEOUT_MS = 60000;
+export const RANK_TIMEOUT_MS = 75000;
 
 /**
  * Explaining one job is two model calls against a full description — the
@@ -67,11 +84,40 @@ export const BROWSE_TIMEOUT_MS = 20000;
  * @returns {Promise<any>} The parsed JSON body.
  * @throws {Error} With the server's own message where there is one.
  */
+/**
+ * A request id minted client-side.
+ *
+ * The server honours an inbound `X-Request-Id` and falls back to generating one
+ * (see requestLogger in server/logger.js), so sending ours costs nothing and
+ * buys the one correlation the failure paths could not have: when a request
+ * times out or is killed by the platform there is no response, therefore no
+ * response header, therefore — until now — no id tying the user's report to
+ * the log line. Minting it before the request means the id exists whether or
+ * not the request ever comes back.
+ *
+ * `crypto.randomUUID` needs a secure context. The dashboard is https and the
+ * extension popup is a chrome-extension: origin, so both qualify — but a plain
+ * http://localhost:3001 preview does not, and this file must not throw there.
+ *
+ * @returns {string}
+ */
+function newRequestId() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // Fall through — an id that is merely unique enough to grep for beats none.
+  }
+  return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 async function authFetch(path, options = {}) {
   const token = await getAccessToken();
   if (!token) {
     throw new Error('Not authenticated');
   }
+  const requestId = newRequestId();
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     cache: 'no-store',
@@ -80,6 +126,7 @@ async function authFetch(path, options = {}) {
       Authorization: `Bearer ${token}`,
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       Pragma: 'no-cache',
+      'X-Request-Id': requestId,
       ...(options.headers || {}),
     },
   });

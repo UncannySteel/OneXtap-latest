@@ -102,7 +102,7 @@ export const JOB_COLUMNS = Object.freeze([
  * working filter that matches everything. 'ats' was missing for exactly that
  * reason. A test below asserts this set against ADAPTERS.
  */
-const KNOWN_SOURCES = new Set(['adzuna', 'remotive', 'ats', 'wellfound', 'cache']);
+const KNOWN_SOURCES = new Set(['adzuna', 'remotive', 'ats', 'cache']);
 
 /**
  * Escape the characters that are wildcards inside a SQL LIKE/ILIKE pattern.

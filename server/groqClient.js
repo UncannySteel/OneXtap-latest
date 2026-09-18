@@ -51,6 +51,46 @@ export const GROQ_MAX_TOKENS =
     ? Math.min(_groqMaxTok, GROQ_MAX_TOKENS_CEILING)
     : GROQ_MAX_TOKENS_DEFAULT;
 
+/**
+ * Per-request ceiling for a Groq call, and how many times the SDK may retry.
+ *
+ * ═══ WHY THESE ARE SET EXPLICITLY ═══
+ *
+ * The SDK's own defaults are `timeout: 60_000` and `maxRetries: 2`, and both
+ * are wrong for this app in the same direction: too patient.
+ *
+ * A rank is up to 18 completions in 6 sequential waves (see rank.js), and the
+ * browser stops waiting after RANK_TIMEOUT_MS. At the SDK defaults a SINGLE
+ * rate-limited call can burn 3 attempts, and Groq's 429s on the free tier
+ * carry `retry-after: 18` — so one batch could spend ~54s backing off while
+ * the user's whole budget is 60s. That is precisely how a feature that
+ * degrades correctly on paper hangs for three minutes in practice.
+ *
+ * `maxRetries: 0` is deliberate, not lazy. rankBatch already has a better
+ * answer to a failed call than "try it again slower": it keyword-scores that
+ * batch and marks it degraded, which returns a complete list immediately. A
+ * retry only helps if the limiter would have cleared within the budget, and at
+ * `retry-after: 18` against a 8k TPM ceiling it will not. Failing fast here is
+ * what makes the degradation path fast enough to be worth having.
+ *
+ * Both are env-overridable so a paid Groq tier — where retrying IS the right
+ * answer because the limit clears in a fraction of a second — can turn them
+ * back up without a deploy.
+ */
+const GROQ_TIMEOUT_FLOOR_MS = 1_000;
+const GROQ_TIMEOUT_DEFAULT_MS = 20_000;
+const GROQ_MAX_RETRIES_DEFAULT = 0;
+
+const _groqTimeout = Number.parseInt(process.env.GROQ_TIMEOUT_MS || '', 10);
+export const GROQ_TIMEOUT_MS =
+  Number.isFinite(_groqTimeout) && _groqTimeout >= GROQ_TIMEOUT_FLOOR_MS
+    ? _groqTimeout
+    : GROQ_TIMEOUT_DEFAULT_MS;
+
+const _groqRetries = Number.parseInt(process.env.GROQ_MAX_RETRIES || '', 10);
+export const GROQ_MAX_RETRIES =
+  Number.isFinite(_groqRetries) && _groqRetries >= 0 ? _groqRetries : GROQ_MAX_RETRIES_DEFAULT;
+
 let groqClient;
 
 /**
@@ -65,7 +105,13 @@ let groqClient;
 export function getGroq() {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error('Server missing GROQ_API_KEY');
-  if (!groqClient) groqClient = new Groq({ apiKey });
+  if (!groqClient) {
+    groqClient = new Groq({
+      apiKey,
+      timeout: GROQ_TIMEOUT_MS,
+      maxRetries: GROQ_MAX_RETRIES,
+    });
+  }
   return groqClient;
 }
 
