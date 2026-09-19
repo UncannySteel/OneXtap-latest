@@ -9,7 +9,8 @@ const log = baseLog.child('resume');
  * Resume parse transport.
  *
  * TRANSPORT ONLY. This module base64s the file, pre-flights the session against
- * GET /api/me, and round-trips PARSE_RESUME through the service worker. It does
+ * GET /api/me, and sends the result to POST /api/parse-resume — through the
+ * service worker when the extension is there, directly when it is not. It does
  * not decide what the parsed fields mean and it does not merge anything into a
  * profile — that stays with the caller, which is the only reason this extract
  * was safe to do to working code.
@@ -22,11 +23,14 @@ const log = baseLog.child('resume');
  *
  * ═══ WHY IT RETURNS ERRORS INSTEAD OF THROWING ═══
  *
- * Every failure below is a thing the user can act on — sign in again, install
- * the extension, export the file as a PDF. A rejected promise would make each
+ * Every failure below is a thing the user can act on — sign in again, check the
+ * connection, export the file as a PDF. A rejected promise would make each
  * caller re-derive a message from an exception; a result object keeps the
- * wording in one place and makes "no extension installed" an ordinary outcome
- * rather than an exception, which on the web dashboard it is.
+ * wording in one place.
+ *
+ * "No extension installed" is no longer among those failures at all: it is not
+ * an error condition, it is the web dashboard, and it now picks the other
+ * transport instead of apologising.
  *
  * ═══ NOT IMPORTABLE IN BARE NODE ═══
  *
@@ -225,41 +229,63 @@ export async function parseResumeFile(file) {
     }
   }
 
-  if (!hasExtensionRuntime()) {
-    return fail('no-extension', 'Chrome runtime not available. Make sure the extension is installed.', withHash);
-  }
-
-  const extId = getExtensionId();
-  if (!extId) {
-    return fail(
-      'no-extension-id',
-      'Extension ID not available. Open the dashboard from the extension popup (Dashboard button) to link it.',
-      withHash,
-    );
-  }
-
-  log.info('sending resume parse request to the extension', { source: extId });
-  const response = await sendParseRequest(extId, {
+  const payload = {
     fileData: base64,
     fileName,
     fileType: mimeType,
     isImage: mimeType.startsWith('image/'),
     isPDF: mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf'),
     token,
-  });
+  };
 
-  if (response.runtimeError) {
-    log.error('resume parse runtime error', { errName: 'RuntimeError' });
-    return fail(
-      'runtime-error',
-      `${response.runtimeError}. Make sure the extension is installed and reloaded.`,
-      withHash,
-    );
-  }
+  // ═══ TWO TRANSPORTS, ONE REPLY SHAPE ═══
+  //
+  // With the extension present the request goes through the service worker, as
+  // it always has. Without it — the web dashboard in any browser — it goes
+  // straight to the same endpoint.
+  //
+  // The direct path is not a new capability. Everything the service worker
+  // needed was already built here: the token is minted by getAccessToken()
+  // above, the file is already base64, and the session pre-flight fifteen lines
+  // up is itself a plain fetch to /api/me against the same origin. The worker
+  // was only ever forwarding those three fields (see the PARSE_RESUME handler
+  // in extension/background.js), so routing through it on a browser that has no
+  // extension was not a safety boundary — it was an outage. Resume upload is
+  // the sole gate on the whole Job Matches page, so this one branch is the
+  // difference between a working dashboard and a dead one off Chrome.
+  //
+  // parseResumeViaApi returns the worker's exact reply shape, so everything
+  // below this block is transport-agnostic and unchanged.
+  let reply;
+  if (hasExtensionRuntime()) {
+    const extId = getExtensionId();
+    if (!extId) {
+      return fail(
+        'no-extension-id',
+        'Extension ID not available. Open the dashboard from the extension popup (Dashboard button) to link it.',
+        withHash,
+      );
+    }
 
-  const reply = response.reply;
-  if (!reply) {
-    return fail('no-response', 'No response from extension. Make sure the extension is installed and reloaded.', withHash);
+    log.info('sending resume parse request to the extension', { source: extId });
+    const response = await sendParseRequest(extId, payload);
+
+    if (response.runtimeError) {
+      log.error('resume parse runtime error', { errName: 'RuntimeError' });
+      return fail(
+        'runtime-error',
+        `${response.runtimeError}. Make sure the extension is installed and reloaded.`,
+        withHash,
+      );
+    }
+
+    reply = response.reply;
+    if (!reply) {
+      return fail('no-response', 'No response from extension. Make sure the extension is installed and reloaded.', withHash);
+    }
+  } else {
+    log.info('sending resume parse request directly to the api', { source: 'web' });
+    reply = await parseResumeViaApi(payload);
   }
 
   if (!reply.success || !reply.data) {
@@ -395,6 +421,55 @@ function fileToBase64(file) {
  * @returns {Promise<{ reply: any, runtimeError: string|null }>} Exactly one of
  *   the two is non-null.
  */
+/**
+ * One resume-parse round trip straight to the backend, for the web dashboard.
+ *
+ * Deliberately returns the SAME shape as sendParseRequest's `reply` — the
+ * object the service worker builds in extension/background.js — so the caller
+ * branches on transport once and never again. Divergence here would be the
+ * quiet kind: both paths keep working, they just stop agreeing about what a
+ * failure looks like.
+ *
+ * Resolves rather than rejecting, for the reason given in the module header.
+ *
+ * @param {object} data The same payload PARSE_RESUME carries.
+ * @returns {Promise<{success: boolean, data?: any, text?: string,
+ *   error?: string, debug?: object}>}
+ */
+async function parseResumeViaApi({ fileData, fileName, fileType, token }) {
+  try {
+    const res = await fetch(`${API_URL}/api/parse-resume`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ fileData, fileName, fileType }),
+    });
+
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.data) {
+      // `text` rides along with `data`: the corpus builder and the fabrication
+      // validator both diff against the raw transcription, and the file bytes
+      // are gone after this call. Forwarding undefined is harmless.
+      return { success: true, data: body.data, text: body.text };
+    }
+
+    log.error('resume parse rejected by server', {
+      status: res.status,
+      requestId: res.headers.get('X-Request-Id'),
+    });
+    return {
+      success: false,
+      error: body.error || `Resume parse failed (${res.status})`,
+      debug: { status: res.status },
+    };
+  } catch (err) {
+    log.error('resume parse request failed', { errName: err?.name });
+    return { success: false, error: err?.message || 'Could not reach the Onextap server.' };
+  }
+}
+
 function sendParseRequest(extId, data) {
   return new Promise((resolve) => {
     try {

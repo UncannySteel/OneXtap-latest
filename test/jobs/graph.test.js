@@ -290,23 +290,46 @@ test('a throwing callModel returns keyword-scored jobs, degraded, not an error',
 });
 
 test('a partially failing model produces scoredBy "mixed" and degraded true', async () => {
+  // ═══ WHY THIS SCORES HALF A BATCH RATHER THAN FAILING HALF THE BATCHES ═══
+  //
+  // It used to alternate whole-call failures, which relied on a pass being
+  // several batches. It no longer is: BATCH_SIZE is now >= PREFILTER_LIMIT, so
+  // the model is called ONCE per loop and a thrown call degrades the whole
+  // list to 'keyword' rather than mixing it.
+  //
+  // Partial mixing still happens, and this is now the only shape it takes — a
+  // model that answers for some of the jobs it was given and drops the rest.
+  // rankBatch keyword-scores exactly the dropped ones (missing_entry), which is
+  // the behaviour worth pinning: no job is lost, and the result admits it is
+  // not wholly model-scored.
   const pool = poolOf(makeJobs(20));
-  let call = 0;
   const result = await runRankGraph({
     resumeProfile: PROFILE,
     filters: {},
     deps: {
       fetchJobs: pool.fetchJobs,
-      callModel: async (req) => {
-        call += 1;
-        if (call % 2 === 0) throw new Error('rate limited');
-        return scorer(95)(req);
+      callModel: async ({ user }) => {
+        const ids = [...String(user).matchAll(/"jobId":\s*"([^"]+)"/g)].map((m) => m[1]);
+        const answered = ids.slice(0, Math.ceil(ids.length / 2));
+        return JSON.stringify(
+          answered.map((jobId) => ({
+            jobId,
+            score: 95,
+            gapSummary: 'A sentence.',
+            matchedSignals: [],
+            missingSignals: [],
+          }))
+        );
       },
     },
   });
 
   assert.equal(result.scoredBy, 'mixed');
   assert.equal(result.degraded, true);
+  assert.ok(
+    result.jobs.some((j) => j.scoredBy === 'llm') && result.jobs.some((j) => j.scoredBy === 'keyword'),
+    'both scorers must be represented for "mixed" to mean anything'
+  );
 });
 
 test('an empty pool is an empty list, not a failure', async () => {

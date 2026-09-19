@@ -65,8 +65,26 @@ export const ENOUGH_GOOD_MATCHES = 5;
  * not an unbounded spend of LLM calls discovering the same thing. Each loop
  * costs a full re-rank, so the ceiling on one request is
  * (1 + MAX_LOOPS) × PREFILTER_LIMIT / BATCH_SIZE model calls.
+ *
+ * ═══ WHY TWO SURVIVED THE FREE-TIER RETUNE ═══
+ *
+ * Lowering this was considered when the Gemini leg turned out to be rationed at
+ * 20 requests per day per model, and rejected on the numbers. With the model
+ * rotation in createRankModelCaller the worst case is ~33 runs/day at two loops
+ * against ~50 at one — both far above the ~3/day that prompted the work, and
+ * the gap is smaller than it looks because a loop only runs when the gate is
+ * missed, which working model scoring makes uncommon.
+ *
+ * Two is also load-bearing rather than arbitrary: the reformulation ladder has
+ * three rungs (drop_location → relax_remote → widen_terms) and one loop can
+ * only ever reach the first. Cutting the cap would not tune the feature, it
+ * would silently delete most of it.
+ *
+ * RANK_MAX_LOOPS lowers it without a deploy for a deployment on a tighter
+ * budget than this one. It is clamped to the hard ceiling either way.
  */
-export const MAX_LOOPS = 2;
+const _loops = Number.parseInt(process.env.RANK_MAX_LOOPS || '', 10);
+export const MAX_LOOPS = Number.isFinite(_loops) && _loops >= 0 ? Math.min(_loops, 2) : 2;
 
 /**
  * Wall-clock budget for one whole rank, in milliseconds.
@@ -406,6 +424,7 @@ export async function runRankGraph(params = {}) {
   let degraded = false;
   let ranked = [];
   let scoredBy = 'keyword';
+  let degradeReason = null;
   let poolSize = 0;
   let lastError = null;
 
@@ -471,6 +490,10 @@ export async function runRankGraph(params = {}) {
 
       ranked = batch.results;
       scoredBy = batch.scoredBy;
+      // Keep the FIRST provider reason seen across loops: loop 1 failing on a
+      // quota is the diagnosis, and loop 2 failing the same way afterwards is
+      // the same fact restated.
+      if (!degradeReason && batch.degradeReason) degradeReason = batch.degradeReason;
       if (batch.degraded) degraded = true;
 
       // ── GATE ─────────────────────────────────────────────────────────
@@ -558,6 +581,7 @@ export async function runRankGraph(params = {}) {
     reformulations,
     degraded,
     scoredBy,
+    degradeReason,
     sources: summarizeSources(ranked),
     timings,
     poolSize,

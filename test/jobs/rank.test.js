@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 
 process.env.LOG_LEVEL = 'error';
 
-const { rankBatch, keywordResult, renderPromptParts, BATCH_SIZE } = await import(
+const { rankBatch, keywordResult, renderPromptParts, BATCH_SIZE, RANK_CONCURRENCY } = await import(
   '../../server/jobs/rank.js'
 );
 const { buildResumeProfile } = await import('../../src/matching/index.js');
@@ -81,7 +81,11 @@ test('every input job appears exactly once, in input order, on the happy path', 
 });
 
 test('every input job survives when the model returns garbage for half the batches', async () => {
-  const jobs = makeJobs(20);
+  // Sized FROM BATCH_SIZE: the test is about alternating good and unusable
+  // answers ACROSS batches, so it needs at least two of them to exist at
+  // whatever BATCH_SIZE currently is. A literal here silently became a
+  // single-batch test the moment BATCH_SIZE passed it.
+  const jobs = makeJobs(BATCH_SIZE * 2);
   let call = 0;
   const callModel = async ({ user }) => {
     call += 1;
@@ -312,7 +316,10 @@ test('jobs are split into batches of BATCH_SIZE and each is one model call', asy
 });
 
 test('no more than RANK_CONCURRENCY batches are in flight at once', async () => {
-  const jobs = makeJobs(30);
+  // Four batches at any BATCH_SIZE, so the pool always has more work queued
+  // than it is allowed to run at once — otherwise the cap is untested rather
+  // than satisfied.
+  const jobs = makeJobs(BATCH_SIZE * 4);
   let inFlight = 0;
   let peak = 0;
   const callModel = async ({ user }) => {
@@ -324,8 +331,15 @@ test('no more than RANK_CONCURRENCY batches are in flight at once', async () => 
   };
 
   await rankBatch({ jobs, resumeProfile: PROFILE, callModel });
-  assert.ok(peak <= 3, `expected at most 3 concurrent batches, saw ${peak}`);
-  assert.ok(peak > 1, 'batches should actually run concurrently');
+  assert.ok(
+    peak <= RANK_CONCURRENCY,
+    `expected at most RANK_CONCURRENCY (${RANK_CONCURRENCY}) concurrent batches, saw ${peak}`
+  );
+  // The pool must actually saturate: with more batches queued than the cap
+  // allows, the peak has to REACH the cap. Asserting a bare `peak > 1` instead
+  // encoded the old default of two and failed the moment the cap became one —
+  // which is the bound holding, not breaking.
+  assert.equal(peak, RANK_CONCURRENCY, 'the worker pool should saturate its cap');
 });
 
 // ------------------------------------------------------------------

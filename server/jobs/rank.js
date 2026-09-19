@@ -42,59 +42,79 @@ import { log } from '../logger.js';
 const rankLog = log.child('rank');
 
 /**
+ * Read a bounded integer from the environment.
+ *
+ * Same shape as the guards in server/groqClient.js: a value that is missing,
+ * unparseable, or outside the band falls back to the default rather than
+ * propagating a NaN into a provider call or a chunk size.
+ */
+function envInt(name, fallback, floor, ceiling) {
+  const raw = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(raw) && raw >= floor && raw <= ceiling ? raw : fallback;
+}
+
+/**
  * Jobs per model call.
  *
- * ═══ WHY THIS WENT UP FROM FIVE ═══
+ * ═══ WHY THIS WENT FIVE → FIFTEEN → THIRTY ═══
  *
  * Five was chosen so one bad response cost five jobs rather than thirty, and so
  * each job got the model's attention on its own merits rather than being ranked
  * against its batch-mates. Both of those are still true and still good reasons.
- * They were outweighed by a third thing neither anticipated: the prompt is
- * ~917 tokens of instructions, and at five jobs a batch it is re-sent six times
- * to score thirty jobs. That is ~5,500 tokens spent restating the rules and
- * ~3,500 on the actual listings — the instructions cost more than the data.
+ * They were outweighed by the prompt overhead: the instructions are ~1,440
+ * tokens (measured), so at five jobs a batch they are re-sent six times to
+ * score thirty — the rules costing more than the data.
  *
- * On a free provider tier that is the difference between working and not. Both
- * providers this app can use are capped in a way that punishes small batches,
- * and they are capped along DIFFERENT axes, which is what makes one number
- * suit both: Groq limits tokens per minute, so re-sending the prompt six times
- * exhausts the budget before the jobs are scored; Gemini limits requests per
- * minute, so six calls where two would do spends the budget on round trips.
- * Fifteen amortises the prompt across a batch that both tiers can actually
- * afford — measured at 2 calls and ~8.4k tokens for a 30-job pass, against 6
- * calls and ~16k before.
+ * Fifteen amortised that. Thirty finishes the job for the PRIMARY provider, and
+ * that qualifier is the whole point of this number now.
  *
- * The quality argument above is the real cost of this, and it is not free:
- * fifteen listings in one context do get compared with each other more than
- * five did. It is accepted deliberately, because the alternative on these tiers
- * is not "better scores" — it is a keyword fallback for two thirds of the list,
- * which is worse on the same axis and dishonest about it besides.
+ * ═══ THE TWO TIERS ARE RATIONED ALONG DIFFERENT AXES ═══
+ *
+ * Measured on the live accounts, not estimated:
+ *
+ *   Gemini  20 generateContent REQUESTS PER DAY, per model. Wants few, large
+ *           calls. A 30-job pass in one call costs 1 of 20 instead of 2.
+ *   Groq    8,000 TOKENS PER MINUTE, output included. Wants small calls. A
+ *           30-job batch cannot fit: ~1,440 fixed + 30 jobs + ~3,600 output
+ *           clears 8k on its own.
+ *
+ * So there is no single number that is right for both, and this one is sized
+ * for Gemini because Gemini leads the chain (see createRankModelCaller in
+ * server/index.js) and, with model rotation, answers nearly every pass.
+ *
+ * A deployment that sets RANK_PROVIDER=groq should set RANK_BATCH_SIZE=10 with
+ * it. At 30 the Groq leg rejects the request outright rather than degrading
+ * gracefully, which is the one failure mode this file otherwise never has.
  */
-export const BATCH_SIZE = 15;
+const BATCH_SIZE_DEFAULT = 30;
+export const BATCH_SIZE = envInt('RANK_BATCH_SIZE', BATCH_SIZE_DEFAULT, 1, 60);
 
 /**
  * Batches in flight at once.
  *
- * Two, not three, and the reason changed with BATCH_SIZE. It used to be about
- * wall-clock: three kept a six-batch pass to roughly a third of serial. At
- * fifteen jobs a batch a 30-job pass is only two batches, so concurrency above
- * two buys nothing at all on the common path — and on both free tiers a burst
- * is precisely what trips the limiter, because the whole burst is weighed
- * against the window at once. Two issues the pass in a single wave without
- * bursting.
+ * One, not two. Two was sized for wall-clock when a pass was several batches,
+ * and on a token-per-minute tier it is precisely what trips the limiter: the
+ * whole burst is weighed against the window at once, so two 4k batches issued
+ * together are a single 8k request as far as the limiter is concerned. That is
+ * the measured cause of the Groq leg failing on its first pair rather than
+ * degrading over a run.
+ *
+ * At the default BATCH_SIZE a 30-job pass is one batch and this changes
+ * nothing. It matters when PREFILTER_LIMIT grows or RANK_BATCH_SIZE is lowered
+ * for Groq — exactly the cases where bursting would hurt.
  */
-export const RANK_CONCURRENCY = 2;
+export const RANK_CONCURRENCY = envInt('RANK_CONCURRENCY', 1, 1, 8);
 
 /**
  * Output budget per batch.
  *
- * Scaled with BATCH_SIZE: a scored job costs ~120 output tokens, so fifteen
- * need ~1,800 and this leaves genuine headroom above that. Undersizing it is
- * not a smaller answer but a TRUNCATED one — the JSON array stops mid-object,
- * the parse recovers what it can, and the rest of the batch silently falls to
- * the keyword scorer. This must be raised alongside BATCH_SIZE, never after.
+ * Scaled with BATCH_SIZE: a scored job costs ~120 output tokens, so thirty need
+ * ~3,600 and this leaves genuine headroom above that. Undersizing it is not a
+ * smaller answer but a TRUNCATED one — the JSON array stops mid-object, the
+ * parse recovers what it can, and the rest of the batch silently falls to the
+ * keyword scorer. This must be raised alongside BATCH_SIZE, never after.
  */
-export const RANK_MAX_TOKENS = 3000;
+export const RANK_MAX_TOKENS = envInt('RANK_MAX_TOKENS', 5000, 512, 16000);
 
 /** Low, because this is a judgement task and we want it repeatable. */
 export const RANK_TEMPERATURE = 0.2;
@@ -128,6 +148,27 @@ const PROMPT_PROFILE_TITLES = 10;
 
 /** Provider error text attached to a span. Enough to diagnose, not a stack. */
 const SPAN_ERROR_CHARS = 300;
+
+/**
+ * Bucket a provider failure into something a UI can say out loud.
+ *
+ * Deliberately coarse. The exact message belongs in the log line and the trace,
+ * where a developer reads it; what a user needs is whether waiting will help.
+ * 'rate_limited' means it will, the others mean it will not.
+ *
+ * @param {unknown} err
+ * @returns {'rate_limited'|'model_unavailable'|'timeout'|'error'}
+ */
+function classifyDegradeReason(err) {
+  const status = err?.status ?? err?.statusCode;
+  if (status === 429) return 'rate_limited';
+  if (status === 404) return 'model_unavailable';
+  if (status === 413) return 'request_too_large';
+  const name = String(err?.name || '');
+  if (name === 'AbortError' || name === 'TimeoutError') return 'timeout';
+  if (Number.isFinite(status) && status >= 500) return 'provider_down';
+  return 'error';
+}
 
 /** Fallback system framing if a prompt file ever loses its `## Input` heading. */
 const SYSTEM_FALLBACK = 'You are a technical recruiter. Follow the instructions below exactly.';
@@ -402,6 +443,7 @@ export async function rankBatch(params = {}) {
   const profileBlock = JSON.stringify(promptProfile(resumeProfile), null, 2);
   const batches = chunk(list, BATCH_SIZE);
   const perBatch = new Array(batches.length);
+  const degradeReasons = [];
   let llmCalls = 0;
 
   /** Score one batch, returning results aligned to that batch's input order. */
@@ -486,11 +528,18 @@ export async function rankBatch(params = {}) {
         batch: index,
         errName: err?.name,
         status: err?.status ?? err?.statusCode,
+        // The message, not just the name — the same reasoning as the pool path
+        // in graph.js: a provider failure's name is almost always 'Error', and
+        // the diagnosis ("model not found", "rate limit ... Limit 8000") is
+        // entirely in the message. Without this the logs cannot tell a dead
+        // model id from an exhausted quota, and both look like this line.
+        reason: String(err?.message || err).slice(0, SPAN_ERROR_CHARS),
       });
       span?.update?.({
         output: { error: String(err?.message || err).slice(0, SPAN_ERROR_CHARS) },
         metadata: { degraded: true },
       })?.end?.();
+      degradeReasons.push(classifyDegradeReason(err));
       return batch.map((job) => keywordResult(resumeProfile, job, 'batch_error'));
     }
   };
@@ -516,6 +565,11 @@ export async function rankBatch(params = {}) {
   return {
     results,
     degraded,
+    // First failure, not a tally: every batch in a pass hits the same provider
+    // in the same few seconds, so they fail the same way, and a count would
+    // imply a precision this does not have. Null when nothing threw — a run
+    // degraded only by per-job recovery has no provider reason to give.
+    degradeReason: degradeReasons[0] || null,
     scoredBy: summarizeScoredBy(results),
     batches: batches.length,
     llmCalls,

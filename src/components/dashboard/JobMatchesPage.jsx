@@ -1387,8 +1387,25 @@ const JobMatchesPage = ({ showToast }) => {
    */
   const poolIsEmpty = Number.isFinite(meta?.total) ? meta.total === 0 : false;
 
-  /** Whole-run degradation: no AI scoring happened, so say so above the list. */
-  const keywordOnly = result?.degraded === true || result?.scoredBy === 'keyword';
+  /**
+   * Whole-run degradation: NO job was AI-scored.
+   *
+   * Reads scoredBy alone, deliberately. This used to be
+   * `result?.degraded === true || result?.scoredBy === 'keyword'`, and the
+   * first half of that is a much weaker claim than the banner it was driving:
+   * the server sets `degraded` when ANY SINGLE job falls back (rank.js —
+   * `results.some((r) => r.scoredBy !== 'llm')`), so one recovered job out of
+   * thirty put "AI scoring unavailable" above a list that was twenty-nine
+   * thirtieths AI-scored. A banner that overstates the outage is read as noise
+   * within a week, and then the real one goes unread too.
+   *
+   * scoredBy is the honest summary: 'keyword' means zero jobs were AI-scored,
+   * 'mixed' means some were, 'llm' means all were.
+   */
+  const keywordOnly = result?.scoredBy === 'keyword';
+
+  /** Partial degradation: some jobs are AI-scored, some fell back. */
+  const partiallyScored = result?.scoredBy === 'mixed';
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -1564,7 +1581,20 @@ const JobMatchesPage = ({ showToast }) => {
                 <div>
                   <p className="font-medium">AI scoring unavailable — showing keyword matches.</p>
                   <p className="mt-1 text-xs opacity-90">
-                    Scores come from keyword overlap alone, so treat them as approximate.
+                    {result?.meta?.degradeReason === 'rate_limited'
+                      ? 'The scoring service is rate limited right now. Scores come from keyword overlap alone, so treat them as approximate — try again shortly.'
+                      : 'Scores come from keyword overlap alone, so treat them as approximate.'}
+                  </p>
+                </div>
+              </Notice>
+            )}
+
+            {!ranking && result && partiallyScored && (
+              <Notice tone="amber" icon={AlertTriangle} className="mb-4">
+                <div>
+                  <p className="font-medium">Some jobs were scored by keyword only.</p>
+                  <p className="mt-1 text-xs opacity-90">
+                    The rest are AI-scored. Mixed runs are not cached, so a refresh re-scores them.
                   </p>
                 </div>
               </Notice>

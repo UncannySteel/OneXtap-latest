@@ -450,8 +450,19 @@ Rules:
 /** Gemini 2.5 counts thinking tokens inside maxOutputTokens; Flash can disable thinking so the budget is mostly answer text. */
 function thinkingConfigForGeminiModel(modelId) {
   const id = String(modelId || '').toLowerCase();
-  if (!id.includes('gemini-2.5')) return undefined;
   if (id.includes('pro')) return undefined;
+
+  // Flash-lite: send NOTHING. Measured on the live API — these models do not
+  // think by default (a two-token answer bills two tokens), and at least one of
+  // them, gemini-3.5-flash-lite, rejects thinkingBudget outright with a 400.
+  // Omitting the field is both correct and the only thing that works on all of
+  // them, so it is not worth a per-model exception list that drifts.
+  if (id.includes('flash-lite')) return undefined;
+
+  // Flash: thinking is ON by default from 2.5 onward and bills against the
+  // SAME maxOutputTokens the scores come out of, so leaving it on does not just
+  // cost latency — it truncates the JSON array and silently keyword-scores the
+  // tail of the batch. Verified accepted on 2.5, 3.5 and 3.6 flash.
   if (id.includes('flash')) return { thinkingBudget: 0 };
   return undefined;
 }
@@ -1499,6 +1510,40 @@ app.get('/api/jobs/meta', requireAuth, async (_req, res) => {
 const GEMINI_RANK_TIMEOUT_MS = 25_000;
 
 /**
+ * The Gemini models ranking may rotate through, in order.
+ *
+ * ═══ WHY A CHAIN AND NOT ONE MODEL ═══
+ *
+ * The free-tier quota that actually binds is 20 generateContent requests PER
+ * DAY, PER MODEL — the metric is literally named
+ * GenerateRequestsPerDayPerProjectPerModel-FreeTier. Per model is the load
+ * bearing half: each id carries its own daily bucket, so a chain of five is
+ * five buckets, not one shared one.
+ *
+ * Pinning a single model meant that the moment its 20 were spent, the whole
+ * Gemini leg was done for the day and every pass fell to Groq — whose own
+ * 8k-tokens-per-minute budget a full pass cannot fit either. That combination,
+ * not a misconfiguration, is what produced runs scored entirely by keyword.
+ *
+ * The rotation itself is free: callGemini already walks a model list and
+ * advances on anything shouldTryFallbackModel accepts, which includes the 429
+ * that quota exhaustion raises. This constant just stops handing it a list of
+ * one.
+ *
+ * Order is cheapest-and-fastest first. Ids are verified present on the account;
+ * a retired id (gemini-2.5-pro, gemini-2.5-flash-lite) 404s, which the chain
+ * also treats as "try the next one", so a stale entry costs a round trip rather
+ * than a failed pass.
+ */
+const GEMINI_RANK_MODELS = String(
+  process.env.GEMINI_RANK_MODELS ||
+    'gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-2.5-flash,gemini-3.5-flash,gemini-3.6-flash'
+)
+  .split(',')
+  .map((m) => m.trim())
+  .filter(Boolean);
+
+/**
  * The provider chain for ranking: Gemini first, Groq second.
  *
  * ═══ WHY TWO PROVIDERS AND NOT A BIGGER PLAN ═══
@@ -1534,16 +1579,16 @@ function createRankModelCaller() {
 
   return async function callModel({ system, user, maxTokens, temperature }) {
     try {
-      // Flash only, deliberately: callGemini's default chain falls back to
-      // gemini-2.5-pro, which is slower per call AND more tightly rationed on
-      // the free tier — the two things a bounded, batched scoring pass can
-      // least afford. Groq below is the better second stop.
+      // Flash and flash-lite only, deliberately: gemini-2.5-pro is slower per
+      // call AND more tightly rationed on the free tier — the two things a
+      // bounded, batched scoring pass can least afford. The chain is walked in
+      // order and each id has its own daily bucket; see GEMINI_RANK_MODELS.
       const { text } = await callGemini({
         prompt: user,
         systemInstruction: system,
         maxTokens,
         temperature,
-        models: [GEMINI_MODEL],
+        models: GEMINI_RANK_MODELS,
         timeoutMs: GEMINI_RANK_TIMEOUT_MS,
       });
       return text;
@@ -1553,6 +1598,11 @@ function createRankModelCaller() {
       rankLog.warn('gemini unavailable for rank batch, trying groq', {
         errName: error?.name,
         status: status ?? null,
+        // Reached only after EVERY model in the chain failed, so this message
+        // is the last one's. Without it the logs cannot distinguish an
+        // exhausted daily quota from a retired model id.
+        reason: String(error?.message || error).slice(0, 300),
+        chain: GEMINI_RANK_MODELS.length,
       });
       return groqCaller({ system, user, maxTokens, temperature });
     }
@@ -1660,6 +1710,13 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
         // cannot tell "we looked twice and this is what there is" apart from
         // "we ran out of time", and those deserve different sentences.
         budgetExhausted: outcome.budgetExhausted === true,
+        // Why the model leg gave up, bucketed — 'rate_limited',
+        // 'model_unavailable', 'timeout', 'provider_down', 'request_too_large'
+        // or 'error'; null when nothing threw. The banner uses it to say
+        // whether waiting will help, which is the only part of a provider
+        // failure a user can act on. The exact message stays in the log line
+        // and the trace, where it belongs.
+        degradeReason: outcome.degradeReason || null,
         rateLimitPerHour: RANK_LIMIT_PER_HOUR,
         rateRemaining: outcome.rateRemaining ?? null,
         limitResetAt: outcome.limitResetAt ?? null,

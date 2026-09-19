@@ -113,3 +113,90 @@ export function scoreProfileFields(parsed, labels) {
 export function pct(value) {
   return `${(Number(value) * 100).toFixed(1)}%`;
 }
+
+/**
+ * Spearman rank correlation between two equal-length numeric lists.
+ *
+ * ═══ WHY RANK CORRELATION IS THE HEADLINE CALIBRATION METRIC ═══
+ *
+ * Job Matches renders an ORDERED list. A model that scores every job ten points
+ * lower than the reference produces exactly the same page, and a mean-error
+ * metric would call that a regression. Rank correlation calls it what it is:
+ * identical. It moves only when the model disagrees about which job is the
+ * better fit, which is the only disagreement a user can see in the ordering.
+ *
+ * Ties are handled by average ranking, so a model that returns one score for
+ * everything correlates near zero rather than accidentally scoring well.
+ *
+ * @param {number[]} a
+ * @param {number[]} b
+ * @returns {number} -1..1, or NaN when there are fewer than two usable pairs.
+ */
+export function spearman(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length < 2) return NaN;
+
+  const rank = (xs) => {
+    const order = xs.map((v, i) => [v, i]).sort((p, q) => p[0] - q[0]);
+    const ranks = new Array(xs.length);
+    let i = 0;
+    while (i < order.length) {
+      let j = i;
+      while (j + 1 < order.length && order[j + 1][0] === order[i][0]) j += 1;
+      // Average rank across a tie group, 1-based.
+      const shared = (i + j) / 2 + 1;
+      for (let k = i; k <= j; k += 1) ranks[order[k][1]] = shared;
+      i = j + 1;
+    }
+    return ranks;
+  };
+
+  const ra = rank(a);
+  const rb = rank(b);
+  const n = ra.length;
+  const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
+  const ma = mean(ra);
+  const mb = mean(rb);
+
+  let num = 0;
+  let da = 0;
+  let db = 0;
+  for (let i = 0; i < n; i += 1) {
+    const x = ra[i] - ma;
+    const y = rb[i] - mb;
+    num += x * y;
+    da += x * x;
+    db += y * y;
+  }
+  // Zero variance on either side means one list is constant: undefined, not 1.
+  if (da === 0 || db === 0) return NaN;
+  return num / Math.sqrt(da * db);
+}
+
+/**
+ * Share of items two scorers place on the SAME side of a threshold.
+ *
+ * This is the metric that predicts what a user actually sees, because both
+ * thresholds in the product are absolute cuts: the graph gates on GOOD_SCORE
+ * and the user filters at 50/70/85. Two scorers can correlate perfectly and
+ * still disagree about every one of those cuts if one is uniformly optimistic.
+ *
+ * @param {number[]} actual
+ * @param {number[]} expected
+ * @param {number} threshold
+ * @returns {number} 0..1, or NaN when there is nothing to compare.
+ */
+export function thresholdAgreement(actual, expected, threshold) {
+  if (!Array.isArray(actual) || !Array.isArray(expected) || actual.length !== expected.length) return NaN;
+  if (actual.length === 0) return NaN;
+  let agree = 0;
+  for (let i = 0; i < actual.length; i += 1) {
+    if ((actual[i] >= threshold) === (expected[i] >= threshold)) agree += 1;
+  }
+  return agree / actual.length;
+}
+
+/** Mean absolute difference between two equal-length numeric lists. */
+export function meanAbsError(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) return NaN;
+  return a.reduce((s, v, i) => s + Math.abs(v - b[i]), 0) / a.length;
+}
