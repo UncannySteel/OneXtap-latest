@@ -5,13 +5,16 @@ by hand into the Supabase SQL Editor, so **this file is the only record of what
 has actually been applied where.** Update it in the same commit as the apply.
 
 Risk S3 in `docs/backend-schema.md` is exactly this gap. It has already cost one
-outage — see "Known incident" below.
+outage (see "Known incident") and one misdiagnosis (see "Ledger drift") — in
+opposite directions, from the same missing habit.
 
 ## Status
 
 Verified against the production project by a read-only PostgREST probe on
-2026-09-17 (a table that answers `PGRST205` does not exist; all four job-feature
-tables answered `200 []` after the apply).
+2026-09-19 (a table that answers `PGRST205` does not exist; a column that
+answers `42703` does not exist; check constraints read with
+`select pg_get_constraintdef(oid) from pg_constraint where conrelid =
+'public.job_listings'::regclass and contype = 'c'`).
 
 | Migration | Creates | Production | Notes |
 |---|---|---|---|
@@ -20,8 +23,40 @@ tables answered `200 []` after the apply).
 | `001_job_listings.sql` | `job_listings`, `job_ingest_state` | **applied 2026-09-17** | |
 | `002_rank_cache.sql` | `rank_cache`, `rank_rate_limit` | **applied 2026-09-17** | |
 | `003_ats_source.sql` | nothing — widens `job_listings_source_check` | **applied 2026-09-17** | First attempt that day failed `42P01` because `001` had not run; applied after it. |
-| `004_location_parts.sql` | 3 columns + 3 indexes on `job_listings` | **NOT APPLIED** | Additive and re-runnable. Until it is applied, `/api/jobs/locations` returns empty and the location typeahead has nothing to offer — the free-text filter still works. |
-| `005_keyless_sources.sql` | nothing — widens `job_listings_source_check` | **NOT APPLIED** | Additive and re-runnable. Until it is applied, the four keyless aggregators fetch fine and every row they return is rejected at insert, reported as a `db:` error per source. |
+| `004_location_parts.sql` | 3 columns + 3 indexes on `job_listings` | **applied 2026-09-19** | Additive and re-runnable. Applied without being recorded; found by probe on 2026-09-19 — see "Ledger drift". The three columns are still null on every row, because the ingest that populates them has not run since the parsing code landed, so `/api/jobs/locations` is still empty in practice. |
+| `005_keyless_sources.sql` | nothing — widens `job_listings_source_check` | **applied 2026-09-19** | Additive and re-runnable. Applied without being recorded; confirmed 2026-09-19 by `pg_get_constraintdef`, which returns all nine source values. Not the reason the four keyless sources hold 0 rows — ingest has not run since they were registered. |
+
+## Ledger drift — 2026-09-19
+
+`004` and `005` were both applied to production and neither was recorded here.
+The ledger claimed **NOT APPLIED** for both while the columns and the widened
+constraint were already live.
+
+Found while diagnosing four job sources showing 0 rows. The stale `005` row was
+an attractive and wrong explanation for that symptom — the constraint was fine,
+and the real cause was that ingest had not run since the adapters were
+registered (last run 12:57:48 UTC; the commit registering them landed 12:58:54
+UTC). A ledger that is wrong in the *optimistic* direction costs an outage;
+wrong in the *pessimistic* direction, as here, it costs a misdiagnosis and a
+pointless re-apply. Both are failures of the same discipline.
+
+This is the second time this file's premise has been violated — see "Known
+incident" below for the first. The rule is unchanged and is the whole point of
+the file: **update the row in the same commit as the apply.** When that has not
+happened, probe rather than trust:
+
+```sql
+-- what the source constraint actually allows
+select pg_get_constraintdef(oid) from pg_constraint
+where conrelid = 'public.job_listings'::regclass and contype = 'c';
+```
+
+```bash
+# does a column exist? a missing one answers 42703, not null
+curl -s -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  "$SUPABASE_URL/rest/v1/job_listings?select=location_city&limit=1"
+```
+
 
 ## Apply order
 
