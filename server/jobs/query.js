@@ -92,6 +92,59 @@ export const JOB_COLUMNS = Object.freeze([
 ]);
 
 /**
+ * Columns that exist only once migration 004 has been applied.
+ *
+ * ═══ WHY THIS IS NOT JUST APPENDED TO JOB_COLUMNS ═══
+ *
+ * A migration in this project is applied BY HAND in the Supabase SQL editor —
+ * there is no migration tool and no history table — so there is always a
+ * window where the code is deployed and the SQL is not. Selecting a column
+ * that does not exist yet is not a degraded read, it is a hard PostgREST error
+ * on EVERY pool query, which takes ranking down completely. That precise
+ * failure has already happened here once: a missing `job_listings` surfaced as
+ * a bare 502 and cost a debugging session (see supabase/migrations/README.md).
+ *
+ * So the parts are requested optionally and their absence is learned once,
+ * from the database, at runtime.
+ */
+const LOCATION_PART_COLUMNS = Object.freeze(['location_city', 'location_region', 'location_country']);
+
+/**
+ * Tri-state: null = not yet known, true = present, false = migration 004 has
+ * not run. Cached per process because the answer changes at most once in a
+ * deployment's life, and re-probing would double every pool read.
+ */
+let locationPartsPresent = null;
+
+/** The projection to ask for, given what we know about the schema. */
+function selectColumns() {
+  return locationPartsPresent === false
+    ? JOB_COLUMNS.join(',')
+    : [...JOB_COLUMNS, ...LOCATION_PART_COLUMNS].join(',');
+}
+
+/**
+ * Does this error mean "migration 004 has not been applied"?
+ *
+ * Postgres 42703 is undefined_column. The message is also matched because
+ * PostgREST does not always forward the code, and the column name is required
+ * in the text so an unrelated undefined column still throws honestly.
+ *
+ * @param {object} error A Supabase error.
+ * @returns {boolean}
+ */
+function isMissingLocationParts(error) {
+  const text = `${error?.code || ''} ${error?.message || ''}`.toLowerCase();
+  return LOCATION_PART_COLUMNS.some((c) => text.includes(c))
+    && (text.includes('42703') || text.includes('does not exist') || text.includes('could not find'));
+}
+
+/** Test seam: forget what was learned about the schema. */
+export function resetLocationPartsCache() {
+  locationPartsPresent = null;
+}
+
+/**
  * The sources the table's own CHECK constraint allows.
  *
  * THREE PLACES HOLD THIS LIST and they drift silently: the constraint in
@@ -102,7 +155,10 @@ export const JOB_COLUMNS = Object.freeze([
  * working filter that matches everything. 'ats' was missing for exactly that
  * reason. A test below asserts this set against ADAPTERS.
  */
-const KNOWN_SOURCES = new Set(['adzuna', 'remotive', 'ats', 'cache']);
+const KNOWN_SOURCES = new Set([
+  'adzuna', 'remotive', 'ats', 'cache',
+  'arbeitnow', 'remoteok', 'jobicy', 'himalayas',
+]);
 
 /**
  * Escape the characters that are wildcards inside a SQL LIKE/ILIKE pattern.
@@ -127,6 +183,65 @@ const KNOWN_SOURCES = new Set(['adzuna', 'remotive', 'ats', 'cache']);
  */
 export function escapeLike(value) {
   return String(value ?? '').replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * How many resume terms reach the relevance filter.
+ *
+ * Every term is another `or` branch in a PostgREST query string, and that
+ * string travels in the URL. A resume with ninety skills would build a filter
+ * long enough to be rejected by the gateway rather than the database, which
+ * fails as a 400 with no useful text. Twelve is comfortably inside every limit
+ * in the path and is already more signal than the ranker needs — the terms are
+ * weight-ordered, so the ones dropped are the weakest.
+ */
+export const MAX_RELEVANCE_TERMS = 12;
+
+/**
+ * Strip a resume term down to something safe to interpolate into a filter.
+ *
+ * ═══ WHY THIS IS NOT OPTIONAL ═══
+ *
+ * These strings come from a parsed resume, which is a user-supplied file. They
+ * are interpolated into PostgREST's `or=(...)` grammar, where `,` separates
+ * branches, `.` separates operator parts, `(` `)` nest, and `{` `}` delimit an
+ * array literal. A skill listed as "c++, rust" or "node.js (expert)" would not
+ * error — it would silently change the SHAPE of the query and filter on
+ * something nobody asked for. That is the same failure mode as the unescaped
+ * `%` that escapeLike exists to prevent, one grammar along.
+ *
+ * Allowlist, not denylist: anything outside [a-z0-9 +#.-] is dropped. Real
+ * skill terms (`c++`, `node.js`, `ci/cd` -> `cicd`) survive that intact.
+ *
+ * @param {unknown} value A single term.
+ * @returns {string} The safe form, possibly empty — callers must drop empties.
+ */
+export function sanitizeTerm(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 +#.-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+}
+
+/**
+ * Resume terms to a clean, bounded, de-duplicated list.
+ *
+ * @param {unknown} raw Array of strings, or a comma-separated string.
+ * @returns {string[]} At most MAX_RELEVANCE_TERMS safe terms.
+ */
+export function normalizeTerms(raw) {
+  if (raw === undefined || raw === null || raw === '') return [];
+  const list = Array.isArray(raw) ? raw : String(raw).split(',');
+  const out = [];
+  for (const item of list) {
+    const term = sanitizeTerm(item);
+    if (!term || out.includes(term)) continue;
+    out.push(term);
+    if (out.length >= MAX_RELEVANCE_TERMS) break;
+  }
+  return out;
 }
 
 /**
@@ -247,6 +362,9 @@ export function toClientJob(row) {
     title: r.title,
     company: r.company ?? null,
     location: r.location ?? null,
+    locationCity: r.location_city ?? null,
+    locationRegion: r.location_region ?? null,
+    locationCountry: r.location_country ?? null,
     url: r.url,
     category: r.category ?? null,
     jobType: r.job_type ?? null,
@@ -287,6 +405,13 @@ export function toMatcherJob(job) {
     keywords: j.keywords,
     keyword_terms: j.keywordTerms,
     description_quality: j.descriptionQuality,
+    // `id` and `posted_at` are here for prefilterJobs' SORT, not its scoring.
+    // Its tiebreak is "score, then newest, then id", and with these absent
+    // every comparison after the score collapsed to `'' vs ''` — so ties fell
+    // through to an ascending-UUID ordering that looks deliberate and is not.
+    // The scorer ignores both fields; only the comparator reads them.
+    id: j.id,
+    posted_at: j.postedAt,
   };
 }
 
@@ -310,6 +435,84 @@ export function toMatcherJob(job) {
  * @param {string|number} [filters.since] Floor on posted_at; default 30 days.
  * @returns {Promise<{jobs: object[], nextCursor: string|null}>}
  */
+/**
+ * Apply the location filter, structured when the caller gave one.
+ *
+ * TWO SHAPES, deliberately, because they answer different questions:
+ *
+ *   {locationCountry: 'United States'}  the typeahead. The user PICKED a value
+ *                                       the API offered, so it exists and an
+ *                                       exact (case-insensitive) match is
+ *                                       right — and hits the lower() indexes
+ *                                       from migration 004.
+ *   {location: 'new york'}              free text. Still substring, still
+ *                                       against the display column, because
+ *                                       something typed by hand may not be a
+ *                                       value we hold.
+ *
+ * The structured path wins when both are present. Rows ingested before
+ * migration 004 have null parts and simply do not match a structured filter —
+ * they are reachable by free text until the cron re-sees them, which is the
+ * documented trade in the migration rather than a silent gap.
+ *
+ * @param {object} query A built Supabase query.
+ * @param {object} f The caller's filters.
+ * @returns {object} The query with at most one location clause applied.
+ */
+function applyLocation(query, f) {
+  const city = String(f.locationCity ?? '').trim();
+  const region = String(f.locationRegion ?? '').trim();
+  const country = String(f.locationCountry ?? '').trim();
+
+  if (city || region || country) {
+    let q = query;
+    // ilike with no wildcard is exact, case-insensitive, and PostgREST sends
+    // it as a pattern the lower() index can serve.
+    if (city) q = q.ilike('location_city', escapeLike(city));
+    if (region) q = q.ilike('location_region', escapeLike(region));
+    if (country) q = q.ilike('location_country', escapeLike(country));
+    return q;
+  }
+
+  const free = String(f.location ?? '').trim();
+  return free ? query.ilike('location', `%${escapeLike(free)}%`) : query;
+}
+
+/**
+ * Run one pool query and hand back rows, turning a Supabase error into a throw.
+ *
+ * Shared by the relevance pass and the recency pass so a failure on either
+ * reads the same way to the caller. The graph catches this and degrades; what
+ * it must never get is an empty array that means "the database said no".
+ *
+ * @param {object} query A built Supabase query.
+ * @param {number} limit Row cap.
+ * @returns {Promise<object[]>} Raw rows.
+ */
+async function runPool(build, limit) {
+  const { data, error } = await build().limit(limit);
+  if (!error) {
+    if (locationPartsPresent === null) locationPartsPresent = true;
+    return Array.isArray(data) ? data : [];
+  }
+
+  // Learn, then retry once WITHOUT the optional columns. Exactly one retry:
+  // the flag is now false, so the rebuilt query cannot ask for them again and
+  // this cannot recurse.
+  if (locationPartsPresent !== false && isMissingLocationParts(error)) {
+    locationPartsPresent = false;
+    const retry = await build().limit(limit);
+    if (!retry.error) return Array.isArray(retry.data) ? retry.data : [];
+    const err = new Error(retry.error.message || 'Job pool query failed');
+    err.cause = retry.error;
+    throw err;
+  }
+
+  const err = new Error(error.message || 'Job pool query failed');
+  err.cause = error;
+  throw err;
+}
+
 export async function fetchJobPool(supabase, filters = {}) {
   const f = filters && typeof filters === 'object' ? filters : {};
   const limit = normalizeLimit(f.limit);
@@ -318,48 +521,95 @@ export async function fetchJobPool(supabase, filters = {}) {
   const since = normalizeSince(f.since);
   const cursor = decodeCursor(f.cursor);
 
-  let query = supabase
-    .from('job_listings')
-    .select(JOB_COLUMNS.join(','))
-    .gte('posted_at', since);
-
-  if (remote !== null) query = query.eq('remote', remote);
-  if (sources.length === 1) query = query.eq('source', sources[0]);
-  else if (sources.length > 1) query = query.in('source', sources);
-
-  const location = String(f.location ?? '').trim();
-  if (location) query = query.ilike('location', `%${escapeLike(location)}%`);
-
+  const terms = normalizeTerms(f.terms);
   const term = String(f.q ?? '').trim();
-  if (term) query = query.ilike('title', `%${escapeLike(term)}%`);
 
-  // Keyset, not offset. `posted_at desc, id desc` is the total order, so the
-  // boundary is "strictly older, or the same instant with a smaller id" — the
-  // id tiebreak is what stops a batch of listings sharing one posted_at from
-  // being partly skipped and partly repeated across pages.
-  if (cursor) {
-    if (cursor.postedAt) {
-      query = query.or(
-        `posted_at.lt.${cursor.postedAt},and(posted_at.eq.${cursor.postedAt},id.lt.${cursor.id})`
-      );
-    } else {
-      query = query.lt('id', cursor.id);
+  /** Every filter except relevance, applied identically to both passes. */
+  const baseQuery = () => {
+    let q = supabase
+      .from('job_listings')
+      .select(selectColumns())
+      .gte('posted_at', since);
+
+    if (remote !== null) q = q.eq('remote', remote);
+    if (sources.length === 1) q = q.eq('source', sources[0]);
+    else if (sources.length > 1) q = q.in('source', sources);
+    q = applyLocation(q, f);
+    if (term) q = q.ilike('title', `%${escapeLike(term)}%`);
+    return q;
+  };
+
+  // ═══ THE RELEVANCE PASS ═══
+  //
+  // Without this the pool is the newest `limit` rows and nothing else, so
+  // relevance plays NO part in deciding what the ranker ever sees. Measured on
+  // the live table: the 200 rows a rank actually read spanned a single day of
+  // ingest, and three rows in the newest thousand had a tech-ish title. The
+  // ranker was scoring a sample chosen entirely by clock.
+  //
+  // Two conditions, OR'd, because neither is sufficient alone:
+  //   keyword_terms.ov  — hits idx_job_listings_keyword_terms (GIN), so this
+  //                       is an index scan, not a table walk.
+  //   title.ilike       — extraction runs on Adzuna's ~200-char snippet and
+  //                       yields boilerplate (`pay`, `earn`, `annually` are
+  //                       all real entries in the live pool), so keyword_terms
+  //                       alone cannot be trusted yet. The title always says
+  //                       what the job is.
+  //
+  // Cursors are ignored on this path and nextCursor comes back null: a
+  // relevance read is a ranking input, not a list a user scrolls, and a keyset
+  // cursor over a two-pass union would not survive its own next page.
+  if (terms.length) {
+    const branches = [
+      `keyword_terms.ov.{${terms.join(',')}}`,
+      ...terms.map((t) => `title.ilike.*${t}*`),
+    ];
+    const relevant = await runPool(
+      () => baseQuery().or(branches.join(',')).order('posted_at', { ascending: false }),
+      limit
+    );
+
+    // Top up with recency when relevance alone underfills. A short relevant
+    // list is the honest answer to "we hold little for this resume", but the
+    // graph still reformulates and re-reads, and handing it nothing to widen
+    // from turns a thin pool into an empty page.
+    if (relevant.length >= limit) return { jobs: relevant.map(toClientJob), nextCursor: null };
+
+    const seen = new Set(relevant.map((r) => r.id));
+    const filler = await runPool(() => baseQuery().order('posted_at', { ascending: false }), limit);
+    const topped = [...relevant];
+    for (const row of filler) {
+      if (topped.length >= limit) break;
+      if (!seen.has(row.id)) topped.push(row);
     }
+    return { jobs: topped.map(toClientJob), nextCursor: null };
   }
 
-  query = query
-    .order('posted_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(limit);
+  // A builder, not a query: runPool may need to rebuild it once to retry
+  // without the optional location columns. See LOCATION_PART_COLUMNS.
+  const buildRecency = () => {
+    let query = baseQuery();
 
-  const { data, error } = await query;
-  if (error) {
-    const err = new Error(error.message || 'Job pool query failed');
-    err.cause = error;
-    throw err;
-  }
+    // Keyset, not offset. `posted_at desc, id desc` is the total order, so the
+    // boundary is "strictly older, or the same instant with a smaller id" —
+    // the id tiebreak is what stops a batch of listings sharing one posted_at
+    // from being partly skipped and partly repeated across pages.
+    if (cursor) {
+      if (cursor.postedAt) {
+        query = query.or(
+          `posted_at.lt.${cursor.postedAt},and(posted_at.eq.${cursor.postedAt},id.lt.${cursor.id})`
+        );
+      } else {
+        query = query.lt('id', cursor.id);
+      }
+    }
 
-  const rows = Array.isArray(data) ? data : [];
+    return query
+      .order('posted_at', { ascending: false })
+      .order('id', { ascending: false });
+  };
+
+  const rows = await runPool(buildRecency, limit);
   const jobs = rows.map(toClientJob);
 
   // A full page implies there may be another. A short page is the end, and

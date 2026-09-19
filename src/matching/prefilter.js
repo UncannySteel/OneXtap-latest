@@ -34,6 +34,17 @@ const EDUCATION_DISCOUNT = 0.7;
 /** Jobs returned when the caller does not ask for a specific number. */
 const DEFAULT_LIMIT = 30;
 
+/**
+ * Candidates kept regardless of overlap, when a floor is applied.
+ *
+ * A floor that can empty the list is worse than no floor. Some resumes fold
+ * into the lexicon poorly, and some pools genuinely hold nothing adjacent —
+ * in both cases every job scores 0, and "we found nothing" is a far worse
+ * answer than a short list the ranker can still sort. So the floor drops the
+ * zero-overlap tail only while at least this many candidates survive it.
+ */
+const MIN_KEPT_CANDIDATES = 8;
+
 /** Decimals kept on a stored weight or score. */
 const SCORE_DECIMALS = 4;
 
@@ -240,7 +251,9 @@ export function normalizeJobKeywords(job) {
  *
  * @param {ResumeProfile} resumeProfile From {@link buildResumeProfile}.
  * @param {Array<object>} jobs Job rows; each may use either keyword shape.
- * @param {{limit?: number}} [options] `limit` defaults to 30.
+ * @param {{limit?: number, minScore?: number}} [options] `limit` defaults to
+ *   30. `minScore` opts into the floor described below: candidates at or
+ *   under it are dropped, unless doing so would leave too few.
  * @returns {Array<{job: object, prefilterScore: number, matchedTerms: string[]}>}
  *   Sorted by score descending, then `posted_at` descending, then `id`
  *   ascending. The final `id` tiebreak matters: `Array.prototype.sort` is only
@@ -283,6 +296,26 @@ export function prefilterJobs(resumeProfile, jobs, options = {}) {
     if (byPosted !== 0) return byPosted;
     return compareStrings(orderKey(a.job.id), orderKey(b.job.id));
   });
+
+  // ═══ THE FLOOR ═══
+  //
+  // Opt-in, because this function is also the "give me the best N you have"
+  // pass for callers that genuinely want N.
+  //
+  // Without it the slice below pads: a pool of 200 with 12 relevant jobs still
+  // hands the scorer 30, and the last 18 have NOTHING in common with the
+  // resume. That is not a harmless extra — those jobs occupy the ranked list,
+  // cost model tokens to score, and are exactly what "a Python developer is
+  // being shown freelance content writing" looks like from the inside.
+  //
+  // Guarded by MIN_KEPT_CANDIDATES so it can thin a list but never empty one.
+  if (asObject(options).minScore !== undefined) {
+    const floor = Number(asObject(options).minScore) || 0;
+    const above = scored.filter((entry) => entry.prefilterScore > floor);
+    if (above.length >= Math.min(MIN_KEPT_CANDIDATES, scored.length)) {
+      return above.slice(0, limit);
+    }
+  }
 
   return scored.slice(0, limit);
 }

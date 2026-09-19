@@ -31,7 +31,9 @@ process.env.NODE_ENV = 'test';
 delete process.env.ADZUNA_APP_ID;
 delete process.env.ADZUNA_APP_KEY;
 
-const { runIngest, shortError } = await import('../../server/jobs/ingest.js');
+const { runIngest, shortError, nextSweepCursor, SWEEP_PAGES_PER_TERM } = await import('../../server/jobs/ingest.js');
+const { SEARCH_TERMS } = await import('../../server/jobs/searchTerms.js');
+const { ADAPTERS } = await import('../../server/jobs/adapters/index.js');
 const { formatSupabaseError } = await import('../../server/supabase.js');
 
 /** Replaces globalThis.fetch and returns the restore function. */
@@ -165,9 +167,13 @@ test('runIngest never throws, whatever it is handed', async () => {
       assert.equal(typeof report, 'object', `junk: ${JSON.stringify(junk) ?? String(junk)}`);
       assert.equal(report.ok, false);
       // Anything unrecognised falls back to the full cascade in cascade order.
+      // Derived from the registry, not spelled out: what is under test is
+      // "junk selects EVERY source, in cascade order", and a hardcoded list
+      // turns each new adapter into an unrelated test failure. Cascade order
+      // itself is asserted once, in adapters.test.js, where it belongs.
       assert.deepEqual(
         report.perSource.map((s) => s.id),
-        ['adzuna', 'remotive', 'ats', 'cache'],
+        ADAPTERS.map((a) => a.id),
         `junk: ${JSON.stringify(junk) ?? String(junk)}`,
       );
     }
@@ -179,4 +185,34 @@ test('runIngest never throws, whatever it is handed', async () => {
   } finally {
     restoreFetch();
   }
+});
+
+// ------------------------------------------------------------------
+// The sweep cursor for search-capable sources
+// ------------------------------------------------------------------
+
+test('nextSweepCursor walks every occupation, then wraps to 1', () => {
+  const sweepLength = SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM;
+  assert.equal(nextSweepCursor(1), 2);
+  assert.equal(nextSweepCursor(sweepLength - 1), sweepLength);
+  assert.equal(nextSweepCursor(sweepLength), 1, 'end of sweep must restart');
+  // Past the end (a shortened taxonomy, a stale stored cursor) also restarts
+  // rather than paging into nothing forever.
+  assert.equal(nextSweepCursor(sweepLength + 50), 1);
+});
+
+test('nextSweepCursor is total: junk restarts the sweep safely', () => {
+  for (const junk of [0, -1, NaN, undefined, null, 'x']) {
+    const next = nextSweepCursor(junk);
+    assert.ok(next >= 1 && next <= SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM);
+  }
+});
+
+test('a term with fewer listings than one page must not reset the sweep', () => {
+  // The trap this replaced: `hasMore:false` used to wrap the cursor to 1. With
+  // a term-major cursor that is a statement about ONE occupation — 'paralegal'
+  // returning 30 rows would have pinned ingest to the first occupation
+  // forever. Only the sweep's own length may end it.
+  const midSweep = Math.floor(SEARCH_TERMS.length / 2);
+  assert.notEqual(nextSweepCursor(midSweep), 1);
 });

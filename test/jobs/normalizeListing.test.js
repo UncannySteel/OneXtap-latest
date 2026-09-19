@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normalizeListing, dedupeHash } from '../../server/jobs/normalizeListing.js';
+import { normalizeListing, dedupeHash, splitLocation } from '../../server/jobs/normalizeListing.js';
 
 const base = {
   source_id: 'abc',
@@ -187,4 +187,78 @@ test('non-finite salaries become null', () => {
   const row = normalizeListing({ ...base, salary_min: 'not a number', salary_max: Infinity }, 'adzuna');
   assert.equal(row.salary_min, null);
   assert.equal(row.salary_max, null);
+});
+
+// ------------------------------------------------------------------
+// splitLocation — structured location parts
+// ------------------------------------------------------------------
+
+test('splitLocation prefers the provider structured area, broadest-first', () => {
+  // Adzuna sends ['US','Florida','Hillsborough County','Tampa Palms'] while
+  // its display_name is "Tampa Palms, Hillsborough County" — a city and a
+  // COUNTY. The display string can never answer "jobs in Florida"; this can.
+  assert.deepEqual(
+    splitLocation(['US', 'Florida', 'Hillsborough County', 'Tampa Palms'], 'Tampa Palms, Hillsborough County'),
+    { country: 'United States', region: 'Florida', city: 'Tampa Palms' }
+  );
+});
+
+test('splitLocation resolves a US state abbreviation to its country', () => {
+  assert.deepEqual(
+    splitLocation(null, 'San Francisco, CA'),
+    { city: 'San Francisco', region: 'CA', country: 'United States' }
+  );
+});
+
+test('splitLocation reads a trailing country name', () => {
+  assert.deepEqual(
+    splitLocation(null, 'Bengaluru, India'),
+    { city: 'Bengaluru', region: null, country: 'India' }
+  );
+});
+
+test('splitLocation tells a lone country from a lone city', () => {
+  // Remotive's entire location vocabulary is values like these. Before the
+  // reverse name lookup, "Canada" parsed as a city called Canada and the
+  // typeahead offered it as one.
+  assert.equal(splitLocation(null, 'Canada').country, 'Canada');
+  assert.equal(splitLocation(null, 'Canada').city, null);
+  assert.equal(splitLocation(null, 'USA').country, 'United States');
+  assert.equal(splitLocation(null, 'London').city, 'London');
+  assert.equal(splitLocation(null, 'London').country, null);
+});
+
+test('splitLocation treats a broad region as a region, not a city', () => {
+  for (const value of ['Worldwide', 'Europe', 'APAC', 'LATAM']) {
+    const parts = splitLocation(null, value);
+    assert.equal(parts.city, null, `${value} became a city`);
+    assert.equal(parts.region, value);
+  }
+});
+
+test('splitLocation takes only the first of a multi-location string', () => {
+  // "SF • New York • United States" is three places. A composite is a place
+  // that does not exist and nobody can search for it.
+  assert.equal(
+    splitLocation(null, 'San Francisco, CA • New York, NY • United States').city,
+    'San Francisco'
+  );
+});
+
+test('splitLocation strips the (HQ) suffix and is total on junk', () => {
+  assert.equal(splitLocation(null, 'New York, NY (HQ)').city, 'New York');
+  for (const junk of ['', null, undefined, '   ', ',,,']) {
+    assert.deepEqual(splitLocation(null, junk), { city: null, region: null, country: null });
+  }
+});
+
+test('normalizeListing stores the parts alongside the display string', () => {
+  const row = normalizeListing(
+    { ...base, location: 'Tampa Palms, Hillsborough County', location_area: ['US', 'Florida', 'Hillsborough County', 'Tampa Palms'] },
+    'adzuna'
+  );
+  assert.equal(row.location, 'Tampa Palms, Hillsborough County', 'the display column must survive');
+  assert.equal(row.location_city, 'Tampa Palms');
+  assert.equal(row.location_region, 'Florida');
+  assert.equal(row.location_country, 'United States');
 });

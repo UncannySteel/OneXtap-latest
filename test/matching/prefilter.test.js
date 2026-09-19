@@ -149,3 +149,38 @@ test('normalizeJobKeywords merges across the compact and expanded shapes', () =>
   assert.equal(merged[0].weight, 1);
   assert.equal(merged[0].count, 1);
 });
+
+// ------------------------------------------------------------------
+// The optional score floor
+// ------------------------------------------------------------------
+
+test('minScore drops the zero-overlap tail instead of padding to the limit', () => {
+  const resume = buildResumeProfile({ skills: ['python', 'django'], titles: ['Engineer'] });
+  const relevant = Array.from({ length: 10 }, (_, i) => ({
+    id: `hit${i}`, title: 'Engineer', keyword_terms: ['python', 'django'],
+  }));
+  const irrelevant = Array.from({ length: 40 }, (_, i) => ({
+    id: `miss${i}`, title: 'Driver', keyword_terms: ['cdl-a', 'otr'],
+  }));
+  const jobs = [...irrelevant, ...relevant];
+
+  // Without the floor the caller gets a full 30, two thirds of which share
+  // nothing at all with the resume.
+  assert.equal(prefilterJobs(resume, jobs, { limit: 30 }).length, 30);
+
+  const floored = prefilterJobs(resume, jobs, { limit: 30, minScore: 0 });
+  assert.equal(floored.length, 10);
+  for (const entry of floored) assert.ok(entry.prefilterScore > 0);
+});
+
+test('the floor never empties a list, however poorly the resume folds', () => {
+  // Every job scores 0 here. Returning nothing would be a worse answer than an
+  // unranked short list, so MIN_KEPT_CANDIDATES wins over the floor.
+  const resume = buildResumeProfile({ skills: ['underwater basket weaving'] });
+  const jobs = Array.from({ length: 20 }, (_, i) => ({
+    id: `j${i}`, title: 'Driver', keyword_terms: ['cdl-a', 'otr'],
+  }));
+  const floored = prefilterJobs(resume, jobs, { limit: 30, minScore: 0 });
+  assert.ok(floored.length > 0, 'the floor emptied the candidate list');
+  assert.equal(floored.length, 20);
+});

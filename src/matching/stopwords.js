@@ -105,4 +105,30 @@ export const PHRASE_BREAKERS = new Set([
 export const NEVER_EMIT = new Set([
   'experience', 'knowledge', 'skills', 'skill', 'understanding', 'familiarity',
   'background', 'expertise', 'proficiency',
+
+  // ── Compensation and benefits boilerplate ────────────────────────────
+  //
+  // Added after a census of the live pool, where these were among the most
+  // FREQUENT extracted "skills" across 1,869 rows: `pay`, `earn`, `average`
+  // and `annually` all outranked every real competency. They survive
+  // frequency ranking for the same reason the words above do — a posting
+  // repeats them constantly — and they are worse than useless in a keyword
+  // diff, because every resume fails to "match" them and they crowd real
+  // requirements out of the top-ranked window the evidence count measures.
+  'pay', 'salary', 'wage', 'wages', 'earn', 'earnings', 'annually', 'weekly',
+  'hourly', 'bonus', 'benefits', 'medical', 'dental', 'vision', 'insurance',
+  'coverage', 'k', 'pto', 'holiday', 'holidays', 'compensation', 'perks',
+
+  // ── Recruiting filler ────────────────────────────────────────────────
+  //
+  // Vague nouns and adjectives that read as requirements in isolation but
+  // carry no signal. Live examples from the same census: `bar`, `area`,
+  // `feel`, `end`, `top`, `high`, `available`, `sign`.
+  'career', 'careers', 'opportunity', 'opportunities', 'role', 'roles',
+  'position', 'positions', 'candidate', 'candidates', 'applicant', 'team',
+  // NOTE: 'organization' is deliberately absent — it is a real soft skill in
+  // SKILL_LEXICON, next to 'time management' and 'attention to detail'.
+  'teams', 'company', 'employer', 'job',
+  'jobs', 'work', 'available', 'top', 'high', 'sign', 'bar', 'area', 'feel',
+  'end', 'approach', 'quality', 'confidence', 'emerging', 'partner',
 ]);

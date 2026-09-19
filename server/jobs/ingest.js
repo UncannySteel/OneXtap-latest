@@ -45,12 +45,48 @@ import { supabaseAdmin, formatSupabaseError } from '../supabase.js';
 import { log } from '../logger.js';
 import { ADAPTERS, getAdapter } from './adapters/index.js';
 import { normalizeListing } from './normalizeListing.js';
+import { SEARCH_TERMS, cursorToSearch } from './searchTerms.js';
 import { startTrace, flushTracing, SpanType } from '../observability/opik.js';
 
 const jobsLog = log.child('jobs');
 
 export const INGEST_BUDGET_MS = 45_000;
 export const MAX_PAGES_PER_RUN = 6;
+
+/**
+ * How deep into each occupation a full sweep goes, for search-capable sources.
+ *
+ * One page (50 Adzuna listings) per occupation per sweep. With 33 terms and
+ * MAX_PAGES_PER_RUN of 6 that is a complete sweep every ~6 daily runs, so
+ * every occupation's NEWEST page is re-read roughly weekly and the 30-day
+ * retention window holds several sweeps' worth.
+ *
+ * Depth trades freshness for reach and there is no setting that buys both:
+ * page 1 is the newest listings, so going deeper spends the same fixed daily
+ * call budget on older ones and slows the return to page 1. Raise it only
+ * alongside MAX_PAGES_PER_RUN, which is itself capped by Adzuna's free tier.
+ */
+export const SWEEP_PAGES_PER_TERM = Math.max(
+  1,
+  Number.parseInt(process.env.INGEST_SWEEP_PAGES || '', 10) || 1
+);
+
+/**
+ * Advance a search-capable source's cursor, wrapping at the end of the sweep.
+ *
+ * The cursor is term-major (see cursorToSearch), so +1 is the next occupation
+ * and the sweep is `SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM` values long.
+ * Returning 1 means the sweep is complete and the next run starts over at the
+ * first occupation's newest page — which is the refresh, not a failure.
+ *
+ * @param {number} cursor Current 1-based cursor.
+ * @returns {number} The next cursor, or 1 at the end of a sweep.
+ */
+export function nextSweepCursor(cursor) {
+  const sweepLength = SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM;
+  const next = Math.max(Number(cursor) || 1, 1) + 1;
+  return next > sweepLength ? 1 : next;
+}
 
 /** PostgREST rejects very large payloads; 100 rows is comfortably inside it. */
 const UPSERT_CHUNK = 100;
@@ -335,8 +371,23 @@ export async function runIngest(options = {}) {
             let pageFetched = 0;
             let pageWritten = 0;
 
+            // Search-capable sources get one occupation from the taxonomy per
+            // cursor value; everything else gets its plain feed. Skipping this
+            // for a whole year is what filled the pool with trucking: Adzuna
+            // with no `what` and no `category` is not "all jobs", it is
+            // whatever that provider promotes. See jobs/searchTerms.js.
+            const search = adapter.supportsSearch ? cursorToSearch(page) : null;
+
             try {
-              const result = await adapter.fetch({ page, signal: runController.signal });
+              const result = await adapter.fetch({
+                // A searching source pages WITHIN its current term, so it gets
+                // the decoded sub-page; everything else still gets the raw
+                // cursor it has always been handed.
+                page: search ? search.page : page,
+                query: search?.term,
+                category: search?.adzunaCategory,
+                signal: runController.signal,
+              });
               const items = Array.isArray(result?.items) ? result.items : [];
               entry.fetched += items.length;
               pageFetched = items.length;
@@ -360,9 +411,14 @@ export async function runIngest(options = {}) {
                 // neither the per-page write below nor the final error write would
                 // ever fire — and the cursor would stay parked past the end of the
                 // result set, fetching nothing, every day, silently.
-                page = 1;
+                // For a searching source an empty page means THIS OCCUPATION
+                // ran out, not the source — the cursor is term-major, so the
+                // next value is a different occupation and resetting to 1
+                // would throw away the whole sweep because one narrow term
+                // (say 'paralegal') had fewer than 50 listings.
+                page = search ? nextSweepCursor(page) : 1;
                 await persistState(adapter.id, {
-                  next_page: 1,
+                  next_page: page,
                   last_run_at: new Date().toISOString(),
                   last_status: 'ok',
                   last_error: null,
@@ -434,8 +490,16 @@ export async function runIngest(options = {}) {
 
               // Cursor persisted immediately after this page's write, before another
               // page is fetched.
-              const wraps = !adapter.supportsPaging || !result.hasMore;
-              const nextPage = wraps ? 1 : page + 1;
+              // `hasMore` answers "are there more pages of THIS query". For a
+              // searching source that is a statement about one occupation, so
+              // it cannot decide the cursor: a term with 30 listings reports
+              // hasMore:false on page 1, and honouring that here would wrap the
+              // sweep back to the first occupation forever. The sweep's own
+              // length is the only thing that ends it.
+              const wraps = search
+                ? nextSweepCursor(page) === 1
+                : (!adapter.supportsPaging || !result.hasMore);
+              const nextPage = wraps ? 1 : (search ? nextSweepCursor(page) : page + 1);
               await persistState(adapter.id, {
                 next_page: nextPage,
                 last_run_at: new Date().toISOString(),

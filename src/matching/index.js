@@ -60,6 +60,7 @@ export {
 export {
   fallbackScoreJob,
   missingKeywords,
+  keywordCoverage,
   seniorityFit,
   ratio,
   SCORE_WEIGHTS,

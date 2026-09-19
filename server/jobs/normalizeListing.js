@@ -44,6 +44,127 @@ const MAX_CURRENCY = 10;
 /** The DB check constraint on description_quality allows exactly these. */
 const VALID_QUALITY = new Set(['full', 'snippet']);
 
+const MAX_LOCATION_PART = 120;
+
+/**
+ * ISO-ish country codes the sources actually emit, to full names.
+ *
+ * Deliberately tiny. This is not a country dataset — it exists because Adzuna
+ * puts a two-letter code in `area[0]` and a user types "United States", and a
+ * two-entry lookup beats a dependency. Anything not here passes through
+ * unchanged, which is right: Remotive already says "Canada".
+ */
+const COUNTRY_NAMES = Object.freeze({
+  us: 'United States', gb: 'United Kingdom', ca: 'Canada', au: 'Australia',
+  // Spelled-out aliases, because these arrive as display text rather than as
+  // a code: Remotive writes "USA" and "UK", never "us" or "gb".
+  usa: 'United States', 'u.s.': 'United States', 'u.s.a.': 'United States',
+  uk: 'United Kingdom', uae: 'United Arab Emirates',
+  in: 'India', de: 'Germany', fr: 'France', nl: 'Netherlands', sg: 'Singapore',
+  nz: 'New Zealand', za: 'South Africa', pl: 'Poland', br: 'Brazil', it: 'Italy',
+  es: 'Spain', at: 'Austria', ch: 'Switzerland', mx: 'Mexico',
+});
+
+/**
+ * Reverse of COUNTRY_NAMES: the full names, lowercased.
+ *
+ * Needed because a single-segment location can be either a city or a country
+ * and the two are told apart only by recognising one of them. Without this
+ * "Canada" — an entire Remotive location value — parsed as a city called
+ * Canada, and the typeahead then offered it as one.
+ */
+const COUNTRY_NAME_SET = new Set(Object.values(COUNTRY_NAMES).map((n) => n.toLowerCase()));
+
+/** US state abbreviations, so "San Francisco, CA" resolves to a country. */
+const US_STATES = new Set([
+  'al','ak','az','ar','ca','co','ct','de','fl','ga','hi','id','il','in','ia','ks','ky','la','me',
+  'md','ma','mi','mn','ms','mo','mt','ne','nv','nh','nj','nm','ny','nc','nd','oh','ok','or','pa',
+  'ri','sc','sd','tn','tx','ut','vt','va','wa','wv','wi','wy','dc',
+]);
+
+/**
+ * Split a listing's location into city / region / country.
+ *
+ * ═══ WHY THE FREE-TEXT COLUMN WAS NOT ENOUGH ═══
+ *
+ * The old filter was `ilike '%<what the user typed>%'` against one string, and
+ * that string is whatever the provider prints. Adzuna prints
+ * "Tampa Palms, Hillsborough County" — a city and a COUNTY, never a state and
+ * never a country — so "Florida" and "United States" matched nothing across
+ * 83% of the pool while looking like a working filter.
+ *
+ * Structured input wins when there is any. Adzuna sends `area` ordered
+ * broadest-first (['US','Florida','Hillsborough County','Tampa Palms']), which
+ * is exactly the split, and the adapter now forwards it. ATS and Remotive send
+ * only a display string, so those are parsed:
+ *
+ *   "San Francisco, CA"   -> city + region, country inferred from the state
+ *   "Bengaluru, India"    -> city + country
+ *   "London"              -> city only
+ *   "Remote (US)"         -> the `remote` flag already covers this; no city
+ *   "Europe", "Worldwide" -> a REGION, not a city (Remotive's whole format)
+ *
+ * Every field is optional and stays null rather than guessing. A wrong city is
+ * worse than no city: it puts a job in a place it is not, and the typeahead
+ * then offers that place to somebody.
+ *
+ * @param {unknown} area Structured, broadest-first, when the provider has it.
+ * @param {string} display The provider's display string.
+ * @returns {{city: string|null, region: string|null, country: string|null}}
+ */
+export function splitLocation(area, display) {
+  const clean = (v) => {
+    const t = String(v ?? '').replace(/\((?:HQ|hq)\)/g, '').trim();
+    return t ? t.slice(0, MAX_LOCATION_PART) : null;
+  };
+  const named = (v) => {
+    const t = clean(v);
+    if (!t) return null;
+    return COUNTRY_NAMES[t.toLowerCase()] || t;
+  };
+
+  // ── Structured (Adzuna) ────────────────────────────────────────────
+  const parts = Array.isArray(area) ? area.map(clean).filter(Boolean) : [];
+  if (parts.length) {
+    return {
+      country: named(parts[0]),
+      // area[1] is the state/province. Skipped when the array is only
+      // [country, city], which is what a country-level posting looks like.
+      region: parts.length > 2 ? parts[1] : null,
+      city: parts.length > 1 ? parts[parts.length - 1] : null,
+    };
+  }
+
+  // ── Free text (ATS, Remotive) ──────────────────────────────────────
+  // A multi-location string ("SF - New York - United States") is not one
+  // place, so only its first location is taken rather than inventing a
+  // composite nobody can search for.
+  const first = String(display ?? '').split('\u2022')[0];
+  const segs = first.split(',').map(clean).filter(Boolean);
+  if (!segs.length) return { city: null, region: null, country: null };
+
+  const last = segs[segs.length - 1];
+  const lastLower = last.toLowerCase();
+
+  if (segs.length === 1) {
+    // One token: a country or a broad region if we recognise it as one,
+    // otherwise a city. "Worldwide"/"Europe" are Remotive's whole vocabulary
+    // and are neither a city nor a country.
+    if (COUNTRY_NAMES[lastLower]) return { city: null, region: null, country: COUNTRY_NAMES[lastLower] };
+    if (COUNTRY_NAME_SET.has(lastLower)) return { city: null, region: null, country: last };
+    if (/^(worldwide|anywhere|europe|americas|apac|latam|emea)$/i.test(last)) {
+      return { city: null, region: last, country: null };
+    }
+    return { city: last, region: null, country: null };
+  }
+
+  if (US_STATES.has(lastLower)) {
+    return { city: segs[0], region: last.toUpperCase(), country: 'United States' };
+  }
+  return { city: segs[0], region: segs.length > 2 ? segs[1] : null, country: named(last) };
+}
+
+
 /**
  * Anything to a trimmed string, or '' when there is nothing sensible to show.
  *
@@ -180,6 +301,10 @@ export function normalizeListing(rawListing, adapterId) {
 
     const company = str(rawListing.company) || null;
     const location = str(rawListing.location) || null;
+    // After `location`, not before it: `const` is in the temporal dead zone
+    // until its declaration, and this function's catch-all would have turned
+    // that ReferenceError into a silent null listing.
+    const locationParts = splitLocation(rawListing.location_area, location);
     const category = str(rawListing.category) || null;
     const tags = stringArray(rawListing.tags);
 
@@ -230,6 +355,9 @@ export function normalizeListing(rawListing, adapterId) {
       url: url.slice(0, MAX_URL),
       company: company ? company.slice(0, MAX_COMPANY) : null,
       location: location ? location.slice(0, MAX_LOCATION) : null,
+      location_city: locationParts.city,
+      location_region: locationParts.region,
+      location_country: locationParts.country,
       category: category ? category.slice(0, MAX_CATEGORY) : null,
       job_type: str(rawListing.job_type).slice(0, MAX_JOB_TYPE) || null,
       remote: !!rawListing.remote,

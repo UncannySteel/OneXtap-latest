@@ -303,9 +303,32 @@ export async function fetchJobsMeta() {
 }
 
 /**
+ * The places the location typeahead may offer, newest-first by frequency.
+ *
+ * Swallows every failure into an empty, `degraded: true` shape for the same
+ * reason fetchJobsMeta does: this decorates a filter, and a filter that cannot
+ * load its suggestions must leave the page usable rather than take it down.
+ * The caller falls back to the free-text box on `degraded`.
+ *
+ * @returns {Promise<{countries: object[], regions: object[], cities: object[], degraded: boolean}>}
+ */
+export async function fetchJobLocations() {
+  try {
+    return await withTimeout(
+      authFetch('/api/jobs/locations'),
+      BROWSE_TIMEOUT_MS,
+      'Loading locations timed out'
+    );
+  } catch (error) {
+    log.warn('job locations failed', error?.message || error);
+    return { countries: [], regions: [], cities: [], degraded: true };
+  }
+}
+
+/**
  * The namespace import, matching `creditManager` in src/creditManager.js so
  * the two client modules are reached the same way: `import { jobsApi } from
  * './jobsApi'`. There is deliberately no default export — a default that
  * aliases this would be a third spelling of one thing.
  */
-export const jobsApi = { rankJobs, explainJob, fetchJobs, fetchJobsMeta };
+export const jobsApi = { rankJobs, explainJob, fetchJobs, fetchJobsMeta, fetchJobLocations };

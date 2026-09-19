@@ -437,3 +437,50 @@ test('keywordOnlyResult on an empty or junk pool is an empty list', () => {
   assert.deepEqual(keywordOnlyResult(PROFILE, null).jobs, []);
   assert.deepEqual(keywordOnlyResult(null, null).jobs, []);
 });
+
+// ------------------------------------------------------------------
+// The prefilter sees client-shaped jobs through toMatcherJob
+// ------------------------------------------------------------------
+
+test('a job whose skills live only in keywordTerms survives the prefilter cut', () => {
+  // The graph hands prefilterJobs `toClientJob` output (camelCase) while
+  // src/matching reads database column names. `keywords` is spelled the same
+  // in both shapes, so this never looked broken — but `keywordTerms` never
+  // reached `row.keyword_terms`, and a row carrying only the flat mirror
+  // prefiltered as zero-signal.
+  //
+  // The pool must exceed PREFILTER_LIMIT for this to prove anything: below the
+  // limit the prefilter drops nothing and any ordering bug is invisible. And
+  // the matching job's id sorts LAST on purpose — before the fix every score
+  // was 0, ties fell through to ascending id, and a favourably-named job would
+  // have survived for the wrong reason.
+  const matching = {
+    id: 'zzz-match', jobId: 'adzuna:match', title: 'Nothing In The Title', source: 'adzuna',
+    keywords: [], keywordTerms: ['javascript', 'node.js', 'postgresql', 'react', 'typescript'],
+    requirements: [], descriptionQuality: 'full', postedAt: '2024-05-01T00:00:00.000Z',
+  };
+  const unrelated = Array.from({ length: PREFILTER_LIMIT + 5 }, (_, i) => ({
+    id: `aaa${String(i).padStart(3, '0')}`, jobId: `adzuna:no${i}`,
+    title: 'Nothing In The Title', source: 'adzuna',
+    keywords: [], keywordTerms: ['forklift', 'cdl-a', 'otr'],
+    requirements: [], descriptionQuality: 'full', postedAt: '2024-05-01T00:00:00.000Z',
+  }));
+
+  const ranked = keywordOnlyResult(PROFILE, [...unrelated, matching]).jobs;
+  assert.equal(ranked.length, PREFILTER_LIMIT, 'the prefilter should cut to its limit');
+  assert.ok(
+    ranked.some((entry) => entry.job.id === 'zzz-match'),
+    'the only job overlapping the resume was cut from the candidate set'
+  );
+});
+
+test('keywordOnlyResult returns the ORIGINAL jobs, not the matcher view', () => {
+  // prefilterClientJobs scores a projection and must hand back the full job;
+  // returning the view would strip company/url/location from the wire.
+  const result = keywordOnlyResult(PROFILE, makeJobs(3));
+  for (const entry of result.jobs) {
+    assert.ok(entry.job, 'each row carries its job');
+    assert.equal(entry.job.company, 'Acme');
+    assert.equal(entry.job.location, 'Berlin');
+  }
+});

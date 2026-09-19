@@ -20,6 +20,8 @@ tables answered `200 []` after the apply).
 | `001_job_listings.sql` | `job_listings`, `job_ingest_state` | **applied 2026-09-17** | |
 | `002_rank_cache.sql` | `rank_cache`, `rank_rate_limit` | **applied 2026-09-17** | |
 | `003_ats_source.sql` | nothing — widens `job_listings_source_check` | **applied 2026-09-17** | First attempt that day failed `42P01` because `001` had not run; applied after it. |
+| `004_location_parts.sql` | 3 columns + 3 indexes on `job_listings` | **NOT APPLIED** | Additive and re-runnable. Until it is applied, `/api/jobs/locations` returns empty and the location typeahead has nothing to offer — the free-text filter still works. |
+| `005_keyless_sources.sql` | nothing — widens `job_listings_source_check` | **NOT APPLIED** | Additive and re-runnable. Until it is applied, the four keyless aggregators fetch fine and every row they return is rejected at insert, reported as a `db:` error per source. |
 
 ## Apply order
 

@@ -4,8 +4,8 @@ import ResumeSwitcher from '../shared/ResumeSwitcher';
 import { useFileDrop } from '../shared/useFileDrop';
 import { parseResumeFile, MAX_RESUME_LABEL } from '../../resumeParse';
 import { getActiveResume, saveParsedResume } from '../../resumeStore';
-import { rankJobs, explainJob, fetchJobsMeta } from '../../jobsApi';
-import { buildResumeProfile, missingKeywords, MATCHER_VERSION } from '../../matching/index.js';
+import { rankJobs, explainJob, fetchJobsMeta, fetchJobLocations } from '../../jobsApi';
+import { buildResumeProfile, missingKeywords, keywordCoverage, MATCHER_VERSION } from '../../matching/index.js';
 import { log as baseLog } from '../../logger';
 
 const log = baseLog.child('ui');
@@ -82,20 +82,44 @@ const REMOTE_OPTIONS = [
 ];
 
 /**
- * Minimum-match thresholds offered, as percentages.
+ * Turn whatever is in the location box into the filter the server wants.
  *
- * Three coarse steps rather than a slider: this filters an already-scored list,
- * so the only thing a finer control would buy is the illusion that the score is
- * precise to the point. 50 is "show me everything the scorer did not reject",
- * 70 is the default working set, 85 is "only the ones worth a cover letter".
+ * ONE INPUT, TWO BEHAVIOURS, and the difference is whether we recognise what
+ * was typed:
+ *
+ *   a value the API offered  -> the structured filter, matched exactly against
+ *                               the location_city/region/country columns
+ *   anything else            -> the old free-text substring on the display
+ *                               column, which is all we can honestly do
+ *
+ * Resolution order is country, then region, then city: broadest wins a tie, so
+ * typing "Canada" means the country rather than any city of that name. The
+ * comparison is case- and space-insensitive because the user may type the
+ * suggestion rather than click it.
+ *
+ * When migration 004 has not been applied there are no suggestions at all and
+ * every value takes the free-text path — the box behaves exactly as it did
+ * before, which is the point.
+ *
+ * @param {string} value Raw contents of the location box.
+ * @param {object} locations Facets from fetchJobLocations().
+ * @returns {{location?: string, locationCity?: string, locationRegion?: string, locationCountry?: string}}
  */
-const MIN_MATCH_OPTIONS = [50, 70, 85];
+function resolveLocationFilter(value, locations) {
+  const typed = String(value || '').trim();
+  if (!typed) return {};
+  const key = typed.toLowerCase();
+  const find = (list) => asObjectArray(list).find((e) => String(e?.value || '').toLowerCase() === key);
 
-/** Built once: the select re-renders on every keystroke in the location box. */
-const MIN_MATCH_SELECT_OPTIONS = MIN_MATCH_OPTIONS.map((percent) => ({
-  value: percent,
-  label: `${percent}%`,
-}));
+  const country = find(locations?.countries);
+  if (country) return { locationCountry: country.value };
+  const region = find(locations?.regions);
+  if (region) return { locationRegion: region.value };
+  const city = find(locations?.cities);
+  if (city) return { locationCity: city.value };
+
+  return { location: typed };
+}
 
 const SORT_OPTIONS = [
   { value: 'match', label: 'Best match' },
@@ -124,7 +148,7 @@ const REFETCH_DEBOUNCE_MS = 400;
  * described as an estimate.
  */
 const PREFILTER_LIMIT_ESTIMATE = 30;
-const RANK_BATCH_SIZE = 5;
+const RANK_BATCH_SIZE = 30;
 
 /** How often the estimated batch counter advances while a rank is in flight. */
 const PROGRESS_TICK_MS = 1600;
@@ -244,8 +268,15 @@ function isSnippet(job) {
  * @param {unknown} score
  * @returns {string} Tailwind classes, dark twin included.
  */
-function scoreBadgeClass(score) {
-  const value = finiteOr(score, 0);
+/**
+ * Tone for the evidence meter, keyed on the fraction met.
+ *
+ * The bands are the same visual language the score badge used, but the input
+ * is now a ratio the client computed rather than a number a model chose, so
+ * the colour means the same thing on every run.
+ */
+function coverageBadgeClass(met, total) {
+  const value = total > 0 ? Math.round((met / total) * 100) : 0;
   if (value >= SCORE_BAND_STRONG) {
     return 'text-onextap-primary bg-onextap-primary/12 border-onextap-primary/30 dark:text-onextap-olive-pale dark:bg-onextap-primary/30 dark:border-onextap-primary-light/40';
   }
@@ -493,11 +524,33 @@ const SourceFilters = ({ sources, loading, selected, onToggle }) => {
 };
 
 /** The percentage pill on a job card, coloured by band. */
-const ScoreBadge = ({ score }) => (
-  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold leading-none ${scoreBadgeClass(score)}`}>
-    {Math.round(finiteOr(score, 0))}%
-  </span>
-);
+/**
+ * What the job asks for, against what the resume evidences.
+ *
+ * This replaced a percentage badge. The score still exists and still orders
+ * this list — it is just not shown, because it is the half of the result that
+ * cannot be trusted at face value: the rank order holds across models
+ * (correlation ~0.99) while the absolute number drifts, so the same job reads
+ * 55% or 70% depending on who answered. A count does not drift, and unlike a
+ * percentage it points at something actionable — the amber chips below say
+ * exactly which of those requirements are unmet.
+ *
+ * Renders nothing when coverage is null. That is mostly snippet jobs, where
+ * roughly 200 characters of the posting were read: the "Low detail" badge is
+ * the honest statement there, and a confident-looking "1 of 3" would not be.
+ */
+const EvidenceMeter = ({ coverage }) => {
+  if (!coverage || !Number.isFinite(coverage.total) || coverage.total <= 0) return null;
+  const { met, total } = coverage;
+  return (
+    <span
+      className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold leading-none ${coverageBadgeClass(met, total)}`}
+      title={`This role lists ${total} things; your resume evidences ${met}.`}
+    >
+      {met} of {total} matched
+    </span>
+  );
+};
 
 /**
  * One ranked job.
@@ -515,7 +568,7 @@ const ScoreBadge = ({ score }) => (
  * @param {boolean} props.explaining True while this card's explain call is out.
  * @param {(entry: object) => void} props.onExplain
  */
-const JobCard = ({ entry, missingTerms, explaining, onExplain }) => {
+const JobCard = ({ entry, missingTerms, coverage, explaining, onExplain }) => {
   const job = entry.job || {};
   const snippet = isSnippet(job);
   const posted = relativeTime(job.postedAt);
@@ -546,7 +599,7 @@ const JobCard = ({ entry, missingTerms, explaining, onExplain }) => {
             )}
           </div>
         </div>
-        <ScoreBadge score={entry.score} />
+        <EvidenceMeter coverage={coverage} />
       </div>
 
       {entry.gapSummary && (
@@ -696,7 +749,7 @@ const RunTransparency = ({ result, meta, returnedCount, open, onToggle, onRetryM
             <dt className="font-semibold">Jobs considered:</dt>
             <dd>
               {finiteOr(result?.meta?.poolSize, 0)} in the pool ·{' '}
-              {finiteOr(result?.meta?.prefilterLimit, PREFILTER_LIMIT_ESTIMATE)} sent to the scorer ·{' '}
+              {finiteOr(result?.meta?.sentToScorer, finiteOr(result?.meta?.prefilterLimit, PREFILTER_LIMIT_ESTIMATE))} sent to the scorer ·{' '}
               {returnedCount} returned
             </dd>
           </div>
@@ -1000,6 +1053,7 @@ const JobMatchesPage = ({ showToast }) => {
 
   const [meta, setMeta] = useState(null);
   const [metaLoading, setMetaLoading] = useState(true);
+  const [locations, setLocations] = useState({ countries: [], regions: [], cities: [], degraded: true });
 
   // ── Filters that REFETCH ──────────────────────────────────────────
   const [remote, setRemote] = useState('any');
@@ -1009,7 +1063,6 @@ const JobMatchesPage = ({ showToast }) => {
   // ── Filters that DO NOT refetch (see the effect below) ───────────
   // Defaults to the least restrictive option: the first run should show the
   // whole ranking, and narrowing it costs nothing.
-  const [minMatch, setMinMatch] = useState(MIN_MATCH_OPTIONS[0]);
   const [sort, setSort] = useState('match');
 
   const [result, setResult] = useState(null);
@@ -1141,6 +1194,16 @@ const JobMatchesPage = ({ showToast }) => {
     return () => { cancelled = true; };
   }, [metaNonce]);
 
+  // Location suggestions. Same nonce as the pool metadata: both describe what
+  // the pool currently holds, and an ingest changes both at once.
+  useEffect(() => {
+    let cancelled = false;
+    fetchJobLocations().then((data) => {
+      if (!cancelled) setLocations(data);
+    });
+    return () => { cancelled = true; };
+  }, [metaNonce]);
+
   /**
    * Content identity for the resume, deliberately not object identity.
    *
@@ -1182,16 +1245,20 @@ const JobMatchesPage = ({ showToast }) => {
 
   // ── Ranking ───────────────────────────────────────────────────────
   //
-  // ═══ WHY minMatch AND sort ARE NOT IN THIS DEPENDENCY LIST ═══
+  // ═══ WHY sort IS NOT IN THIS DEPENDENCY LIST ═══
   //
   // A rank is a pool read, a prefilter and up to three rounds of batched LLM
-  // calls — 5-20 seconds and real spend. `minMatch` and `sort` are a filter and
-  // an ordering over results that have ALREADY been scored, so they are applied
-  // in `visibleJobs` below, client-side, instantly and for free.
+  // calls — 5-20 seconds and real spend. `sort` is an ordering over results
+  // that have ALREADY been scored, so it is applied in `visibleJobs` below,
+  // client-side, instantly and for free.
   //
-  // Adding either one here would turn every click of a radio button into a
-  // fresh ranking run. If you are here to "fix" a filter that does not refetch:
-  // it is not broken. That is the entire reason ranking stays affordable.
+  // Adding it here would turn every click of a radio button into a fresh
+  // ranking run. If you are here to "fix" a control that does not refetch: it
+  // is not broken. That is the entire reason ranking stays affordable.
+  //
+  // `minMatch` used to be named here too. It is gone — the score it cut on is
+  // no longer shown, and cutting on a number that drifts between models is
+  // what made "85%" return an empty page.
   useEffect(() => {
     // Signature, not the object: it is the empty string exactly when there is
     // no resume, and unlike  it is in this effect's dependency list.
@@ -1207,8 +1274,10 @@ const JobMatchesPage = ({ showToast }) => {
         resumeProfile,
         filters: {
           remote,
-          location: location.trim(),
           source: sourceKey,
+          // One box, resolved: a value the API offered becomes an exact
+          // structured filter, anything else stays a free-text substring.
+          ...resolveLocationFilter(location, locations),
         },
         resumeHash,
         matcherVersion: MATCHER_VERSION,
@@ -1232,6 +1301,12 @@ const JobMatchesPage = ({ showToast }) => {
     };
     // / rather than : see the signature
     // comment above. A rebuilt-but-identical record must not buy a fresh rank.
+    // `locations` is read by resolveLocationFilter above and is deliberately
+    // NOT a dependency. It is a lookup table, not a filter: when the
+    // suggestions finish loading, nothing the user chose has changed, and
+    // re-running on arrival would spend a full rank to reach the same pool.
+    // The box is empty on first load anyway, and any later edit re-runs this
+    // with the table present.
   }, [resumeSignature, resumeHash, resumeProfile, remote, location, sourceKey, rankNonce]);
 
   /**
@@ -1259,10 +1334,15 @@ const JobMatchesPage = ({ showToast }) => {
    * envelopes. Never a network call — see the ranking effect above.
    */
   const visibleJobs = useMemo(() => {
-    const aboveThreshold = rankedJobs.filter((entry) => finiteOr(entry?.score, 0) >= minMatch);
+    // No threshold. There used to be a 50/70/85 filter here, cutting on a
+    // score the user could see — and the score is the part of the result that
+    // drifts between models, so "85%" meant a different bar on every run and
+    // routinely emptied a perfectly good list. The page is an ordered list
+    // now: everything the ranker returned, best first.
+    //
     // Copied before sorting: `rankedJobs` aliases `result.jobs`, and sorting in
     // place would reorder the stored response behind the memo's back.
-    const sorted = aboveThreshold.slice();
+    const sorted = rankedJobs.slice();
     if (sort === 'newest') {
       // Score breaks a date tie, so two jobs posted the same minute still come
       // back in a stable, meaningful order rather than an arbitrary one.
@@ -1281,7 +1361,7 @@ const JobMatchesPage = ({ showToast }) => {
       });
     }
     return sorted;
-  }, [rankedJobs, minMatch, sort]);
+  }, [rankedJobs, sort]);
 
   /**
    * The deterministic "not evidenced in your resume" terms for one job.
@@ -1304,6 +1384,47 @@ const JobMatchesPage = ({ showToast }) => {
       return [];
     }
   }, [builtProfile]);
+
+  /**
+   * Evidence count for one job, or null when it is not countable.
+   *
+   * Same guards as `missingFor` and for the same reason: a snippet job is not
+   * a badly-matched job, it is an unread one, and keywordCoverage returns null
+   * there rather than a confident-looking fraction of an excerpt. Throwing is
+   * caught, not propagated — losing a count must not take the list down.
+   */
+  const coverageFor = useCallback((job) => {
+    if (!builtProfile || isSnippet(job)) return null;
+    try {
+      return keywordCoverage(builtProfile, toMatcherJob(job));
+    } catch (error) {
+      log.warn('coverage count failed', error?.message || error);
+      return null;
+    }
+  }, [builtProfile]);
+
+  /**
+   * The datalist's options: countries, then regions, then cities.
+   *
+   * Broadest first, matching resolveLocationFilter's resolution order, so the
+   * order a user reads them in is the order a typed value is interpreted in.
+   * Deduplicated by value because a place can legitimately appear in two
+   * buckets — "Singapore" is both a city and a country in this pool — and a
+   * datalist with the same value twice renders a repeated row.
+   */
+  const locationSuggestions = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const kind of ['countries', 'regions', 'cities']) {
+      for (const entry of asObjectArray(locations?.[kind])) {
+        const value = String(entry?.value || '').trim();
+        if (!value || seen.has(value.toLowerCase())) continue;
+        seen.add(value.toLowerCase());
+        out.push({ kind, value, count: finiteOr(entry?.count, 0) });
+      }
+    }
+    return out;
+  }, [locations]);
 
   const toggleSource = (sourceId) => {
     setSelectedSources((prev) => (
@@ -1484,23 +1605,34 @@ const JobMatchesPage = ({ showToast }) => {
 
               <div>
                 <label className={FIELD_LABEL} htmlFor="jobs-location">Location</label>
+                {/*
+                  A native datalist rather than a custom combobox. It gives the
+                  suggest-and-pick behaviour of a job site's location box for
+                  no JavaScript, keeps keyboard and screen-reader support the
+                  platform already provides, and — the part that matters here —
+                  it still accepts free text. So a picked suggestion becomes an
+                  exact structured filter while anything typed falls back to
+                  the old substring match, and a pool whose location columns
+                  are not populated yet simply offers no suggestions.
+                */}
                 <input
                   id="jobs-location"
                   type="text"
+                  list="jobs-location-options"
+                  autoComplete="off"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder="City, region, or country"
+                  placeholder={locationSuggestions.length ? 'Start typing, or pick a place' : 'City, region, or country'}
                   className={FIELD}
                 />
+                <datalist id="jobs-location-options">
+                  {locationSuggestions.map((entry) => (
+                    <option key={`${entry.kind}:${entry.value}`} value={entry.value}>
+                      {`${entry.count} ${entry.count === 1 ? 'job' : 'jobs'}`}
+                    </option>
+                  ))}
+                </datalist>
               </div>
-
-              <SelectField
-                id="jobs-min-match"
-                label="Minimum match"
-                value={minMatch}
-                onChange={(value) => setMinMatch(Number(value))}
-                options={MIN_MATCH_SELECT_OPTIONS}
-              />
 
               <SelectField
                 id="jobs-sort"
@@ -1522,8 +1654,8 @@ const JobMatchesPage = ({ showToast }) => {
             <p className={`mt-4 flex items-start gap-2 ${MUTED}`}>
               <Info size={12} className="mt-0.5 shrink-0" />
               <span>
-                Remote, location and source changes fetch a fresh ranking. Minimum match and sort
-                re-order the results you already have — instantly, and without re-scoring anything.
+                Remote, location and source changes fetch a fresh ranking. Sort re-orders the
+                results you already have — instantly, and without re-scoring anything.
               </span>
             </p>
           </section>
@@ -1555,7 +1687,11 @@ const JobMatchesPage = ({ showToast }) => {
                     the footer all describe the same previous run. */}
                 {!ranking && result && (
                   <span className={MUTED}>
-                    {visibleJobs.length} of {rankedJobs.length} shown
+                    {/* One number now. It was "N of M shown" when a
+                        threshold could hide part of the list; nothing hides
+                        anything any more, so two numbers could only ever be
+                        the same number printed twice. */}
+                    {visibleJobs.length} {visibleJobs.length === 1 ? 'match' : 'matches'}
                   </span>
                 )}
               </div>
@@ -1657,15 +1793,13 @@ const JobMatchesPage = ({ showToast }) => {
               </div>
             ) : visibleJobs.length === 0 ? (
               <div className={EMPTY_BOX}>
-                <p className={STRONG_TEXT}>
-                  {rankedJobs.length === 0
-                    ? 'Nothing matched these filters.'
-                    : `No job scored ${minMatch}% or better.`}
-                </p>
+                {/* With no threshold, empty can only mean the pool held
+                    nothing for these filters — never "nothing cleared your
+                    bar". The old copy said the latter and sent people to
+                    lower a control that was hiding real results. */}
+                <p className={STRONG_TEXT}>Nothing matched these filters.</p>
                 <p className={`mt-1 ${SUBTEXT}`}>
-                  {rankedJobs.length === 0
-                    ? 'Try widening the location or turning off a source filter.'
-                    : 'Lower the minimum match to see the rest of the ranking — it is already scored, so it is instant.'}
+                  Try widening the location, or turning off a source filter.
                 </p>
               </div>
             ) : (
@@ -1675,6 +1809,7 @@ const JobMatchesPage = ({ showToast }) => {
                     key={entry.jobId}
                     entry={entry}
                     missingTerms={missingFor(entry.job || {})}
+                    coverage={coverageFor(entry.job || {})}
                     explaining={explanations[entry.jobId]?.loading === true}
                     onExplain={handleExplain}
                   />

@@ -35,6 +35,7 @@
 import { prefilterJobs, SKILL_LEXICON, MATCHER_VERSION } from '../../src/matching/index.js';
 import { startTrace, flushTracing, SpanType } from '../observability/opik.js';
 import { rankBatch, keywordResult } from './rank.js';
+import { toMatcherJob } from './query.js';
 import { log } from '../logger.js';
 
 const graphLog = log.child('rank');
@@ -264,6 +265,9 @@ function routeEntry(filters) {
     cursor: f.cursor,
     remote: f.remote === undefined || f.remote === null || f.remote === '' ? 'any' : f.remote,
     location: typeof f.location === 'string' ? f.location.trim() : '',
+    locationCity: typeof f.locationCity === 'string' ? f.locationCity.trim() : '',
+    locationRegion: typeof f.locationRegion === 'string' ? f.locationRegion.trim() : '',
+    locationCountry: typeof f.locationCountry === 'string' ? f.locationCountry.trim() : '',
     source: f.source,
     q: typeof f.q === 'string' ? f.q.trim() : '',
     since: f.since,
@@ -299,9 +303,24 @@ function routeEntry(filters) {
  *   strategy is exhausted and the loop should stop short of MAX_LOOPS.
  */
 function reformulateQuery(state, loopIndex) {
-  if (state.filters.location) {
-    const from = state.filters.location;
-    state.filters = { ...state.filters, location: '' };
+  // Every spelling of "where", cleared together. The structured fields are
+  // the typeahead's; `location` is the free-text box's. Dropping only one of
+  // them would leave the pool just as narrow while the footer reported the
+  // location had been widened — a reformulation that claims work it did not do
+  // is worse than one that does not run.
+  const placeFrom = state.filters.locationCity
+    || state.filters.locationRegion
+    || state.filters.locationCountry
+    || state.filters.location;
+  if (placeFrom) {
+    const from = placeFrom;
+    state.filters = {
+      ...state.filters,
+      location: '',
+      locationCity: '',
+      locationRegion: '',
+      locationCountry: '',
+    };
     return {
       applied: true,
       record: {
@@ -404,6 +423,11 @@ export async function runRankGraph(params = {}) {
     : RANK_BUDGET_MS;
 
   const { fetchJobs, callModel } = deps;
+
+  // Derived once, outside the loop: reformulation changes the FILTERS (drops
+  // the location, relaxes remote, widens categories), never the resume. Terms
+  // are what the pool is about; filters are where it is allowed to come from.
+  const terms = resumeTerms(resumeProfile);
   const trace =
     deps.trace ||
     startTrace({
@@ -426,6 +450,11 @@ export async function runRankGraph(params = {}) {
   let scoredBy = 'keyword';
   let degradeReason = null;
   let poolSize = 0;
+  // How many candidates the LAST loop actually handed the scorer. Reported
+  // instead of PREFILTER_LIMIT, which is a ceiling: a 15-job pool sent 15,
+  // and a footer reading "15 in the pool - 30 sent to the scorer" was
+  // arithmetic nobody could follow.
+  let sentToScorer = 0;
   let lastError = null;
 
   try {
@@ -443,7 +472,7 @@ export async function runRankGraph(params = {}) {
       let pool = [];
       try {
         if (typeof fetchJobs !== 'function') throw new Error('No job source configured');
-        const page = await fetchJobs({ ...state.filters });
+        const page = await fetchJobs({ ...state.filters, terms });
         pool = Array.isArray(page?.jobs) ? page.jobs : [];
       } catch (err) {
         // The pool is unreachable. Nothing downstream can help, but the caller
@@ -470,8 +499,8 @@ export async function runRankGraph(params = {}) {
       }
 
       poolSize = pool.length;
-      const candidates = prefilterJobs(state.profile, pool, { limit: PREFILTER_LIMIT })
-        .map((entry) => entry.job);
+      const candidates = prefilterClientJobs(state.profile, pool, PREFILTER_LIMIT);
+      sentToScorer = candidates.length;
 
       prefilterSpan?.update?.({
         output: { pool: pool.length, candidates: candidates.length },
@@ -585,6 +614,7 @@ export async function runRankGraph(params = {}) {
     sources: summarizeSources(ranked),
     timings,
     poolSize,
+    sentToScorer,
     budgetExhausted,
     matcherVersion: MATCHER_VERSION,
   };
@@ -606,6 +636,77 @@ export async function runRankGraph(params = {}) {
 }
 
 /**
+ * The resume terms the pool read filters on — "reverse ATS" in one line.
+ *
+ * An ATS scores candidates against a job. This scores jobs against a
+ * candidate, and that has to start at the QUERY, not at the scoring: reading
+ * the newest N rows and ranking them is only resume-driven if the resume had
+ * some say in which N. It did not, and the result was a pool of long-haul
+ * trucking scored against a Python resume.
+ *
+ * Titles lead. A title is the single most reliable statement of what a job is,
+ * and it is the one field Adzuna never truncates — unlike the ~200-character
+ * description its keywords are extracted from, which is why the pool's own
+ * "skills" include `pay`, `earn` and `annually`. Skills follow, heaviest
+ * first, because query.js keeps only the first MAX_RELEVANCE_TERMS.
+ *
+ * @param {object} resumeProfile From buildResumeProfile().
+ * @returns {string[]} Terms, most-signal first; empty for a junk profile.
+ */
+export function resumeTerms(resumeProfile) {
+  const profile = resumeProfile && typeof resumeProfile === 'object' ? resumeProfile : {};
+  const titles = Array.isArray(profile.titles) ? profile.titles : [];
+
+  const keywordSet = profile.keywordSet instanceof Map ? profile.keywordSet : new Map();
+  const skills = [...keywordSet.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([term]) => term);
+
+  const out = [];
+  for (const value of [...titles, ...skills]) {
+    const term = String(value || '').trim();
+    if (term && !out.includes(term)) out.push(term);
+  }
+  return out;
+}
+
+/**
+ * Run the prefilter over client-shaped jobs and get the ORIGINAL jobs back.
+ *
+ * src/matching/ reads database column names (`keyword_terms`, `posted_at`),
+ * but everything downstream of the prefilter — rankBatch, keywordResult, the
+ * wire envelope — needs the full camelCase job. Feeding the matcher view
+ * straight in would fix the scoring and break the ranking; feeding the client
+ * job in scores it blind. So score the view, return the original, and key the
+ * two together by object identity.
+ *
+ * Both prefilter call sites in this file go through here on purpose. They
+ * drifted apart once already: `toMatcherJob` was written for exactly this
+ * mismatch (see its docstring in query.js) and then neither site used it, so
+ * the `keyword_terms` fallback never fired and the sort's `posted_at` tiebreak
+ * was dead for every job the graph ever ranked.
+ *
+ * @param {object} resumeProfile From buildResumeProfile().
+ * @param {object[]} jobs Client-shaped jobs from toClientJob().
+ * @param {number} limit Candidates to keep.
+ * @returns {object[]} The surviving ORIGINAL jobs, best first.
+ */
+function prefilterClientJobs(resumeProfile, jobs, limit) {
+  const origins = new Map();
+  const views = (Array.isArray(jobs) ? jobs : []).map((job) => {
+    const view = toMatcherJob(job);
+    origins.set(view, job);
+    return view;
+  });
+  // minScore 0: drop the ZERO-overlap tail only. The pool read tops itself up
+  // with recency when relevance underfills, so without this the filler rides
+  // through to the scorer and onto the page. prefilterJobs keeps at least
+  // MIN_KEPT_CANDIDATES regardless, so this thins a list and never empties it.
+  return prefilterJobs(resumeProfile, views, { limit, minScore: 0 })
+    .map((entry) => origins.get(entry.job));
+}
+
+/**
  * Score a job list with no model at all.
  *
  * The answer to "you are over the rate limit" and to "the provider is down":
@@ -621,8 +722,7 @@ export async function runRankGraph(params = {}) {
  */
 export function keywordOnlyResult(resumeProfile, jobs, reason = 'rate_limited') {
   const list = Array.isArray(jobs) ? jobs : [];
-  const candidates = prefilterJobs(resumeProfile, list, { limit: PREFILTER_LIMIT })
-    .map((entry) => entry.job);
+  const candidates = prefilterClientJobs(resumeProfile, list, PREFILTER_LIMIT);
   const ranked = candidates
     .map((job) => keywordResult(resumeProfile, job, reason))
     .sort((a, b) => b.score - a.score);
@@ -636,6 +736,7 @@ export function keywordOnlyResult(resumeProfile, jobs, reason = 'rate_limited') 
     sources: summarizeSources(ranked),
     timings: { totalMs: 0, prefilterMs: 0, rankMs: 0, reformulateMs: 0 },
     poolSize: list.length,
+    sentToScorer: candidates.length,
     matcherVersion: MATCHER_VERSION,
   };
 }

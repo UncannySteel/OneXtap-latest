@@ -132,12 +132,22 @@ create table if not exists public.job_listings (
   -- Kept in step with supabase/migrations/003_ats_source.sql, which widens this
   -- same constraint on projects that already ran 001 with the four-value list.
   -- A fresh project built from this file gets 'ats' here and does not need 003.
-  source text not null check (source in ('adzuna', 'remotive', 'ats', 'wellfound', 'cache')),
+  source text not null check (source in (
+    'adzuna', 'remotive', 'ats', 'wellfound', 'cache',
+    'arbeitnow', 'remoteok', 'jobicy', 'himalayas'
+  )),
   source_id text not null,
   title text not null,
   url text not null,
   company text,
   location text,
+  -- Derived from `location` (or the provider's structured field) by
+  -- splitLocation() in server/jobs/normalizeListing.js. See migration 004:
+  -- a free-text location column cannot answer "jobs in Florida", because
+  -- Adzuna prints the county and never the state.
+  location_city text,
+  location_region text,
+  location_country text,
   category text,
   job_type text,
   remote boolean not null default false,
@@ -180,6 +190,9 @@ create index if not exists idx_job_listings_remote on public.job_listings(remote
 create index if not exists idx_job_listings_dedupe_hash on public.job_listings(dedupe_hash);
 -- GIN so `keyword_terms && array['react','typescript']` is an index scan.
 create index if not exists idx_job_listings_keyword_terms on public.job_listings using gin(keyword_terms);
+create index if not exists idx_job_listings_location_country on public.job_listings (lower(location_country));
+create index if not exists idx_job_listings_location_region on public.job_listings (lower(location_region));
+create index if not exists idx_job_listings_location_city on public.job_listings (lower(location_city));
 
 alter table public.job_listings enable row level security;
 

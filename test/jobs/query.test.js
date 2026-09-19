@@ -27,6 +27,7 @@ const {
   fetchJobPool,
   toClientJob,
   toMatcherJob,
+  resetLocationPartsCache,
   encodeCursor,
   decodeCursor,
   JOB_COLUMNS,
@@ -348,7 +349,106 @@ test('toMatcherJob restores the snake_case keys src/matching reads', () => {
   assert.deepEqual(view.keyword_terms, ['node']);
 });
 
+test('toMatcherJob carries the two fields prefilterJobs SORTS by', () => {
+  // prefilterJobs ties break on "score, then newest, then id". Both of those
+  // keys are snake_case on the row and camelCase on the client job, so without
+  // them here every comparison after the score collapsed to '' vs '' and the
+  // surviving order was ascending UUID — arbitrary, and stable enough to look
+  // deliberate.
+  const view = toMatcherJob({
+    id: 'job-1',
+    title: 'Backend Engineer',
+    postedAt: '2026-09-18T04:06:22+00:00',
+  });
+  assert.equal(view.id, 'job-1');
+  assert.equal(view.posted_at, '2026-09-18T04:06:22+00:00');
+});
+
 test('a database error becomes a thrown Error, not a silent empty list', async () => {
   const client = stubClient(null, { message: 'connection refused' });
   await assert.rejects(() => fetchJobPool(client, {}), /connection refused/);
+});
+
+// ------------------------------------------------------------------
+// Structured location (migration 004)
+// ------------------------------------------------------------------
+
+test('a picked location filters the structured columns exactly, not the display string', async () => {
+  // The whole point of migration 004: "Florida" cannot be found in
+  // "Tampa Palms, Hillsborough County", because Adzuna's display string names
+  // a county and never a state.
+  const client = stubClient([]);
+  await fetchJobPool(client, { locationRegion: 'Florida' });
+  const ilikes = allCalls(client, 'ilike');
+  const region = ilikes.find((c) => c[1] === 'location_region');
+  assert.ok(region, `no location_region filter in ${JSON.stringify(ilikes)}`);
+  // No wildcards: the user picked a value the API offered, so this is an
+  // exact, case-insensitive match that the lower() index can serve.
+  assert.equal(region[2], 'Florida');
+  assert.ok(!ilikes.some((c) => c[1] === 'location'), 'free-text filter must not also apply');
+});
+
+test('free text still falls back to the display column', async () => {
+  // Rows ingested before 004 have null parts, and a hand-typed value may not
+  // be anything we hold. Substring on `location` is all that can honestly be
+  // done for either.
+  const client = stubClient([]);
+  await fetchJobPool(client, { location: 'new york' });
+  const free = allCalls(client, 'ilike').find((c) => c[1] === 'location');
+  assert.ok(free);
+  assert.equal(free[2], '%new york%');
+});
+
+test('a structured location wins over free text when both arrive', async () => {
+  const client = stubClient([]);
+  await fetchJobPool(client, { location: 'ignored', locationCountry: 'United States' });
+  const ilikes = allCalls(client, 'ilike');
+  assert.ok(ilikes.some((c) => c[1] === 'location_country' && c[2] === 'United States'));
+  assert.ok(!ilikes.some((c) => c[1] === 'location'));
+});
+
+test('structured location values are LIKE-escaped like every other free text', () => {
+  // They come from a JSON body, not necessarily from our own suggestions.
+  assert.equal(escapeLike('100%_real'), '100\\%\\_real');
+});
+
+test('a pool read survives migration 004 not being applied yet', async () => {
+  // Migrations here are pasted by hand into the SQL editor, so the code is
+  // always deployed before the SQL on at least one occasion. Selecting a
+  // column that does not exist is not a degraded read — it is a hard error on
+  // EVERY pool query, i.e. ranking down for everyone. This repo has already
+  // taken that outage once, from a missing table.
+  resetLocationPartsCache();
+  let attempt = 0;
+  const client = {
+    calls: [],
+    from() {
+      const builder = {
+        select(cols) { client.calls.push(cols); return builder; },
+        eq() { return builder; }, in() { return builder; }, gte() { return builder; },
+        lt() { return builder; }, or() { return builder; }, ilike() { return builder; },
+        order() { return builder; }, limit() { return builder; },
+        then(resolve, reject) {
+          attempt += 1;
+          // First attempt fails the way Postgres reports an unknown column.
+          const result = attempt === 1
+            ? { data: null, error: { code: '42703', message: 'column job_listings.location_city does not exist' } }
+            : { data: [], error: null };
+          return Promise.resolve(result).then(resolve, reject);
+        },
+      };
+      return builder;
+    },
+  };
+
+  const page = await fetchJobPool(client, {});
+  assert.deepEqual(page.jobs, [], 'the retry should succeed, not throw');
+  assert.equal(attempt, 2, 'exactly one retry');
+  assert.ok(client.calls[0].includes('location_city'), 'first try asks for the new columns');
+  assert.ok(!client.calls[1].includes('location_city'), 'the retry drops them');
+
+  // And it is learned, not re-probed: a later read asks for the base set only.
+  await fetchJobPool(client, {});
+  assert.ok(!client.calls[2].includes('location_city'), 'absence must be remembered');
+  resetLocationPartsCache();
 });

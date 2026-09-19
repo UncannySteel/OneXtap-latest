@@ -71,6 +71,50 @@ const DEFAULT_MISSING_LIMIT = 6;
 const REQUIRED_RANK_MULTIPLIER = 2;
 
 /**
+ * How many of a job's keywords the evidence count is measured against.
+ *
+ * NOT the whole list. Extraction emits up to MAX_KEYWORDS (25) terms from the
+ * posting, and on real rows a good third of them are not requirements at all
+ * — measured on the live pool, a single Spotify listing yielded `spotify`,
+ * `bar`, `area`, `feel` and `end` alongside its real skills. Counting against
+ * all 25 renders a strong match as "2 of 25", which is not a high bar
+ * honestly reported, it is a denominator made of noise.
+ *
+ * Eight is what a person would call "what this role is asking for": enough to
+ * be a real bar, few enough that every entry is something the posting
+ * genuinely emphasised. Ranked by the same weight x frequency function the
+ * missing-keyword chips use, so the count and the chips can never disagree
+ * about which terms matter.
+ */
+const COVERAGE_TERMS = 8;
+
+/**
+ * Rank a job's keywords by how central they are to the posting.
+ *
+ * One definition of "important", shared by the evidence count and the missing
+ * chips rendered under it. Weight is the extractor's confidence, `count` is
+ * how often the posting repeated the term (log-damped, so ten mentions is not
+ * ten times one), and a required term outranks an optional one.
+ *
+ * @param {Array<object>} keywords From normalizeJobKeywords().
+ * @returns {Array<object>} The same keywords, most central first.
+ */
+function rankKeywords(keywords) {
+  return keywords
+    .map((keyword) => ({
+      keyword,
+      rank: (keyword.required ? REQUIRED_RANK_MULTIPLIER : 1)
+        * keyword.weight
+        * Math.log2(1 + keyword.count),
+    }))
+    .sort((a, b) => {
+      if (b.rank !== a.rank) return b.rank - a.rank;
+      return compareStrings(a.keyword.term, b.keyword.term);
+    })
+    .map(({ keyword }) => keyword);
+}
+
+/**
  * Safe division for coverage ratios.
  *
  * Returns `null` rather than 0 when the denominator is zero, and the
@@ -180,6 +224,43 @@ export function fallbackScoreJob(resumeProfile, job) {
 }
 
 /**
+ * How much of what a job asks for the resume actually evidences.
+ *
+ * The honest replacement for a percentage on a job card. A score of "55%" is a
+ * model's opinion on a scale it re-invents per model — measured rank
+ * correlation across the rotation chain is ~0.99 while absolute agreement at a
+ * threshold is the weak spot, so the ORDER is trustworthy and the NUMBER is
+ * not. "Matches 5 of 8" is arithmetic: same answer from every model, on every
+ * run, and it names what is actually missing.
+ *
+ * Deliberately the exact complement of {@link missingKeywords} — same
+ * `normalizeJobKeywords` vocabulary, same snippet rule — so the count and the
+ * chips beneath it can never disagree. Mixing this with the scorer's own
+ * `matchedSignals` would not: that list is written by whichever model answered.
+ *
+ * Returns `null`, not a zero, for a job with nothing to count. A snippet job
+ * is the main case: ~200 characters of it were read, so both the numerator and
+ * the denominator would be about the excerpt rather than the posting, and "0
+ * of 2" reads as a bad match when it means an unread one.
+ *
+ * @param {object} resumeProfile From buildResumeProfile().
+ * @param {object} job A row-shaped job (see toMatcherJob on the server side).
+ * @returns {{met: number, total: number}|null} null when not countable.
+ */
+export function keywordCoverage(resumeProfile, job) {
+  const row = asObject(job);
+  if (row.description_quality === SNIPPET_QUALITY) return null;
+
+  const profile = asResumeProfile(resumeProfile);
+  const keywords = rankKeywords(normalizeJobKeywords(row)).slice(0, COVERAGE_TERMS);
+  if (!keywords.length) return null;
+
+  let met = 0;
+  for (const keyword of keywords) if (profile.keywordSet.has(keyword.term)) met += 1;
+  return { met, total: keywords.length };
+}
+
+/**
  * The job's most important terms that the resume does not have — the "add this
  * to your CV" list.
  *
@@ -203,20 +284,9 @@ export function missingKeywords(resumeProfile, job, options = {}) {
   const profile = asResumeProfile(resumeProfile);
   const limit = positiveIntOr(asObject(options).limit, DEFAULT_MISSING_LIMIT);
 
-  return normalizeJobKeywords(row)
-    .filter((keyword) => !profile.keywordSet.has(keyword.term))
-    .map((keyword) => ({
-      keyword,
-      rank: (keyword.required ? REQUIRED_RANK_MULTIPLIER : 1)
-        * keyword.weight
-        * Math.log2(1 + keyword.count),
-    }))
-    .sort((a, b) => {
-      if (b.rank !== a.rank) return b.rank - a.rank;
-      return compareStrings(a.keyword.term, b.keyword.term);
-    })
+  return rankKeywords(normalizeJobKeywords(row).filter((keyword) => !profile.keywordSet.has(keyword.term)))
     .slice(0, limit)
-    .map(({ keyword }) => ({
+    .map((keyword) => ({
       term: keyword.term,
       weight: keyword.weight,
       required: keyword.required,

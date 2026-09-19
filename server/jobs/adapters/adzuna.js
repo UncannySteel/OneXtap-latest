@@ -116,11 +116,17 @@ export const adzunaAdapter = {
 
   supportsPaging: true,
 
+
+  /** Adzuna has both `what` and `category`; ingest rotates the taxonomy here. */
+
+  supportsSearch: true,
+
   /**
    * Fetch one page of search results. Never throws.
    *
    * @param {object} [opts]
    * @param {string} [opts.query] Free-text search, Adzuna's `what`.
+   * @param {string} [opts.category] Adzuna category `tag`, e.g. 'it-jobs'.
    * @param {string} [opts.location] Free-text location, Adzuna's `where`.
    * @param {string} [opts.country] Two-letter country; scopes the URL path.
    * @param {boolean} [opts.remote] Best-effort remote filter; see below.
@@ -133,7 +139,7 @@ export const adzunaAdapter = {
     // Destructure from a coerced object, not a defaulted parameter: a default
     // only fires on `undefined`, so `fetch(null)` would throw here and break the
     // never-throws contract every caller in the cascade relies on.
-    const { query, location, country, remote, limit, page = 1, signal } = options || {};
+    const { query, category, location, country, remote, limit, page = 1, signal } = options || {};
     if (!this.enabled()) return emptyResult('disabled');
 
     const perPage = clampPageSize(limit, RESULTS_PER_PAGE);
@@ -154,6 +160,13 @@ export const adzunaAdapter = {
       'content-type': 'application/json',
     });
     if (query) params.set('what', String(query));
+    // Adzuna's own category `tag`. Paired with `what` rather than replacing it:
+    // the term alone drags in adjacent categories ("designer" returns retail
+    // display roles), and the category alone returns the category's firehose,
+    // which is the unfiltered feed this rotation exists to escape. An unknown
+    // tag is not an error here — it is an empty result set — so the values in
+    // jobs/searchTerms.js are read from the live categories endpoint.
+    if (category) params.set('category', String(category));
     if (location) params.set('where', String(location));
     // Adzuna has no remote flag; the closest lever is a keyword on `what`.
     if (remote && !query) params.set('what', 'remote');
@@ -224,6 +237,14 @@ export const adzunaAdapter = {
     const locationName = raw.location?.display_name || '';
     const countryCode = typeof raw._country === 'string' ? raw._country : 'us';
 
+    // Adzuna ships a STRUCTURED location that this adapter used to throw away:
+    // `area` is ordered broadest-first, ['US','Florida','Hillsborough County',
+    // 'Tampa Palms']. Only `display_name` was kept — and display_name is
+    // "Tampa Palms, Hillsborough County", which names a city and a COUNTY and
+    // never the state or the country. Filtering on it is why searching
+    // "Florida" or "United States" returned nothing from 83% of the pool.
+    const area = Array.isArray(raw.location?.area) ? raw.location.area.filter(Boolean).map(String) : [];
+
     return {
       source: 'adzuna',
       source_id: raw.id,
@@ -231,6 +252,10 @@ export const adzunaAdapter = {
       url,
       company: raw.company?.display_name || null,
       location: locationName || null,
+      // Broadest-first, exactly as the provider ordered it. normalizeListing
+      // decides what becomes city/region/country, so that rule lives in ONE
+      // place for all three sources rather than once per adapter.
+      location_area: area,
       category: raw.category?.label || null,
       job_type: raw.contract_type || null,
       remote: REMOTE_RE.test(`${title} ${locationName}`),

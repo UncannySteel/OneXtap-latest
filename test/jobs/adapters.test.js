@@ -22,6 +22,10 @@ const { adzunaAdapter, configuredCountries, cursorToTarget } = await import('../
 const { remotiveAdapter } = await import('../../server/jobs/adapters/remotive.js');
 const { atsAdapter, configuredBoards, cursorToBoard } = await import('../../server/jobs/adapters/ats.js');
 const { cacheAdapter } = await import('../../server/jobs/adapters/cache.js');
+const { arbeitnowAdapter } = await import('../../server/jobs/adapters/arbeitnow.js');
+const { remoteokAdapter } = await import('../../server/jobs/adapters/remoteok.js');
+const { jobicyAdapter } = await import('../../server/jobs/adapters/jobicy.js');
+const { himalayasAdapter } = await import('../../server/jobs/adapters/himalayas.js');
 const { ADAPTERS, getAdapter, ERROR_REASONS } = await import('../../server/jobs/adapters/index.js');
 
 // ------------------------------------------------------------------
@@ -106,6 +110,12 @@ const NETWORK_ADAPTERS = [
   { adapter: adzunaAdapter, setup: withAdzunaKeys },
   { adapter: remotiveAdapter, setup: () => () => {} },
   { adapter: atsAdapter, setup: () => withAtsBoards() },
+  // The keyless four take the same failure matrix as everything else: a
+  // provider going down must be a named reason, never a throw.
+  { adapter: arbeitnowAdapter, setup: () => () => {} },
+  { adapter: remoteokAdapter, setup: () => () => {} },
+  { adapter: jobicyAdapter, setup: () => () => {} },
+  { adapter: himalayasAdapter, setup: () => () => {} },
 ];
 
 for (const { adapter, setup } of NETWORK_ADAPTERS) {
@@ -844,7 +854,13 @@ test('cached_jobs.json parses and contains only fake listings', () => {
 // ------------------------------------------------------------------
 
 test('ADAPTERS is the cascade, in order, and every entry honours the contract', () => {
-  assert.deepEqual(ADAPTERS.map((a) => a.id), ['adzuna', 'remotive', 'ats', 'cache']);
+  assert.deepEqual(ADAPTERS.map((a) => a.id), [
+    'adzuna', 'remotive', 'ats',
+    'arbeitnow', 'remoteok', 'jobicy', 'himalayas',
+    // `cache` stays LAST. It is the disabled-by-default local fixture source
+    // and its position is the cascade's ordering, not an accident.
+    'cache',
+  ]);
 
   for (const adapter of ADAPTERS) {
     assert.equal(typeof adapter.id, 'string');
@@ -943,4 +959,148 @@ test('cursorToTarget is total', () => {
     assert.ok(/^[a-z]{2}$/.test(t.country), 'always a usable country code');
     assert.ok(Number.isInteger(t.page) && t.page >= 1, 'always a 1-based page');
   }
+});
+
+// ------------------------------------------------------------------
+// Occupation rotation — the fix for a pool that was 100% trucking
+// ------------------------------------------------------------------
+
+test('adzuna.fetch forwards `category` alongside `what`', async () => {
+  const restoreEnv = withAdzunaKeys();
+  let seenUrl = '';
+  const restoreFetch = stubFetch(async (url) => {
+    seenUrl = String(url);
+    return response(200, { results: [], count: 0 });
+  });
+  try {
+    await adzunaAdapter.fetch({ page: 1, query: 'python developer', category: 'it-jobs' });
+    const params = new URL(seenUrl).searchParams;
+    assert.equal(params.get('what'), 'python developer');
+    // Both, not either. The term alone drags in adjacent categories and the
+    // category alone is the firehose the rotation exists to escape.
+    assert.equal(params.get('category'), 'it-jobs');
+  } finally {
+    restoreFetch();
+    restoreEnv();
+  }
+});
+
+test('adzuna.fetch omits `category` when none is given', async () => {
+  const restoreEnv = withAdzunaKeys();
+  let seenUrl = '';
+  const restoreFetch = stubFetch(async (url) => {
+    seenUrl = String(url);
+    return response(200, { results: [], count: 0 });
+  });
+  try {
+    await adzunaAdapter.fetch({ page: 1 });
+    assert.equal(new URL(seenUrl).searchParams.has('category'), false);
+  } finally {
+    restoreFetch();
+    restoreEnv();
+  }
+});
+
+test('adzuna declares supportsSearch; the sources that cannot use it do not', () => {
+  // This flag is what ingest reads to decide whether to rotate the taxonomy.
+  // Remotive's adapter maps query->search fine, but its free API returns the
+  // same 16 rows for every query, so rotating terms there buys nothing.
+  assert.equal(adzunaAdapter.supportsSearch, true);
+  assert.notEqual(remotiveAdapter.supportsSearch, true);
+  assert.notEqual(atsAdapter.supportsSearch, true);
+});
+
+// ------------------------------------------------------------------
+// The keyless aggregators
+// ------------------------------------------------------------------
+
+test('remoteok skips the terms notice at [0] and keeps the Remote OK backlink', () => {
+  // Their API's first element is a legal notice, not a job, and their terms
+  // ask for a followed link back to the listing ON Remote OK. Storing
+  // apply_url instead of url would route every user straight past them —
+  // taking the feed while declining the one condition it comes with.
+  const listing = remoteokAdapter.toListing({
+    id: 42, position: 'Backend Engineer', company: 'Acme',
+    url: 'https://remoteok.com/remote-jobs/42',
+    apply_url: 'https://acme.example/apply',
+    description: 'Go and Postgres', tags: ['golang'], date: '2026-09-18T00:00:00Z',
+  });
+  assert.equal(listing.url, 'https://remoteok.com/remote-jobs/42');
+  assert.notEqual(listing.url, 'https://acme.example/apply');
+  assert.equal(listing.remote, true);
+  // The notice itself carries no `position`, so it can never become a listing.
+  assert.equal(remoteokAdapter.toListing({ legal: 'terms…', last_updated: 1 }), null);
+});
+
+test('remoteok.fetch filters the legal notice out of the item list', async () => {
+  const restore = stubFetch(async () => response(200, [
+    { legal: 'API Terms of Service', last_updated: 1 },
+    { id: 1, position: 'Engineer', url: 'https://remoteok.com/remote-jobs/1' },
+  ]));
+  try {
+    const result = await remoteokAdapter.fetch({});
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].id, 1);
+  } finally { restore(); }
+});
+
+test('unix-second timestamps become real dates, not 1970', () => {
+  // arbeitnow's created_at and himalayas' pubDate are unix SECONDS. Passed
+  // through unscaled they read as milliseconds and date every listing to
+  // January 1970 — which then falls outside the pool read's 30-day window, so
+  // the source ingests perfectly and nothing it stores is ever ranked.
+  const seconds = 1789816197;
+  const expected = new Date(seconds * 1000).toISOString();
+
+  const a = arbeitnowAdapter.toListing({
+    slug: 's', title: 'Engineer', url: 'https://arbeitnow.com/jobs/s', created_at: seconds,
+  });
+  assert.equal(a.posted_at, expected);
+
+  const h = himalayasAdapter.toListing({
+    title: 'Engineer', guid: 'https://himalayas.app/companies/x/jobs/y', pubDate: seconds,
+  });
+  assert.equal(h.posted_at, expected);
+  assert.ok(new Date(a.posted_at).getUTCFullYear() > 2000);
+});
+
+test('himalayas reports locationRestrictions as a COUNTRY, not a city', () => {
+  // The field holds countries. Left as a bare display string, splitLocation's
+  // free-text branch files "Philippines" as a city and the location typeahead
+  // then offers it as one.
+  const listing = himalayasAdapter.toListing({
+    title: 'Engineer', guid: 'https://himalayas.app/companies/x/jobs/y',
+    locationRestrictions: ['Philippines'], pubDate: 1789816197,
+  });
+  assert.deepEqual(listing.location_area, ['Philippines']);
+});
+
+test('every keyless source stamps full quality and remote where that is true', () => {
+  // The whole reason these are worth adapters: unlike Adzuna's ~200-character
+  // snippet, all four return the complete posting.
+  for (const [adapter, raw] of [
+    [arbeitnowAdapter, { slug: 's', title: 'T', url: 'https://arbeitnow.com/x' }],
+    [remoteokAdapter, { id: 1, position: 'T', url: 'https://remoteok.com/x' }],
+    [jobicyAdapter, { id: 1, jobTitle: 'T', url: 'https://jobicy.com/x' }],
+    [himalayasAdapter, { title: 'T', guid: 'https://himalayas.app/x' }],
+  ]) {
+    assert.equal(adapter.toListing(raw).description_quality, 'full', adapter.id);
+  }
+  // Three of the four are remote-only sites; arbeitnow is a general board and
+  // reports it per listing.
+  assert.equal(remoteokAdapter.toListing({ id: 1, position: 'T', url: 'https://remoteok.com/x' }).remote, true);
+  assert.equal(jobicyAdapter.toListing({ id: 1, jobTitle: 'T', url: 'https://jobicy.com/x' }).remote, true);
+  assert.equal(himalayasAdapter.toListing({ title: 'T', guid: 'https://himalayas.app/x' }).remote, true);
+  assert.equal(arbeitnowAdapter.toListing({ slug: 's', title: 'T', url: 'https://a.com/x', remote: false }).remote, false);
+});
+
+test('only the sources whose search parameter actually narrows rotate the taxonomy', () => {
+  // Measured 2026-09-19: Jobicy's `tag` changes the result set (tag=nurse
+  // returns 32 nursing roles where the plain feed returns 50 mixed), while
+  // Remotive returns the same 16 rows for every query. The flag records that
+  // measurement, not the presence of a parameter in the docs.
+  assert.equal(jobicyAdapter.supportsSearch, true);
+  assert.notEqual(arbeitnowAdapter.supportsSearch, true);
+  assert.notEqual(remoteokAdapter.supportsSearch, true);
+  assert.notEqual(himalayasAdapter.supportsSearch, true);
 });

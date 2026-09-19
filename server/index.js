@@ -26,7 +26,7 @@ import {
 } from './groqClient.js';
 import { ADAPTERS } from './jobs/adapters/index.js';
 import { fetchJobPool } from './jobs/query.js';
-import { runRankGraph, keywordOnlyResult, PREFILTER_LIMIT } from './jobs/graph.js';
+import { runRankGraph, keywordOnlyResult, resumeTerms, PREFILTER_LIMIT } from './jobs/graph.js';
 import { createGroqModelCaller, renderPromptParts } from './jobs/rank.js';
 import {
   cacheKey,
@@ -336,8 +336,51 @@ app.get('/api/verify-premium', requireAuth, async (req, res) => {
 // empty/blocked responses (see shouldTryFallbackModel).
 // ------------------------------------------------------------------
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-pro';
-const GEMINI_MODELS = [...new Set([GEMINI_MODEL, GEMINI_FALLBACK_MODEL].filter(Boolean))];
+
+/**
+ * Parse a comma-separated model list from the environment.
+ *
+ * Shared by the two Gemini chains (resume parsing here, ranking further down)
+ * so they cannot drift in how they read their own configuration.
+ *
+ * @param {unknown} raw Comma-separated ids, or nothing.
+ * @param {string[]} fallback Used when `raw` yields no usable ids.
+ * @returns {string[]} Trimmed, de-duplicated, non-empty ids.
+ */
+function modelList(raw, fallback) {
+  const parsed = [...new Set(String(raw || '').split(',').map((m) => m.trim()).filter(Boolean))];
+  return parsed.length ? parsed : [...new Set(fallback.filter(Boolean))];
+}
+
+/**
+ * The model chain for POST /api/parse-resume, tried in order.
+ *
+ * ═══ WHY A CHAIN AND NOT A PRIMARY + FALLBACK PAIR ═══
+ *
+ * Gemini's free tier rations `generateContent` at 20 requests per DAY, PER
+ * MODEL. Each id is therefore its own quota bucket and a longer chain is
+ * strictly more capacity — the same reasoning that produced GEMINI_RANK_MODELS
+ * below. Ranking and parsing share those buckets, so a day of ranking can
+ * exhaust the model parsing was about to use.
+ *
+ * This used to be `[GEMINI_MODEL, GEMINI_FALLBACK_MODEL]`, terminating on
+ * `gemini-2.5-pro` — retired for new accounts. Being the LAST link is what
+ * made it user-visible: `callGemini` advances on "no longer available" (see
+ * shouldTryFallbackModel) but had nowhere left to go, so it rethrew and the
+ * route returned Google's own sentence verbatim as a 500. The lesson is not
+ * "replace the fallback id", it is that a chain must not END on anything that
+ * can go away. Every id below is live on this account, and the list is
+ * deliberately longer than two.
+ *
+ * Multimodal-capable ids only: this route sends a PDF or image inline.
+ */
+const GEMINI_MODELS = modelList(process.env.GEMINI_PARSE_MODELS, [
+  GEMINI_MODEL,
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
+]);
 
 // GROQ_ANSWER_MODEL, GROQ_FALLBACK_MODEL, GROQ_MAX_TOKENS, getGroq() and
 // shouldTryFallbackModel() now live in ./groqClient.js — same definitions, one
@@ -641,9 +684,21 @@ ${draft || 'None'}
     }
 
     const requestedModel = (req.body?.model || '').trim();
-    const selectedModel = GROQ_ALLOWED_MODELS.has(requestedModel)
-      ? requestedModel
-      : GROQ_ANSWER_MODEL;
+    const modelAllowed = GROQ_ALLOWED_MODELS.has(requestedModel);
+    const selectedModel = modelAllowed ? requestedModel : GROQ_ANSWER_MODEL;
+
+    // Failing closed is right; failing SILENTLY is what cost a debugging pass.
+    // VITE_ANSWER_STUDIO_MODEL was set to a Gemini id and posted to this
+    // Groq-only route for weeks: the allowlist discarded it, every request
+    // quietly ran on the default, and the "model switch" looked wired end to
+    // end while doing nothing. A rejected id is now a log line, so the next
+    // mismatch is one grep away instead of invisible.
+    if (requestedModel && !modelAllowed) {
+      log.warn('requested model is not allowlisted, using the default', {
+        requestedModel,
+        selectedModel,
+      });
+    }
 
     const modelChain = [...new Set([selectedModel, GROQ_FALLBACK_MODEL].filter(Boolean))];
 
@@ -1212,6 +1267,11 @@ app.post('/api/jobs/ingest', requireCronSecret, handleJobIngest);
 // for `*Log.warn({ name: ... })` call sites, and a variable named anything else
 // would drop these lines out of that scan.
 const jobsLog = log.child('jobs');
+
+/** Rows sampled for the location typeahead. Recent-first; see the route. */
+const LOCATION_SAMPLE_ROWS = 1000;
+/** Suggestions offered per bucket. A typeahead nobody scrolls past 20. */
+const LOCATION_FACET_LIMIT = 20;
 const rankLog = log.child('rank');
 
 /** Provider/database error text in a JSON body. Enough to act on, never a stack. */
@@ -1261,6 +1321,12 @@ function readJobFilters(source = {}) {
     cursor: typeof s.cursor === 'string' ? s.cursor : undefined,
     remote: s.remote,
     location: typeof s.location === 'string' ? s.location : '',
+    // Structured location, from the typeahead. When any of these is set the
+    // pool read matches the migration-004 columns exactly and ignores the
+    // free-text `location` above — see applyLocation in jobs/query.js.
+    locationCity: typeof s.locationCity === 'string' ? s.locationCity : '',
+    locationRegion: typeof s.locationRegion === 'string' ? s.locationRegion : '',
+    locationCountry: typeof s.locationCountry === 'string' ? s.locationCountry : '',
     source: typeof s.source === 'string' ? s.source : undefined,
     q: typeof s.q === 'string' ? s.q : '',
     since: s.since,
@@ -1372,6 +1438,75 @@ app.get('/api/jobs', requireAuth, async (req, res) => {
 // everything, a dead Adzuna key, a cron that has not run since Tuesday — and
 // a UI that cannot tell them apart can only shrug. The per-source lastError
 // and lastRunAt here are what turn that shrug into a named cause.
+/**
+ * GET /api/jobs/locations — the values the location typeahead may offer.
+ *
+ * ═══ WHY A DEDICATED ENDPOINT ═══
+ *
+ * The location box used to be free text matched with `ilike '%typed%'` against
+ * the provider's display string, and the provider prints "Tampa Palms,
+ * Hillsborough County". Typing "Florida" matched nothing, typing "New York"
+ * matched only rows spelled exactly that way, and an empty result looked
+ * identical to "no jobs here". A user can only pick a place we actually hold
+ * if we tell them which places we hold — that is this route.
+ *
+ * Counts come from the structured columns added in migration 004. Until that
+ * migration is applied those columns are null, every bucket is empty, and the
+ * client falls back to the free-text box: degraded, not broken.
+ *
+ * No credits, no model, and the same auth as the rest of /api/jobs.
+ */
+app.get('/api/jobs/locations', requireAuth, async (_req, res) => {
+  const empty = { countries: [], regions: [], cities: [], degraded: true };
+  try {
+    // One page of recent rows rather than a GROUP BY: PostgREST cannot express
+    // "distinct with counts" without a database view or an RPC, and adding
+    // either is a migration. Counting in JS over a bounded window is exact for
+    // that window and honest about being a window — which is all a typeahead
+    // needs, since it is ranking suggestions, not reporting totals.
+    const { data, error } = await supabaseAdmin
+      .from('job_listings')
+      .select('location_city,location_region,location_country')
+      .order('posted_at', { ascending: false })
+      .limit(LOCATION_SAMPLE_ROWS);
+
+    if (error) {
+      jobsLog.warn('location facets query failed', { reason: String(error.message || '').slice(0, 200) });
+      return res.json(empty);
+    }
+
+    const tally = (key) => {
+      const counts = new Map();
+      for (const row of data || []) {
+        const value = row?.[key];
+        if (typeof value !== 'string' || !value.trim()) continue;
+        counts.set(value, (counts.get(value) || 0) + 1);
+      }
+      return [...counts.entries()]
+        .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+        .slice(0, LOCATION_FACET_LIMIT)
+        .map(([value, count]) => ({ value, count }));
+    };
+
+    const countries = tally('location_country');
+    const regions = tally('location_region');
+    const cities = tally('location_city');
+
+    res.json({
+      countries,
+      regions,
+      cities,
+      // True when migration 004 has not been applied (or nothing is parsed
+      // yet), so the client can keep the free-text box instead of showing an
+      // empty dropdown that looks like "we have no jobs anywhere".
+      degraded: countries.length === 0 && regions.length === 0 && cities.length === 0,
+    });
+  } catch (error) {
+    jobsLog.warn('location facets failed', { errName: error?.name });
+    res.json(empty);
+  }
+});
+
 app.get('/api/jobs/meta', requireAuth, async (_req, res) => {
   // Adapter identity and enablement come from the registry, not the database:
   // a source that has never run has no state row, and the answer for it is
@@ -1654,7 +1789,11 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
       // local matcher. Never an error — see rankWithCache.
       keywordFallback: async () => {
         try {
-          const { jobs } = await fetchJobs(filters);
+          // Same relevance terms the graph would have used. A rate-limited run
+          // is the one most likely to be a user's FIRST impression, so handing
+          // it the recency-only pool would show its worst list at its worst
+          // moment.
+          const { jobs } = await fetchJobs({ ...filters, terms: resumeTerms(resumeProfile) });
           return keywordOnlyResult(resumeProfile, jobs, 'rate_limited');
         } catch (err) {
           rankLog.warn('keyword fallback could not read the pool', { errName: err?.name });
@@ -1701,6 +1840,10 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
         requestId: req.id || null,
         total: jobs.length,
         poolSize: outcome.poolSize ?? 0,
+        // The real count, with the ceiling alongside it. `prefilterLimit`
+        // used to be sent as PREFILTER_LIMIT — a constant — so the footer
+        // claimed 30 jobs were scored even on a run that only had 15.
+        sentToScorer: outcome.sentToScorer ?? 0,
         prefilterLimit: PREFILTER_LIMIT,
         matcherVersion: outcome.matcherVersion ?? MATCHER_VERSION,
         sources: outcome.sources || [],

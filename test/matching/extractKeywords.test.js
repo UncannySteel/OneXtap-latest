@@ -154,3 +154,19 @@ test('a seniority-only tag is dropped even though it is not a stopword', () => {
     assert.ok(!terms.has(word.toLowerCase()), `seniority tag "${word}" leaked into the keywords`);
   }
 });
+
+test('shift times and money never become skills', () => {
+  // A live Remotive row stored `00am`, `00pm` and the bigram `00am 00pm` among
+  // its skills. They are frequent, so they rank high, and no resume can ever
+  // match them — each one displaced a real requirement from the capped output.
+  const { keywords } = extractKeywords(
+    'Shift runs 8:00am to 5:00pm. Pays $40000 annually. Requires Python and Docker.',
+    { source: 'remotive', title: 'Engineer' }
+  );
+  const terms = keywords.map((k) => k.term);
+  for (const junk of ['00am', '00pm', '00am 00pm', '40000', '00']) {
+    assert.ok(!terms.includes(junk), `emitted numeric fragment "${junk}"`);
+  }
+  // ...and the real skills in the same sentence still come through.
+  assert.ok(terms.includes('python'), `python missing from ${terms.join(', ')}`);
+});

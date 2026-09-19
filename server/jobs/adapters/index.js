@@ -7,7 +7,8 @@
  *     id: string,
  *     enabled(): boolean,
  *     supportsPaging: boolean,
- *     async fetch({ query, location, country, remote, limit, page, signal })
+ *     supportsSearch?: boolean,
+ *     async fetch({ query, category, location, country, remote, limit, page, signal })
  *         -> { items: RawItem[], hasMore: boolean, error: string|null },
  *     toListing(rawItem): NormalizedListing | null
  *   }
@@ -57,6 +58,10 @@
 import { adzunaAdapter } from './adzuna.js';
 import { remotiveAdapter } from './remotive.js';
 import { atsAdapter } from './ats.js';
+import { arbeitnowAdapter } from './arbeitnow.js';
+import { remoteokAdapter } from './remoteok.js';
+import { jobicyAdapter } from './jobicy.js';
+import { himalayasAdapter } from './himalayas.js';
 import { cacheAdapter } from './cache.js';
 
 /**
@@ -68,6 +73,13 @@ import { cacheAdapter } from './cache.js';
  * @property {() => boolean} enabled Whether this source should run at all.
  * @property {boolean} supportsPaging False means one page exists; the
  *   orchestrator wraps the cursor back to 1 after every run.
+ * @property {boolean} [supportsSearch] True means the provider has a real
+ *   free-text/category search, so ingest should rotate the occupation
+ *   taxonomy (jobs/searchTerms.js) through this source's cursor. Absent or
+ *   false means ingest asks for the plain feed. This is a claim about the
+ *   PROVIDER, not the adapter: Remotive's adapter maps `query` to `search`
+ *   perfectly well, but its free API returns the same 16 rows whatever it is
+ *   sent, so rotating terms there would spend calls re-reading one page.
  * @property {(opts?: object) => Promise<{items: object[], hasMore: boolean, error: string|null}>} fetch
  *   Never throws; failures come back as an `error` reason.
  * @property {(raw: unknown) => object|null} toListing Provider shape to the
@@ -123,6 +135,13 @@ export const ADAPTERS = [
   adzunaAdapter,
   remotiveAdapter,
   atsAdapter,
+  // Keyless aggregators, added 2026-09-19. Each was verified to return a
+  // non-empty feed before it was written; each stamps 'full' because all four
+  // return the complete posting rather than Adzuna's ~200-character snippet.
+  arbeitnowAdapter,
+  remoteokAdapter,
+  jobicyAdapter,
+  himalayasAdapter,
   cacheAdapter,
 ];
 

@@ -125,6 +125,21 @@ function resolveTerm(phrase, isUnigram) {
 }
 
 /**
+ * Digits, optionally with a short unit or suffix: `00`, `00am`, `401k`, `2026`.
+ *
+ * Shift times and money survive tokenisation looking exactly like terms, and
+ * they are FREQUENT, so they ranked straight into the capped keyword output.
+ * A live Remotive row stored `00am`, `00pm` and the bigram `00am 00pm` as
+ * three of its skills. No resume can match those, and every one of them
+ * displaced a real requirement from the window the evidence count measures.
+ *
+ * The suffix is capped at three characters so genuine terms that merely start
+ * with a digit (`3dsmax`) are untouched, and {@link isNoiseToken} exempts
+ * anything the lexicon knows before this is ever consulted.
+ */
+const NUMERIC_FRAGMENT = /^\d+[a-z]{0,3}$/;
+
+/**
  * Is this token worthless as keyword output on its own?
  *
  * The same three-way test gates every place a bare token can escape into the
@@ -134,7 +149,10 @@ function resolveTerm(phrase, isUnigram) {
  * @returns {boolean}
  */
 function isNoiseToken(token) {
-  return STOPWORDS.has(token) || NEVER_EMIT.has(token) || PHRASE_BREAKERS.has(token);
+  if (STOPWORDS.has(token) || NEVER_EMIT.has(token) || PHRASE_BREAKERS.has(token)) return true;
+  // A real skill always wins, so `3d` and `5g` survive the numeric rule below.
+  if (SKILL_LEXICON.has(token)) return false;
+  return NUMERIC_FRAGMENT.test(token);
 }
 
 /**
