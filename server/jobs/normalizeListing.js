@@ -47,33 +47,107 @@ const VALID_QUALITY = new Set(['full', 'snippet']);
 const MAX_LOCATION_PART = 120;
 
 /**
- * ISO-ish country codes the sources actually emit, to full names.
+ * Codes and alternate spellings the sources actually emit, to canonical names.
  *
- * Deliberately tiny. This is not a country dataset — it exists because Adzuna
- * puts a two-letter code in `area[0]` and a user types "United States", and a
- * two-entry lookup beats a dependency. Anything not here passes through
- * unchanged, which is right: Remotive already says "Canada".
+ * Still deliberately small, and still not a country dataset: this is the
+ * ALIAS table. Adzuna puts a two-letter code in `area[0]`, Remotive writes
+ * "USA", and arbeitnow — a German board — writes "Deutschland", so the same
+ * country arrived under three spellings and fragmented the typeahead into
+ * three buckets ('Deutschland' 48, 'Germany' 33, 'Allemagne' 1 on 2026-09-19).
+ * Everything here maps to the English name used in WORLD_COUNTRIES.
+ *
+ * Two-letter keys are only for codes a source really sends. Adding the full
+ * ISO-2 set would collide with US_STATES on a dozen entries ('de' Germany vs
+ * Delaware, 'in' India vs Indiana, 'ca' Canada vs California) and the
+ * disambiguation is not worth the codes nobody emits.
  */
 const COUNTRY_NAMES = Object.freeze({
   us: 'United States', gb: 'United Kingdom', ca: 'Canada', au: 'Australia',
   // Spelled-out aliases, because these arrive as display text rather than as
   // a code: Remotive writes "USA" and "UK", never "us" or "gb".
   usa: 'United States', 'u.s.': 'United States', 'u.s.a.': 'United States',
-  uk: 'United Kingdom', uae: 'United Arab Emirates',
+  'united states of america': 'United States', 'the united states': 'United States',
+  uk: 'United Kingdom', 'great britain': 'United Kingdom', uae: 'United Arab Emirates',
   in: 'India', de: 'Germany', fr: 'France', nl: 'Netherlands', sg: 'Singapore',
   nz: 'New Zealand', za: 'South Africa', pl: 'Poland', br: 'Brazil', it: 'Italy',
   es: 'Spain', at: 'Austria', ch: 'Switzerland', mx: 'Mexico',
+  // Endonyms and cross-language exonyms. Every one of these was observed in
+  // location_country in production before the guard below existed.
+  deutschland: 'Germany', allemagne: 'Germany', duitsland: 'Germany',
+  germania: 'Germany', alemania: 'Germany',
+  frankreich: 'France', frankrijk: 'France', francia: 'France',
+  österreich: 'Austria', oesterreich: 'Austria', autriche: 'Austria',
+  schweiz: 'Switzerland', suisse: 'Switzerland', svizzera: 'Switzerland',
+  nederland: 'Netherlands', 'the netherlands': 'Netherlands', holland: 'Netherlands',
+  belgië: 'Belgium', belgie: 'Belgium', belgique: 'Belgium', belgien: 'Belgium',
+  españa: 'Spain', espana: 'Spain', espagne: 'Spain',
+  italia: 'Italy', italie: 'Italy',
+  polska: 'Poland', polen: 'Poland',
+  brasil: 'Brazil', brasilien: 'Brazil',
+  méxico: 'Mexico', mexiko: 'Mexico',
+  sverige: 'Sweden', danmark: 'Denmark', norge: 'Norway', suomi: 'Finland',
+  'česko': 'Czechia', 'czech republic': 'Czechia', tschechien: 'Czechia',
+  'korea, south': 'South Korea', 'republic of korea': 'South Korea',
+  'korea, north': 'North Korea', 'democratic people\'s republic of korea': 'North Korea',
+  türkiye: 'Turkey', turkiye: 'Turkey',
 });
 
 /**
- * Reverse of COUNTRY_NAMES: the full names, lowercased.
+ * Every country name the validator will accept, lowercase.
  *
- * Needed because a single-segment location can be either a city or a country
- * and the two are told apart only by recognising one of them. Without this
- * "Canada" — an entire Remotive location value — parsed as a city called
- * Canada, and the typeahead then offered it as one.
+ * ═══ WHY THIS EXISTS AND WHY IT IS LONG ═══
+ *
+ * It used to be `new Set(Object.values(COUNTRY_NAMES))` — twenty names, enough
+ * to tell a lone "Canada" from a city called Canada in the single-segment
+ * branch. splitLocation now uses it as a GATE on the multi-segment branch too
+ * (see the comment there), and the requirements are not the same: as an
+ * aliaser a short list is fine, because an unknown value passes through
+ * unchanged. As a validator a short list is actively wrong — "Lisbon,
+ * Portugal" would fail the gate and Portugal would be filed as a region.
+ *
+ * So the gate needs real coverage, and this is it. Static data, no dependency.
+ * Spellings are the common English exonyms; endonyms and codes reach them
+ * through COUNTRY_NAMES above.
  */
-const COUNTRY_NAME_SET = new Set(Object.values(COUNTRY_NAMES).map((n) => n.toLowerCase()));
+const WORLD_COUNTRIES = [
+  'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Argentina', 'Armenia', 'Australia',
+  'Austria', 'Azerbaijan', 'Bahamas', 'Bahrain', 'Bangladesh', 'Barbados', 'Belarus', 'Belgium',
+  'Belize', 'Benin', 'Bhutan', 'Bolivia', 'Bosnia and Herzegovina', 'Botswana', 'Brazil', 'Brunei',
+  'Bulgaria', 'Burkina Faso', 'Burundi', 'Cambodia', 'Cameroon', 'Canada', 'Cape Verde',
+  'Central African Republic', 'Chad', 'Chile', 'China', 'Colombia', 'Comoros', 'Costa Rica',
+  'Croatia', 'Cuba', 'Cyprus', 'Czechia', 'Democratic Republic of the Congo', 'Denmark',
+  'Djibouti', 'Dominica', 'Dominican Republic', 'Ecuador', 'Egypt', 'El Salvador',
+  'Equatorial Guinea', 'Eritrea', 'Estonia', 'Eswatini', 'Ethiopia', 'Fiji', 'Finland', 'France',
+  'Gabon', 'Gambia', 'Georgia', 'Germany', 'Ghana', 'Greece', 'Grenada', 'Guatemala', 'Guinea',
+  'Guinea-Bissau', 'Guyana', 'Haiti', 'Honduras', 'Hong Kong', 'Hungary', 'Iceland', 'India',
+  'Indonesia', 'Iran', 'Iraq', 'Ireland', 'Israel', 'Italy', 'Ivory Coast', 'Jamaica', 'Japan',
+  'Jordan', 'Kazakhstan', 'Kenya', 'Kiribati', 'Kosovo', 'Kuwait', 'Kyrgyzstan',
+  'Laos', 'Latvia', 'Lebanon', 'Lesotho', 'Liberia', 'Libya', 'Liechtenstein', 'Lithuania',
+  'Luxembourg', 'Macau', 'Madagascar', 'Malawi', 'Malaysia', 'Maldives', 'Mali', 'Malta',
+  'Mauritania', 'Mauritius', 'Mexico', 'Moldova', 'Monaco', 'Mongolia', 'Montenegro', 'Morocco',
+  'Mozambique', 'Myanmar', 'Namibia', 'Nepal', 'Netherlands', 'New Zealand', 'Nicaragua', 'Niger',
+  'Nigeria', 'North Korea', 'North Macedonia', 'Norway', 'Oman', 'Pakistan', 'Palestine', 'Panama',
+  'Papua New Guinea', 'Paraguay', 'Peru', 'Philippines', 'Poland', 'Portugal', 'Puerto Rico',
+  'Qatar', 'Romania', 'Russia', 'Rwanda', 'Saudi Arabia', 'Senegal', 'Serbia', 'Seychelles',
+  'Sierra Leone', 'Singapore', 'Slovakia', 'Slovenia', 'Somalia', 'South Africa', 'South Sudan',
+  'South Korea', 'Spain', 'Sri Lanka', 'Sudan', 'Suriname', 'Sweden', 'Switzerland', 'Syria', 'Taiwan',
+  'Tajikistan', 'Tanzania', 'Thailand', 'Togo', 'Trinidad and Tobago', 'Tunisia', 'Turkey',
+  'Turkmenistan', 'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States',
+  'Uruguay', 'Uzbekistan', 'Vanuatu', 'Venezuela', 'Vietnam', 'Yemen', 'Zambia', 'Zimbabwe',
+];
+
+/**
+ * lowercase spelling -> the canonical spelling to store.
+ *
+ * One map for both tables, so "deutschland", "DE" and "GERMANY" all land on
+ * the single string "Germany" and the typeahead offers one bucket instead of
+ * three. Canonicalising the CASE matters as much as the spelling: the facet
+ * tally in /api/jobs/locations groups on the exact stored value.
+ */
+const COUNTRY_BY_LOWER = new Map([
+  ...WORLD_COUNTRIES.map((name) => [name.toLowerCase(), name]),
+  ...Object.entries(COUNTRY_NAMES).map(([alias, name]) => [alias, name]),
+]);
 
 /** US state abbreviations, so "San Francisco, CA" resolves to a country. */
 const US_STATES = new Set([
@@ -81,6 +155,50 @@ const US_STATES = new Set([
   'md','ma','mi','mn','ms','mo','mt','ne','nv','nh','nj','nm','ny','nc','nd','oh','ok','or','pa',
   'ri','sc','sd','tn','tx','ut','vt','va','wa','wv','wi','wy','dc',
 ]);
+
+/**
+ * Canadian province abbreviations, so "Toronto, ON" resolves to a country.
+ *
+ * Without this, 'ON' failed the US_STATES check, fell through to the trailing
+ * segment, and was stored as a COUNTRY called "ON" — one of the values that
+ * sent the country typeahead off the rails.
+ *
+ * 'NL' IS DELIBERATELY ABSENT. It is both Newfoundland and Labrador and the
+ * Netherlands' country code, and "Amsterdam, NL" is far likelier in a jobs
+ * feed than a Newfoundland posting. COUNTRY_NAMES already resolves it to
+ * Netherlands; adding it here would take that away to serve the rarer case.
+ */
+const CA_PROVINCES = new Set([
+  'ab','bc','mb','nb','ns','nt','nu','on','pe','qc','sk','yt',
+]);
+
+/** Separators a source uses between two whole locations in one string. */
+const MULTI_LOCATION_SPLIT = /[\u2022;|]/;
+
+/**
+ * Broad regions that are neither a city nor a country. Remotive's entire
+ * location vocabulary, plus what the aggregators use for a continent.
+ */
+const BROAD_REGIONS = /^(worldwide|anywhere|remote|global|europe|americas|apac|latam|emea|asia|africa|oceania|middle east|north america|south america)$/i;
+
+/**
+ * The canonical country name for a value, or null when it is not a country.
+ *
+ * The GATE, exported because two callers need to agree on it exactly:
+ * splitLocation when it decides whether a trailing segment may be promoted to
+ * a country, and the one-off backfill in scripts/, which must be able to ask
+ * "is what we already stored a country at all?" of a row it did not parse.
+ * A second, drifting copy of that judgement is how the column got into the
+ * state the backfill exists to repair.
+ *
+ * @param {unknown} value Any location fragment.
+ * @returns {string|null} The canonical spelling, or null.
+ */
+export function canonicalCountry(value) {
+  const t = String(value ?? '').trim();
+  if (!t) return null;
+  return COUNTRY_BY_LOWER.get(t.toLowerCase()) || null;
+}
 
 /**
  * Split a listing's location into city / region / country.
@@ -99,10 +217,38 @@ const US_STATES = new Set([
  * only a display string, so those are parsed:
  *
  *   "San Francisco, CA"   -> city + region, country inferred from the state
+ *   "Toronto, ON"         -> city + region, country inferred from the province
  *   "Bengaluru, India"    -> city + country
  *   "London"              -> city only
  *   "Remote (US)"         -> the `remote` flag already covers this; no city
  *   "Europe", "Worldwide" -> a REGION, not a city (Remotive's whole format)
+ *   "Dresden, Altmarkt 21/22" -> city + region; NOT a country called
+ *                            "Altmarkt 21/22"
+ *
+ * ═══ THE TRAILING SEGMENT IS NOT A COUNTRY UNTIL IT IS RECOGNISED ═══
+ *
+ * This is the rule the multi-segment branch used to be missing, and it cost
+ * the country filter. The branch ended `country: named(last)`, which wrote
+ * whatever came after the last comma into location_country unconditionally —
+ * `named` only rewrites values it knows and passes the rest through. A single
+ * day of ingest put these in the COUNTRY column in production:
+ *
+ *   "Dresden, Altmarkt 21/22"            -> country "Altmarkt 21/22"  (a street)
+ *   "Paris, Paris"                       -> country "Paris"           (a city)
+ *   "Toronto, ON"                        -> country "ON"              (a province)
+ *   "Düsseldorf, North Rhine-Westphalia" -> country "North Rhine-Westphalia"
+ *
+ * The typeahead then offered every one of them as a country to pick, and
+ * picking a real one returned a third of its jobs because the rest were filed
+ * under a state or a street. The single-segment branch below had always
+ * validated before committing; this one now does the same, and an
+ * unrecognised trailing segment degrades to a REGION — the weaker claim —
+ * rather than being promoted to a country.
+ *
+ * That gate is only as good as COUNTRY_BY_LOWER is complete, which is why
+ * that table is no longer twenty entries. A country missing from it is not
+ * silently mangled any more, but it is still misfiled as a region, so add it
+ * there rather than loosening the gate here.
  *
  * Every field is optional and stays null rather than guessing. A wrong city is
  * worse than no city: it puts a job in a place it is not, and the typeahead
@@ -117,13 +263,18 @@ export function splitLocation(area, display) {
     const t = String(v ?? '').replace(/\((?:HQ|hq)\)/g, '').trim();
     return t ? t.slice(0, MAX_LOCATION_PART) : null;
   };
+  /** Alias-resolved, for a slot already known to hold a country. */
   const named = (v) => {
     const t = clean(v);
     if (!t) return null;
-    return COUNTRY_NAMES[t.toLowerCase()] || t;
+    return canonicalCountry(t) || t;
   };
+  const asCountry = (v) => canonicalCountry(clean(v));
 
   // ── Structured (Adzuna) ────────────────────────────────────────────
+  // area[0] IS the country by the provider's contract, so it is aliased, not
+  // gated: a country Adzuna names and this file has never heard of should be
+  // stored as given rather than thrown away.
   const parts = Array.isArray(area) ? area.map(clean).filter(Boolean) : [];
   if (parts.length) {
     return {
@@ -135,11 +286,14 @@ export function splitLocation(area, display) {
     };
   }
 
-  // ── Free text (ATS, Remotive) ──────────────────────────────────────
+  // ── Free text (ATS, Remotive, arbeitnow) ───────────────────────────
   // A multi-location string ("SF - New York - United States") is not one
   // place, so only its first location is taken rather than inventing a
-  // composite nobody can search for.
-  const first = String(display ?? '').split('\u2022')[0];
+  // composite nobody can search for. Both separators are real: Remotive uses
+  // the bullet, arbeitnow uses a semicolon ("Lille - Btwin Village, Nord;
+  // Paris, Paris"), and splitting on only one of them let the other collapse
+  // two places into a single bogus row.
+  const first = String(display ?? '').split(MULTI_LOCATION_SPLIT)[0];
   const segs = first.split(',').map(clean).filter(Boolean);
   if (!segs.length) return { city: null, region: null, country: null };
 
@@ -150,20 +304,29 @@ export function splitLocation(area, display) {
     // One token: a country or a broad region if we recognise it as one,
     // otherwise a city. "Worldwide"/"Europe" are Remotive's whole vocabulary
     // and are neither a city nor a country.
-    if (COUNTRY_NAMES[lastLower]) return { city: null, region: null, country: COUNTRY_NAMES[lastLower] };
-    if (COUNTRY_NAME_SET.has(lastLower)) return { city: null, region: null, country: last };
-    if (/^(worldwide|anywhere|europe|americas|apac|latam|emea)$/i.test(last)) {
-      return { city: null, region: last, country: null };
-    }
+    const solo = asCountry(last);
+    if (solo) return { city: null, region: null, country: solo };
+    if (BROAD_REGIONS.test(last)) return { city: null, region: last, country: null };
     return { city: last, region: null, country: null };
   }
 
   if (US_STATES.has(lastLower)) {
     return { city: segs[0], region: last.toUpperCase(), country: 'United States' };
   }
-  return { city: segs[0], region: segs.length > 2 ? segs[1] : null, country: named(last) };
-}
+  if (CA_PROVINCES.has(lastLower)) {
+    return { city: segs[0], region: last.toUpperCase(), country: 'Canada' };
+  }
 
+  const country = asCountry(last);
+  if (country) {
+    return { city: segs[0], region: segs.length > 2 ? segs[1] : null, country };
+  }
+
+  // Not a country. `last` is the broadest thing said about this place, so it
+  // is the best region candidate — and a wrong region costs a filter nobody
+  // reaches for, where a wrong country corrupts the one they do.
+  return { city: segs[0], region: last, country: null };
+}
 
 /**
  * Anything to a trimmed string, or '' when there is nothing sensible to show.

@@ -373,19 +373,49 @@ test('a database error becomes a thrown Error, not a silent empty list', async (
 // Structured location (migration 004)
 // ------------------------------------------------------------------
 
-test('a picked location filters the structured columns exactly, not the display string', async () => {
-  // The whole point of migration 004: "Florida" cannot be found in
-  // "Tampa Palms, Hillsborough County", because Adzuna's display string names
-  // a county and never a state.
+test('a picked location matches the structured column exactly, or the display string when it is null', async () => {
+  // The structured half is the point of migration 004: "Florida" cannot be
+  // found in "Tampa Palms, Hillsborough County", because Adzuna's display
+  // string names a county and never a state. The null half is what stops the
+  // 71% of rows with no parsed region from vanishing out of the result.
   const client = stubClient([]);
   await fetchJobPool(client, { locationRegion: 'Florida' });
-  const ilikes = allCalls(client, 'ilike');
-  const region = ilikes.find((c) => c[1] === 'location_region');
-  assert.ok(region, `no location_region filter in ${JSON.stringify(ilikes)}`);
-  // No wildcards: the user picked a value the API offered, so this is an
-  // exact, case-insensitive match that the lower() index can serve.
-  assert.equal(region[2], 'Florida');
-  assert.ok(!ilikes.some((c) => c[1] === 'location'), 'free-text filter must not also apply');
+  const ors = allCalls(client, 'or').map((c) => c[1]);
+  const branch = ors.find((body) => body.includes('location_region'));
+  assert.ok(branch, `no location_region filter in ${JSON.stringify(ors)}`);
+  // No wildcards on the structured side: the user picked a value the API
+  // offered, so it is an exact, case-insensitive match the lower() index
+  // serves. Wildcards appear only on the display-string fallback.
+  assert.equal(
+    branch,
+    'location_region.ilike."Florida",and(location_region.is.null,location.ilike."%Florida%")'
+  );
+  assert.ok(
+    !allCalls(client, 'ilike').some((c) => c[1] === 'location'),
+    'the standalone free-text filter must not also apply'
+  );
+});
+
+test('an or-operand is quoted so a comma cannot end the branch', () => {
+  // "Korea, South" unquoted is a PGRST100 parse error against the live
+  // database — the comma ends the branch and the ")" then arrives early.
+  const client = stubClient([]);
+  return fetchJobPool(client, { locationCountry: 'Korea, South' }).then(() => {
+    const branch = allCalls(client, 'or').map((c) => c[1]).find((b) => b.includes('location_country'));
+    assert.equal(
+      branch,
+      'location_country.ilike."Korea, South",and(location_country.is.null,location.ilike."%Korea, South%")'
+    );
+  });
+});
+
+test('an or-operand escapes LIKE metacharacters before it is quoted', async () => {
+  // Order matters: escapeLike emits backslashes and the quoting pass has to
+  // escape those, so `100%` reaches SQL as a literal, not as a wildcard.
+  const client = stubClient([]);
+  await fetchJobPool(client, { locationCity: '100%_real' });
+  const branch = allCalls(client, 'or').map((c) => c[1]).find((b) => b.includes('location_city'));
+  assert.ok(branch.startsWith('location_city.ilike."100\\\\%\\\\_real"'), branch);
 });
 
 test('free text still falls back to the display column', async () => {
@@ -402,9 +432,13 @@ test('free text still falls back to the display column', async () => {
 test('a structured location wins over free text when both arrive', async () => {
   const client = stubClient([]);
   await fetchJobPool(client, { location: 'ignored', locationCountry: 'United States' });
-  const ilikes = allCalls(client, 'ilike');
-  assert.ok(ilikes.some((c) => c[1] === 'location_country' && c[2] === 'United States'));
-  assert.ok(!ilikes.some((c) => c[1] === 'location'));
+  const ors = allCalls(client, 'or').map((c) => c[1]);
+  assert.ok(ors.some((b) => b.includes('location_country.ilike."United States"')));
+  // 'ignored' must not reach the query at all — not as a filter of its own,
+  // and not smuggled in through the fallback branch, which only ever carries
+  // the structured value.
+  assert.ok(!allCalls(client, 'ilike').some((c) => c[1] === 'location'));
+  assert.ok(!ors.some((b) => b.includes('ignored')));
 });
 
 test('structured location values are LIKE-escaped like every other free text', () => {

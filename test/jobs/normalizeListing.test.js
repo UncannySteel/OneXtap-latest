@@ -245,6 +245,78 @@ test('splitLocation takes only the first of a multi-location string', () => {
   );
 });
 
+test('splitLocation never promotes an unrecognised trailing segment to a country', () => {
+  // Every one of these was in location_country in production on 2026-09-19,
+  // offered by the typeahead as a country somebody could pick.
+  const bad = {
+    'Dresden, Altmarkt 21/22': 'Altmarkt 21/22',          // a street address
+    'Paris, Paris': 'Paris',                               // a city
+    'Berlin, Brandenburg': 'Brandenburg',                  // a German state
+    'Düsseldorf, North Rhine-Westphalia': 'North Rhine-Westphalia',
+    'London, England': 'England',                          // a UK nation
+    'Tampa Palms, Hillsborough County': 'Hillsborough County',
+  };
+  for (const [display, wrongCountry] of Object.entries(bad)) {
+    const parts = splitLocation(null, display);
+    assert.equal(parts.country, null, `${display} still produced a country`);
+    // It degrades to the weaker claim rather than vanishing.
+    assert.equal(parts.region, wrongCountry);
+    assert.equal(parts.city, display.split(',')[0].trim());
+  }
+});
+
+test('splitLocation still reads a real country after the last comma', () => {
+  // The guard above is only safe because the name table has real coverage.
+  // Portugal is not in the alias map and must still parse as a country.
+  assert.deepEqual(
+    splitLocation(null, 'Lisbon, Portugal'),
+    { city: 'Lisbon', region: null, country: 'Portugal' }
+  );
+  assert.equal(splitLocation(null, 'Tokyo, Japan').country, 'Japan');
+  assert.deepEqual(
+    splitLocation(null, 'Munich, Bavaria, Germany'),
+    { city: 'Munich', region: 'Bavaria', country: 'Germany' }
+  );
+});
+
+test('splitLocation resolves a Canadian province to its country', () => {
+  assert.deepEqual(
+    splitLocation(null, 'Toronto, ON'),
+    { city: 'Toronto', region: 'ON', country: 'Canada' }
+  );
+});
+
+test('splitLocation keeps NL as the Netherlands, not Newfoundland', () => {
+  // NL is both. A jobs feed means Amsterdam far more often than St. John's,
+  // so CA_PROVINCES deliberately omits it — see the comment there.
+  assert.equal(splitLocation(null, 'Amsterdam, NL').country, 'Netherlands');
+});
+
+test('splitLocation folds endonyms and casing onto one canonical name', () => {
+  // 'Deutschland' (48), 'Germany' (33) and 'Allemagne' (1) were three
+  // separate buckets in the country typeahead on the same pool.
+  for (const spelling of ['Deutschland', 'deutschland', 'GERMANY', 'Allemagne', 'DE']) {
+    assert.equal(splitLocation(null, spelling).country, 'Germany', spelling);
+  }
+  assert.equal(splitLocation(null, 'Frankrijk').country, 'France');
+  assert.equal(splitLocation(null, 'Paris, Frankreich').country, 'France');
+});
+
+test('splitLocation splits a multi-location string on a semicolon too', () => {
+  // arbeitnow uses "; " where Remotive uses the bullet. Splitting on only the
+  // bullet made "Nord; Paris" one region and "Paris" a country.
+  const parts = splitLocation(null, 'Lille - Btwin Village, Nord; Paris, Paris');
+  assert.equal(parts.city, 'Lille - Btwin Village');
+  assert.equal(parts.region, 'Nord');
+  assert.equal(parts.country, null);
+});
+
+test('splitLocation trusts the provider structured country it has not heard of', () => {
+  // area[0] is the country by contract, so it is aliased, never gated — a
+  // country missing from the name table must not be discarded here.
+  assert.equal(splitLocation(['Kiribati', 'Tarawa'], '').country, 'Kiribati');
+});
+
 test('splitLocation strips the (HQ) suffix and is total on junk', () => {
   assert.equal(splitLocation(null, 'New York, NY (HQ)').city, 'New York');
   for (const junk of ['', null, undefined, '   ', ',,,']) {

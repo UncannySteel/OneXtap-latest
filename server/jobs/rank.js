@@ -374,11 +374,16 @@ export function keywordResult(resumeProfile, job, reason = 'model_unavailable') 
 
 /**
  * 'llm' | 'keyword' | 'mixed' over a set of results.
+ *
+ * Exported for the graph, which merges the batches of several loops and so
+ * cannot inherit any single batch's label: two loops can be scored by
+ * different providers, or one can degrade where the other did not.
+ *
  * @param {object[]} results
  * @returns {'llm'|'keyword'|'mixed'} An empty set reads as 'keyword', which is
  *   the honest answer: no model scored anything.
  */
-function summarizeScoredBy(results) {
+export function summarizeScoredBy(results) {
   let llm = 0;
   let keyword = 0;
   for (const r of results) {

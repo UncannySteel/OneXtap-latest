@@ -31,7 +31,8 @@ process.env.NODE_ENV = 'test';
 delete process.env.ADZUNA_APP_ID;
 delete process.env.ADZUNA_APP_KEY;
 
-const { runIngest, shortError, nextSweepCursor, SWEEP_PAGES_PER_TERM } = await import('../../server/jobs/ingest.js');
+const { runIngest, shortError, nextSweepCursor, SWEEP_PAGES_PER_TERM, fairShareDeadline, INGEST_BUDGET_MS } =
+  await import('../../server/jobs/ingest.js');
 const { SEARCH_TERMS } = await import('../../server/jobs/searchTerms.js');
 const { ADAPTERS } = await import('../../server/jobs/adapters/index.js');
 const { formatSupabaseError } = await import('../../server/supabase.js');
@@ -215,4 +216,45 @@ test('a term with fewer listings than one page must not reset the sweep', () => 
   // forever. Only the sweep's own length may end it.
   const midSweep = Math.floor(SEARCH_TERMS.length / 2);
   assert.notEqual(nextSweepCursor(midSweep), 1);
+});
+
+// ------------------------------------------------------------------
+// The per-source share of the run budget
+// ------------------------------------------------------------------
+
+test('fairShareDeadline splits what is left, so a slow first source cannot eat the run', () => {
+  // The measured failure: himalayas ran 7th of 8, started ~41s into a 45s run
+  // and reported `budget` after four pages, while advertising 103,153 rows.
+  const B = INGEST_BUDGET_MS;
+  assert.equal(fairShareDeadline(0, B, 8), B / 8);
+  // Nobody may plan past the run budget, whatever they are handed.
+  for (const left of [1, 2, 8, 50]) {
+    assert.ok(fairShareDeadline(0, B, left) <= B);
+    assert.ok(fairShareDeadline(B - 1, B, left) <= B);
+  }
+});
+
+test('fairShareDeadline hands unused time to the sources behind', () => {
+  // A source that finishes in a fraction of its slice must enlarge the next
+  // one's, not leave the remainder stranded. This is the whole reason the
+  // split is recomputed per source instead of carved up once up front.
+  const B = 45_000;
+  const firstShare = fairShareDeadline(0, B, 8);            // 5625
+  const afterAFastFirst = fairShareDeadline(1_000, B, 7);   // 1000 + 44000/7
+  assert.ok(afterAFastFirst - 1_000 > firstShare, 'the second source got no more time');
+});
+
+test('fairShareDeadline gives the last source everything that remains', () => {
+  assert.equal(fairShareDeadline(30_000, 45_000, 1), 45_000);
+});
+
+test('fairShareDeadline is total and never goes backwards', () => {
+  for (const args of [[NaN, 45_000, 4], [0, NaN, 4], [0, 45_000, 0],
+                      [0, 45_000, NaN], [-5, 45_000, 4], [50_000, 45_000, 3]]) {
+    const out = fairShareDeadline(...args);
+    assert.ok(Number.isFinite(out), `not finite for ${JSON.stringify(args)}`);
+    assert.ok(out >= 0, `negative for ${JSON.stringify(args)}`);
+  }
+  // Already over budget: the deadline is now, not some time in the past.
+  assert.equal(fairShareDeadline(50_000, 45_000, 3), 50_000);
 });

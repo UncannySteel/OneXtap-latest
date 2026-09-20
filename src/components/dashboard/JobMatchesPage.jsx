@@ -568,11 +568,45 @@ const EvidenceMeter = ({ coverage }) => {
  * @param {boolean} props.explaining True while this card's explain call is out.
  * @param {(entry: object) => void} props.onExplain
  */
+/**
+ * What a relaxed job cost, in the user's words rather than the graph's.
+ *
+ * The server names the filters it dropped (`['location', 'remote']`); the card
+ * has to say why this job is on a list the user thought they had narrowed.
+ * Unknown names are passed through rather than dropped, so a rung added to
+ * reformulateQuery later degrades to a plain, honest label instead of an
+ * unexplained badge.
+ *
+ * @param {unknown} relaxed The envelope's `relaxedFilters`.
+ * @returns {string} '' when the job honours every filter.
+ */
+const RELAXED_LABELS = { location: 'location', remote: 'remote' };
+
+function relaxedNames(relaxed) {
+  const list = asArray(relaxed).map((name) => RELAXED_LABELS[name] || String(name));
+  if (!list.length) return '';
+  if (list.length === 1) return list[0];
+  return `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+}
+
+/** "your location filter" / "your location and remote filters". */
+function relaxedFilterPhrase(relaxed) {
+  const names = relaxedNames(relaxed);
+  if (!names) return '';
+  return `your ${names} ${asArray(relaxed).length === 1 ? 'filter' : 'filters'}`;
+}
+
+function relaxedLabel(relaxed) {
+  const phrase = relaxedFilterPhrase(relaxed);
+  return phrase ? `Outside ${phrase}` : '';
+}
+
 const JobCard = ({ entry, missingTerms, coverage, explaining, onExplain }) => {
   const job = entry.job || {};
   const snippet = isSnippet(job);
   const posted = relativeTime(job.postedAt);
   const matched = asArray(entry.matchedSignals);
+  const relaxed = relaxedLabel(entry.relaxedFilters);
 
   return (
     <article className={JOB_CARD}>
@@ -607,6 +641,16 @@ const JobCard = ({ entry, missingTerms, coverage, explaining, onExplain }) => {
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {/*
+          First in the row, before Remote and the source: it is the one badge
+          that contradicts something the user set themselves, and a caveat that
+          reads after the facts it qualifies has already been missed.
+        */}
+        {relaxed && (
+          <span className={AMBER_PILL} title="Too few strong matches were found inside your filters, so this search was broadened.">
+            <MapPin size={10} /> {relaxed}
+          </span>
+        )}
         {job.isRemote && <span className={BADGE}>Remote</span>}
         {job.source && <span className={BADGE}>{job.source}</span>}
         {/*
@@ -1343,10 +1387,28 @@ const JobMatchesPage = ({ showToast }) => {
     // Copied before sorting: `rankedJobs` aliases `result.jobs`, and sorting in
     // place would reorder the stored response behind the memo's back.
     const sorted = rankedJobs.slice();
+
+    // ═══ TIER FIRST, IN BOTH MODES ═══
+    //
+    // The server returns jobs that honour every filter ahead of the ones it
+    // could only find by dropping one (see sortRanked in jobs/graph.js). Both
+    // sorts below are total orders over the whole list, so either would throw
+    // that away and re-interleave them — putting an out-of-location job above
+    // an in-location one, which is the presentation half of the bug this
+    // tiering exists to fix. Sorting inside the tier keeps both promises:
+    // "your filters are respected" and "best first".
+    //
+    // Envelopes from the rate-limited fallback carry no `relaxedFilters` at
+    // all; absent means "nothing was relaxed", which is exactly true of that
+    // path — it reads the pool once, under the user's own filters.
+    const tier = (entry) => (entry?.relaxedFilters ? 1 : 0);
+
     if (sort === 'newest') {
       // Score breaks a date tie, so two jobs posted the same minute still come
       // back in a stable, meaningful order rather than an arbitrary one.
       sorted.sort((a, b) => {
+        const byTier = tier(a) - tier(b);
+        if (byTier !== 0) return byTier;
         const aPosted = Date.parse(a?.job?.postedAt || '') || 0;
         const bPosted = Date.parse(b?.job?.postedAt || '') || 0;
         if (bPosted !== aPosted) return bPosted - aPosted;
@@ -1355,6 +1417,8 @@ const JobMatchesPage = ({ showToast }) => {
     } else {
       // Title breaks a score tie, for the same reason.
       sorted.sort((a, b) => {
+        const byTier = tier(a) - tier(b);
+        if (byTier !== 0) return byTier;
         const diff = (b?.score || 0) - (a?.score || 0);
         if (diff !== 0) return diff;
         return String(a?.job?.title || '').localeCompare(String(b?.job?.title || ''));
@@ -1527,6 +1591,25 @@ const JobMatchesPage = ({ showToast }) => {
 
   /** Partial degradation: some jobs are AI-scored, some fell back. */
   const partiallyScored = result?.scoredBy === 'mixed';
+
+  /**
+   * Filters the server gave up on to fill this list, and how much of the list
+   * still honours them.
+   *
+   * This is a degraded state in exactly the sense the notices below mean: the
+   * answer on screen is not the answer that was asked for. It used to be
+   * reported only inside the collapsed "How this run worked" footer, which
+   * meant the page showed a Location box reading "Berlin" above a list of
+   * Dallas jobs and said nothing — the report was that the filters were
+   * broken, and from the screen there was no way to tell that they were not.
+   *
+   * `inFilterCount` is guarded rather than trusted: it comes off the wire, and
+   * a non-number would render as "Only undefined matches".
+   */
+  const relaxedFilters = asArray(result?.relaxedFilters);
+  const inFilterCount = Number.isFinite(result?.inFilterCount)
+    ? result.inFilterCount
+    : rankedJobs.filter((entry) => !entry?.relaxedFilters).length;
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -1731,6 +1814,26 @@ const JobMatchesPage = ({ showToast }) => {
                   <p className="font-medium">Some jobs were scored by keyword only.</p>
                   <p className="mt-1 text-xs opacity-90">
                     The rest are AI-scored. Mixed runs are not cached, so a refresh re-scores them.
+                  </p>
+                </div>
+              </Notice>
+            )}
+
+            {/* The search was broadened past a filter the user set. Said here,
+                above the list, because the list cannot be read correctly
+                without it. */}
+            {!ranking && result && relaxedFilters.length > 0 && (
+              <Notice tone="amber" icon={MapPin} className="mb-4">
+                <div>
+                  <p className="font-medium">
+                    {inFilterCount === 0
+                      ? `Nothing matched inside ${relaxedFilterPhrase(relaxedFilters)}, so the search was broadened.`
+                      : `Only ${inFilterCount} ${inFilterCount === 1 ? 'job' : 'jobs'} matched inside ${relaxedFilterPhrase(relaxedFilters)}, so the search was broadened.`}
+                  </p>
+                  <p className="mt-1 text-xs opacity-90">
+                    {inFilterCount === 0
+                      ? 'Every job below ignores it, and each is badged with what it ignores.'
+                      : 'Those are listed first. The rest are badged with what they ignore.'}
                   </p>
                 </div>
               </Notice>

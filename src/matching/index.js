@@ -83,5 +83,13 @@ export {
  * Bump whenever extraction or scoring changes in a way that invalidates stored
  * results. Persisted alongside a scored job so a stale row can be recognised
  * and re-scored instead of silently mixing two algorithms in one list.
+ *
+ * 2 — the grounding validator became two-pass (checkability, then entity
+ * grounding) and `buildCorpus` moved employment and graduation dates into item
+ * TEXT rather than `meta`. The corpus change is why this had to move: a stored
+ * resume keeps its built corpus, and `rederiveIfStale` in `src/resumeStore.js`
+ * rebuilds it from `cvText` only when this number is ahead of the record's.
+ * Without the bump, every existing user keeps a dateless corpus and goes on
+ * seeing their own start date reported as a fabrication.
  */
-export const MATCHER_VERSION = 1;
+export const MATCHER_VERSION = 2;

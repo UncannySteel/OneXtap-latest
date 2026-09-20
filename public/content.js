@@ -110,6 +110,27 @@ if (!window.__onextapAutofillLoaded) {
 
   // ── Field signature builder ────────────────────────────────────────────────
   /**
+   * The matching alphabet: lowercase, punctuation flattened to spaces, runs of
+   * whitespace collapsed.
+   *
+   * Both sides of every comparison go through this. A field signature and a
+   * user's custom-field label are written by different people in different
+   * places and must still line up — "Mother's Name" on a form and
+   * "Mother's  Name" in the profile both have to reduce to "mother s name"
+   * or the field silently never fills.
+   *
+   * Collapsing the runs also repairs built-in matches that used to miss:
+   * `name="first__name"` flattened to "first  name", which `includes('first
+   * name')` rejected.
+   *
+   * @param {string} text
+   * @returns {string}
+   */
+  function normalizeForMatch(text) {
+    return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
    * Concatenates all identifying text attributes of a field into one
    * lowercase string used for keyword matching.
    *
@@ -125,7 +146,7 @@ if (!window.__onextapAutofillLoaded) {
       el.getAttribute('autocomplete') || '',
       getLabelText(el),
     ];
-    return parts.join(' ').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+    return normalizeForMatch(parts.join(' '));
   }
 
   // ── Intent list builder ────────────────────────────────────────────────────
@@ -135,6 +156,12 @@ if (!window.__onextapAutofillLoaded) {
    * that the first keyword match wins correctly.
    *
    * Each intent: { keywords: string[], value: string }
+   *
+   * The list is the profile's fixed schema PLUS the user's own
+   * `customFields`, which lead it — see the block where they are built for
+   * why that position is load-bearing. Adding a field to the profile that
+   * autofill should know about means adding an entry here; a value with no
+   * entry is stored and never used.
    *
    * @param {object} profile
    * @returns {Array<{keywords: string[], value: string}>}
@@ -146,9 +173,17 @@ if (!window.__onextapAutofillLoaded) {
     const urls = Array.isArray(p.urls) ? p.urls : [];
     const experience = Array.isArray(p.experience) ? p.experience : [];
 
-    // Helper: find a URL by type
+    // Helper: find a URL by type.
+    //
+    // CASE-INSENSITIVE, deliberately. The resume parser is prompted for
+    // "linkedin|github|portfolio|other" in lowercase while this lookup and the
+    // editor's <select> both spell them "LinkedIn|GitHub|Portfolio|Other", so
+    // an exact match meant no parsed link ever autofilled. New uploads are
+    // canonicalised in src/resumeToProfile.js; this comparison is what lets
+    // profiles ALREADY saved with lowercase types work without a re-upload.
     const urlOf = (type) => {
-      const entry = urls.find((u) => u && u.type === type);
+      const want = String(type).toLowerCase();
+      const entry = urls.find((u) => u && String(u.type).toLowerCase() === want);
       return entry ? entry.value || '' : '';
     };
 
@@ -166,8 +201,29 @@ if (!window.__onextapAutofillLoaded) {
     const portfolioUrl = urlOf('Portfolio');
     const skillsText = Array.isArray(p.skills) ? p.skills.join(', ') : '';
 
+    // ── User-defined fields ───────────────────────────────────────────────
+    //
+    // FIRST IN THE LIST, and that position is the whole design. Matching stops
+    // at the first intent whose keyword appears in the field signature, so a
+    // custom "Mother's Name" placed after the built-ins would lose the field
+    // to the generic `name` keywords below and fill in the candidate's own
+    // name instead. The user named this field; their name for it wins.
+    //
+    // The label is matched through the same normaliser the signature goes
+    // through, so what they typed lines up with what the form is labelled
+    // whatever punctuation either side used. Labels shorter than three
+    // characters are dropped: a one- or two-letter keyword appears inside
+    // almost every signature on the page and would carpet the form.
+    const customIntents = (Array.isArray(p.customFields) ? p.customFields : [])
+      .map((field) => ({
+        keywords: [normalizeForMatch(field && field.label)],
+        value: field && typeof field.value === 'string' ? field.value : '',
+      }))
+      .filter((intent) => intent.keywords[0].length >= 3);
+
     // Raw intent list — specific entries before generic ones
     const raw = [
+      ...customIntents,
       // ── Name fields (specific before generic) ──────────────────────────────
       {
         keywords: ['first name', 'firstname', 'given name', 'givenname'],

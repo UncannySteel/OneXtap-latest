@@ -88,6 +88,27 @@ export function nextSweepCursor(cursor) {
   return next > sweepLength ? 1 : next;
 }
 
+/**
+ * The instant this source must stop, as an elapsed-milliseconds value.
+ *
+ * An even split of the time that REMAINS, not of the whole budget: recomputing
+ * it per source is what makes the split self-balancing. A source that finishes
+ * early — or is disabled and returns instantly — leaves a bigger remainder, so
+ * the ones behind it get a bigger share rather than a fixed carve-up nobody
+ * can hand back. The last source is always allowed the entire remainder.
+ *
+ * @param {number} elapsedMs Milliseconds since the run started.
+ * @param {number} budgetMs The whole run's budget.
+ * @param {number} sourcesLeft This source included, so never below 1.
+ * @returns {number} An elapsed-ms deadline, never beyond budgetMs.
+ */
+export function fairShareDeadline(elapsedMs, budgetMs, sourcesLeft) {
+  const spent = Math.max(Number(elapsedMs) || 0, 0);
+  const total = Math.max(Number(budgetMs) || 0, 0);
+  const left = Math.max(Math.trunc(Number(sourcesLeft) || 1), 1);
+  return spent + Math.max(total - spent, 0) / left;
+}
+
 /** PostgREST rejects very large payloads; 100 rows is comfortably inside it. */
 const UPSERT_CHUNK = 100;
 /** A listing not seen by any source for a month is stale; the apply link is probably dead. */
@@ -297,7 +318,7 @@ export async function runIngest(options = {}) {
 
   try {
     try {
-      for (const adapter of selected) {
+      for (const [sourceIndex, adapter] of selected.entries()) {
         const t0 = Date.now();
         const entry = {
           id: adapter.id,
@@ -308,6 +329,9 @@ export async function runIngest(options = {}) {
           // disabled), 'budget' when this run ran out of time, or a 'db: …'
           // string when Supabase rejected the write.
           error: null,
+          // True when this source stopped at its own fair share rather than at
+          // the run budget. NOT an error — see sourceDeadline below.
+          paced: false,
           ms: 0,
         };
         perSource.push(entry);
@@ -351,11 +375,41 @@ export async function runIngest(options = {}) {
 
           let page = await readCursor(adapter.id);
 
+          // ═══ THIS SOURCE'S FAIR SHARE OF WHAT IS LEFT ═══
+          //
+          // One shared budget consumed in cascade order starves the tail, and
+          // the tail is where the deep sources sit. Measured on 2026-09-19:
+          // himalayas runs 7th of 8, did not start until ~41s into a 45s run,
+          // got four pages, and reported `budget` — while advertising 103,153
+          // listings. The sources before it were not misbehaving; they were
+          // simply first.
+          //
+          // So each source may use at most an even split of the time that
+          // REMAINS when its turn comes. Recomputing the split per source is
+          // what makes it self-balancing rather than a fixed carve-up: a
+          // source that finishes early, or is disabled and returns instantly,
+          // hands its unused time straight to the ones behind it, and a slow
+          // first source can no longer spend the whole run.
+          //
+          // Reordering the cascade was the other option and is worse: it does
+          // not remove the starvation, it just moves it onto whoever is last.
+          const sourceDeadline = fairShareDeadline(elapsed(), budget, selected.length - sourceIndex);
+
           while (pagesThisRun < pageCap) {
-            // BETWEEN pages, never mid-write. Crossing the budget here means the
-            // previous page is committed and its cursor is already stored.
+            // BETWEEN pages, never mid-write. Crossing either limit here means
+            // the previous page is committed and its cursor is already stored.
             if (elapsed() >= budget) {
               entry.error = entry.error || 'budget';
+              break;
+            }
+            // Hitting your OWN slice is a normal stop, not a failure: the
+            // cursor is parked, the next run resumes from it, and nothing was
+            // lost. Recording it as an error would light the dashboard's
+            // warning triangle for a healthy source on most runs, which is
+            // precisely the cry-wolf failure the lastError plumbing in
+            // /api/jobs/meta exists to avoid.
+            if (elapsed() >= sourceDeadline) {
+              entry.paced = true;
               break;
             }
 
@@ -545,6 +599,9 @@ export async function runIngest(options = {}) {
             inserted: entry.inserted,
             pages: pagesThisRun,
             reason: entry.error,
+            // Distinguishes "stopped at its fair share" from "finished the
+            // page cap" in the logs; both look like a clean run otherwise.
+            paced: entry.paced,
             ms: entry.ms,
           });
         } finally {
@@ -557,6 +614,7 @@ export async function runIngest(options = {}) {
               inserted: entry.inserted,
               pages: pagesThisRun,
               error: entry.error,
+              paced: entry.paced,
               ms: entry.ms,
             },
           }).end();

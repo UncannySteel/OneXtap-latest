@@ -138,6 +138,28 @@ function splitBullets(description) {
 }
 
 /**
+ * The dates an experience or education entry states, as a short readable range.
+ *
+ * Accepts both spellings the profile shape carries: `startDate`/`endDate` from
+ * the parser and `start`/`end` from the editor, plus the education-only
+ * graduation fields. Returns `''` when the entry states no date at all, so the
+ * caller's `filter(Boolean)` drops it rather than appending an empty bracket.
+ *
+ * @param {object} entry An experience or education entry.
+ * @returns {string} e.g. `"(2022-01 to present)"`, or `''`.
+ */
+function dateRange(entry) {
+  if (!entry || typeof entry !== 'object') return '';
+  const str = (value) => (typeof value === 'string' ? value.trim() : '');
+  const start = str(entry.startDate) || str(entry.start) || str(entry.enrollmentYear);
+  const end = str(entry.endDate) || str(entry.end) || str(entry.graduationDate)
+    || str(entry.graduationYear) || str(entry.expectedGraduation);
+  if (!start && !end) return '';
+  if (start && end) return `(${start} to ${end})`;
+  return start ? `(${start} to present)` : `(${end})`;
+}
+
+/**
  * Turn a parsed resume into a flat list of addressable, individually
  * verifiable claims.
  *
@@ -180,7 +202,16 @@ export function buildCorpus(parsed, cvText) {
       startDate: job.startDate ?? null,
       endDate: job.endDate ?? null,
     };
-    const headline = [title, company].filter(Boolean).join(' at ');
+    // The date range goes in the TEXT, not only in `meta`. It used to live in
+    // meta alone, which meant every employment date a cover letter stated was
+    // ungrounded by construction: "I have led operations at Pellorin
+    // Marketplace since 2022" is on the resume, but no corpus item contained
+    // the year, so the numeral gate reported the candidate's own start date as
+    // a fabrication.
+    const headline = [
+      [title, company].filter(Boolean).join(' at '),
+      dateRange(job),
+    ].filter(Boolean).join(' ');
     addItem(items, seen, `exp.${index}.title`, 'title', headline, raw, meta);
     splitBullets(job.description).forEach((bullet, bulletIndex) => {
       addItem(items, seen, `exp.${index}.bullet.${bulletIndex}`, 'bullet', bullet, raw, meta);
@@ -193,7 +224,12 @@ export function buildCorpus(parsed, cvText) {
     const degree = typeof entry.degree === 'string' ? entry.degree.trim() : '';
     const field = typeof entry.field === 'string' ? entry.field.trim() : '';
     const school = typeof entry.school === 'string' ? entry.school.trim() : '';
-    const text = [[degree, field].filter(Boolean).join(' in '), school].filter(Boolean).join(', ');
+    // Same reason as the experience date range above — a stated graduation year
+    // has to be groundable.
+    const text = [
+      [[degree, field].filter(Boolean).join(' in '), school].filter(Boolean).join(', '),
+      dateRange(entry),
+    ].filter(Boolean).join(' ');
     addItem(items, seen, `edu.${index}`, 'education', text, raw, { degree, field, school });
   });
 

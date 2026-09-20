@@ -34,7 +34,7 @@
  */
 import { prefilterJobs, SKILL_LEXICON, MATCHER_VERSION } from '../../src/matching/index.js';
 import { startTrace, flushTracing, SpanType } from '../observability/opik.js';
-import { rankBatch, keywordResult } from './rank.js';
+import { rankBatch, keywordResult, summarizeScoredBy } from './rank.js';
 import { toMatcherJob } from './query.js';
 import { log } from '../logger.js';
 
@@ -275,6 +275,36 @@ function routeEntry(filters) {
 }
 
 /**
+ * Order the merged list: jobs that honour the user's filters first.
+ *
+ * ═══ WHY TIER BEFORE SCORE ═══
+ *
+ * Once results from several passes share one list, a purely score-ordered sort
+ * lets an out-of-location job scoring 72 sit above an in-location job scoring
+ * 68 — so the top of a list the user reads as "my best matches in Berlin" is
+ * neither in Berlin nor labelled. A filter the user set is a constraint, not a
+ * weak preference, and a broadened result is an offer made after the
+ * constraint could not be satisfied. Tiering says exactly that, and it keeps
+ * the badge and the ordering telling the same story.
+ *
+ * Within a tier it is the ordering this list always had: score, then title so
+ * a tie is stable rather than arbitrary.
+ *
+ * @param {object[]} results Merged envelopes, each carrying `relaxedFilters`.
+ * @returns {object[]} The same array, sorted in place.
+ */
+function sortRanked(results) {
+  return results.sort((a, b) => {
+    const aRelaxed = a?.relaxedFilters ? 1 : 0;
+    const bRelaxed = b?.relaxedFilters ? 1 : 0;
+    if (aRelaxed !== bRelaxed) return aRelaxed - bRelaxed;
+    const diff = (b?.score || 0) - (a?.score || 0);
+    if (diff !== 0) return diff;
+    return String(a?.job?.title || '').localeCompare(String(b?.job?.title || ''));
+  });
+}
+
+/**
  * STEP 4 — reformulateQuery.
  *
  * Deterministic, in a fixed order, cheapest-signal-first. It is NOT an LLM
@@ -394,7 +424,12 @@ function reformulateQuery(state, loopIndex) {
  * @param {object} [params.options]
  * @param {number} [params.options.maxLoops] Lowered only; never above MAX_LOOPS.
  * @returns {Promise<{jobs: object[], loops: number, reformulations: object[],
- *   degraded: boolean, scoredBy: string, sources: object[], timings: object}>}
+ *   relaxedFilters: string[], inFilterCount: number, degraded: boolean,
+ *   scoredBy: string, sources: object[], timings: object}>}
+ *   `jobs` is every job scored across every loop, deduplicated and ordered
+ *   with the ones honouring the caller's filters first. Each carries
+ *   `relaxedFilters`: null when it honours them all, otherwise the filters
+ *   that had been dropped when it was found.
  */
 export async function runRankGraph(params = {}) {
   // Destructured defensively rather than in the signature: a default only
@@ -448,6 +483,35 @@ export async function runRankGraph(params = {}) {
   let degraded = false;
   let ranked = [];
   let scoredBy = 'keyword';
+  /**
+   * Every job scored so far, keyed by jobId, FIRST occurrence kept.
+   *
+   * ═══ WHY THIS IS NOT `ranked = batch.results` ANY MORE ═══
+   *
+   * Each loop re-reads a WIDER pool, so an overwrite meant the list a user
+   * finally saw was scored entirely from the widest pool the graph reached —
+   * the results found under their own filters were computed, then discarded.
+   * Asking for Berlin + remote and being handed a list that was 80% on-site
+   * Dallas is indistinguishable from a broken filter, and that is exactly what
+   * it was reported as.
+   *
+   * First-occurrence-wins is the load-bearing half. A job inside the user's
+   * filters is found again in every later, wider pool, and keeping the first
+   * copy is what keeps it labelled as honouring the filters rather than being
+   * relabelled by the pass that broadened them. It also rescues in-filter jobs
+   * that a wider pool's PREFILTER_LIMIT would have pushed out — the narrow
+   * pass is the only one that can see them.
+   */
+  const scoredById = new Map();
+  /**
+   * Which of the user's filters had been dropped when the current loop ran.
+   *
+   * Only 'location' and 'remote' are recorded. `widen_terms` broadens what
+   * counts as a match, not where a job may come from, so a job found under it
+   * still honours every filter the user set and must not be badged as if it
+   * did not.
+   */
+  const relaxedFilters = [];
   let degradeReason = null;
   let poolSize = 0;
   // How many candidates the LAST loop actually handed the scorer. Reported
@@ -517,8 +581,18 @@ export async function runRankGraph(params = {}) {
       });
       timings.rankMs += Date.now() - rankStarted;
 
-      ranked = batch.results;
-      scoredBy = batch.scoredBy;
+      // Merge, never replace. `relaxed` is a frozen snapshot rather than the
+      // live array, because the array keeps growing and every envelope holding
+      // a reference to it would end up claiming the LAST loop's relaxations.
+      const relaxed = relaxedFilters.length ? Object.freeze([...relaxedFilters]) : null;
+      for (const entry of batch.results) {
+        const key = entry?.jobId;
+        if (!key || scoredById.has(key)) continue;
+        scoredById.set(key, { ...entry, relaxedFilters: relaxed });
+      }
+      ranked = sortRanked([...scoredById.values()]);
+
+      scoredBy = summarizeScoredBy(ranked);
       // Keep the FIRST provider reason seen across loops: loop 1 failing on a
       // quota is the diagnosis, and loop 2 failing the same way afterwards is
       // the same fact restated.
@@ -526,6 +600,13 @@ export async function runRankGraph(params = {}) {
       if (batch.degraded) degraded = true;
 
       // ── GATE ─────────────────────────────────────────────────────────
+      //
+      // Counted over everything accumulated, not just this loop's batch. The
+      // question the gate asks is "do I have enough good matches to show?",
+      // and results from an earlier, narrower pass are still on the list that
+      // will be shown — so a run that found three good in-filter jobs and then
+      // two good ones after broadening stops here instead of burning its last
+      // loop relaxing a filter it no longer needs to relax.
       const good = ranked.filter((r) => r.score >= GOOD_SCORE).length;
       if (good >= ENOUGH_GOOD_MATCHES || loops >= maxLoops) break;
 
@@ -576,6 +657,14 @@ export async function runRankGraph(params = {}) {
       timings.reformulateMs += Date.now() - reformulateStarted;
 
       if (!outcome.applied) break;
+
+      // Record WHICH of the user's filters this rung gave up, so the jobs the
+      // next loop finds can say what they cost. 'skills' is deliberately not
+      // recorded — see relaxedFilters' declaration.
+      if (outcome.record.broadened === 'location' || outcome.record.broadened === 'remote') {
+        relaxedFilters.push(outcome.record.broadened);
+      }
+
       loops += 1;
     }
   } catch (err) {
@@ -608,6 +697,13 @@ export async function runRankGraph(params = {}) {
     jobs: ranked,
     loops,
     reformulations,
+    // The banner's inputs, computed here rather than re-derived on the client.
+    // `reformulations` already describes what happened, but it describes it as
+    // a list of steps for the diagnostics footer; these two say the one thing
+    // the list itself has to admit at the top: which filters stopped applying,
+    // and how much of the list still honours them.
+    relaxedFilters: [...relaxedFilters],
+    inFilterCount: ranked.filter((r) => !r.relaxedFilters).length,
     degraded,
     scoredBy,
     degradeReason,
@@ -731,6 +827,10 @@ export function keywordOnlyResult(resumeProfile, jobs, reason = 'rate_limited') 
     jobs: ranked,
     loops: 0,
     reformulations: [],
+    // Nothing was broadened — this path reads the pool once, under the user's
+    // own filters — so every job on it honours them.
+    relaxedFilters: [],
+    inFilterCount: ranked.length,
     degraded: true,
     scoredBy: 'keyword',
     sources: summarizeSources(ranked),

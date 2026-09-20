@@ -484,3 +484,118 @@ test('keywordOnlyResult returns the ORIGINAL jobs, not the matcher view', () => 
     assert.equal(entry.job.location, 'Berlin');
   }
 });
+
+// ------------------------------------------------------------------
+// Preserving the results found under the caller's own filters
+// ------------------------------------------------------------------
+//
+// The graph broadens by DROPPING filters the user set, so every loop after the
+// first reads a pool the user did not ask for. It used to do `ranked =
+// batch.results` — an overwrite — which meant the list finally returned was
+// scored entirely from the widest pool reached, and the in-filter results were
+// computed and then thrown away. On screen that is a Location box reading
+// "Berlin" above a list of Dallas jobs, with nothing saying why, and it was
+// reported as the location filter being broken.
+
+/** A pool reader that honestly applies the location filter it is handed. */
+function locationAwarePool(inFilter, outOfFilter) {
+  const seen = [];
+  return {
+    seen,
+    fetchJobs: async (filters) => {
+      seen.push({ ...filters });
+      const place = filters.location || filters.locationCity
+        || filters.locationRegion || filters.locationCountry;
+      return { jobs: place ? inFilter : [...inFilter, ...outOfFilter], nextCursor: null };
+    },
+  };
+}
+
+test('jobs found under the caller\'s filters survive every later broadening', async () => {
+  // Two in Berlin — short of ENOUGH_GOOD_MATCHES, so the graph is forced to
+  // drop the location and read a wider pool.
+  const berlin = makeJobs(2).map((j, i) => ({ ...j, jobId: `berlin:${i}`, id: `b${i}` }));
+  const elsewhere = makeJobs(10).map((j, i) => ({
+    ...j, jobId: `dallas:${i}`, id: `d${i}`, location: 'Dallas', isRemote: false,
+  }));
+  const pool = locationAwarePool(berlin, elsewhere);
+
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    filters: { location: 'Berlin' },
+    deps: { fetchJobs: pool.fetchJobs, callModel: scorer(GOOD_SCORE - 1) },
+  });
+
+  assert.ok(result.reformulations.some((r) => r.step === 'drop_location'), 'the location was dropped');
+
+  const ids = result.jobs.map((entry) => entry.jobId);
+  for (const job of berlin) {
+    assert.ok(ids.includes(job.jobId), `${job.jobId} was dropped by a later loop`);
+  }
+  assert.ok(ids.some((id) => id.startsWith('dallas:')), 'broadening still contributes jobs');
+  assert.equal(new Set(ids).size, ids.length, 'a job found twice must appear once');
+});
+
+test('in-filter jobs lead the list and are the ones counted by inFilterCount', async () => {
+  const berlin = makeJobs(2).map((j, i) => ({ ...j, jobId: `berlin:${i}`, id: `b${i}` }));
+  const elsewhere = makeJobs(10).map((j, i) => ({
+    ...j, jobId: `dallas:${i}`, id: `d${i}`, location: 'Dallas', isRemote: false,
+  }));
+  const pool = locationAwarePool(berlin, elsewhere);
+
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    filters: { location: 'Berlin' },
+    deps: { fetchJobs: pool.fetchJobs, callModel: scorer(GOOD_SCORE - 1) },
+  });
+
+  assert.equal(result.inFilterCount, berlin.length);
+  assert.deepEqual(result.relaxedFilters, ['location']);
+
+  // Tier before score: every job honouring the filters precedes every job that
+  // does not, whatever the scores happen to be.
+  const tiers = result.jobs.map((entry) => (entry.relaxedFilters ? 1 : 0));
+  assert.deepEqual(tiers, tiers.slice().sort(), 'a relaxed job sits above an in-filter one');
+
+  // And the label says which filter each one cost.
+  const lead = result.jobs.slice(0, berlin.length);
+  assert.ok(lead.every((entry) => entry.relaxedFilters === null), 'in-filter jobs are badged as such');
+  assert.ok(
+    result.jobs.slice(berlin.length).every((entry) => entry.relaxedFilters.includes('location')),
+    'broadened jobs name the filter that was dropped'
+  );
+});
+
+test('a run that never broadens marks every job as honouring the filters', async () => {
+  const pool = poolOf(makeJobs(10));
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    filters: { location: 'Berlin', remote: 'true' },
+    deps: { fetchJobs: pool.fetchJobs, callModel: scorer(GOOD_SCORE) },
+  });
+
+  assert.deepEqual(result.relaxedFilters, []);
+  assert.equal(result.inFilterCount, result.jobs.length);
+  assert.ok(result.jobs.every((entry) => entry.relaxedFilters === null));
+});
+
+test('widening terms is not reported as relaxing a filter', async () => {
+  // widen_terms changes what counts as a match, not where a job may come from,
+  // so a job found under it still honours every filter the caller set and must
+  // not be badged as if it did not.
+  const pool = poolOf(makeJobs(10));
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    // No location and no remote: the first two rungs have nothing to give up,
+    // so the only reformulation available is widen_terms.
+    filters: {},
+    deps: { fetchJobs: pool.fetchJobs, callModel: scorer(GOOD_SCORE - 1) },
+  });
+
+  assert.ok(
+    result.reformulations.every((r) => r.step !== 'drop_location' && r.step !== 'relax_remote'),
+    'nothing was there to drop'
+  );
+  assert.deepEqual(result.relaxedFilters, []);
+  assert.ok(result.jobs.every((entry) => entry.relaxedFilters === null));
+});

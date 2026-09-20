@@ -450,27 +450,95 @@ export function toMatcherJob(job) {
  *                                       something typed by hand may not be a
  *                                       value we hold.
  *
- * The structured path wins when both are present. Rows ingested before
- * migration 004 have null parts and simply do not match a structured filter —
- * they are reachable by free text until the cron re-sees them, which is the
- * documented trade in the migration rather than a silent gap.
+ * The structured path wins when both are present. A row with NO structured
+ * value for the part being filtered is not simply dropped any more — see
+ * locationBranch below; it falls back to a substring match on the display
+ * string, which is what keeps a pool that is mostly unparsed searchable.
  *
  * @param {object} query A built Supabase query.
  * @param {object} f The caller's filters.
  * @returns {object} The query with at most one location clause applied.
  */
+/**
+ * One value, escaped for a QUOTED operand inside PostgREST's `or=(...)`.
+ *
+ * ═══ TWO GRAMMARS, IN THIS ORDER ═══
+ *
+ *   1. escapeLike  — `\`, `%` and `_` are SQL LIKE metacharacters. A city
+ *                    called "100% Remote" must match itself, not everything.
+ *   2. quoting     — inside `or=(...)`, `,` ends a branch and `)` ends the
+ *                    list, so "Korea, South" unquoted is a parse error
+ *                    (PGRST100, verified against the live database). Double
+ *                    quotes fix that, and inside them `\` and `"` need their
+ *                    own escape.
+ *
+ * Order matters: escapeLike emits backslashes, and step 2 must then escape
+ * those, so `100%` becomes `100\\%` on the wire and reaches SQL as `100\%`.
+ *
+ * ═══ `%` IS A WILDCARD HERE, `*` IS NOT ═══
+ *
+ * Counter-intuitive and verified both ways against the live database:
+ * `or=(location.ilike."%Berlin%")` matches, `or=(location.ilike."*Berlin*")`
+ * does not, and at the TOP level — outside `or` — a quoted `%` is literal
+ * instead. That is why `contains` builds its wildcards with `%` and why this
+ * helper is only for operands inside `or=(...)`.
+ *
+ * @param {unknown} value Raw user text.
+ * @param {boolean} [contains] Wrap in `%` wildcards for a substring match.
+ * @returns {string} A quoted operand, wildcards included.
+ */
+function orOperand(value, contains = false) {
+  const escaped = escapeLike(value).replace(/[\\"]/g, (ch) => `\\${ch}`);
+  return contains ? `"%${escaped}%"` : `"${escaped}"`;
+}
+
+/**
+ * One location part, matched structurally OR — where the row has no structured
+ * value — by substring against the provider's display string.
+ *
+ * ═══ WHY THE NULL FALLBACK ═══
+ *
+ * `ilike` never matches NULL, so a plain structured filter silently drops
+ * every row the parser could not place. That was 71% of the pool on
+ * 2026-09-19 (2,794 of 3,923): rows ingested before migration 004, plus rows
+ * whose display string genuinely names no country. A filter that hides two
+ * thirds of the jobs is indistinguishable from a broken one, and the user's
+ * report was exactly that.
+ *
+ * The second branch is deliberately narrowed by `<column>.is.null`. Without
+ * it, a row correctly placed in one country would still match another
+ * country's name appearing anywhere in its display string, and the structured
+ * columns would stop meaning anything.
+ *
+ * This RECOVERS rows, it does not complete them: a display string like
+ * Adzuna's "Tampa Palms, Hillsborough County" names no country, so no
+ * fallback can find it. Re-ingest is what fills those in.
+ *
+ * @param {string} column One of the LOCATION_PART_COLUMNS.
+ * @param {string} value The user's chosen value.
+ * @returns {string} A PostgREST `or` filter body.
+ */
+function locationBranch(column, value) {
+  return [
+    `${column}.ilike.${orOperand(value)}`,
+    `and(${column}.is.null,location.ilike.${orOperand(value, true)})`,
+  ].join(',');
+}
+
 function applyLocation(query, f) {
   const city = String(f.locationCity ?? '').trim();
   const region = String(f.locationRegion ?? '').trim();
   const country = String(f.locationCountry ?? '').trim();
 
   if (city || region || country) {
+    // One `.or()` per part, which PostgREST ANDs together: city AND region AND
+    // country, each satisfiable structurally or by the display-string
+    // fallback. `ilike` with no wildcard is exact, case-insensitive, and hits
+    // the lower() indexes from migration 004.
     let q = query;
-    // ilike with no wildcard is exact, case-insensitive, and PostgREST sends
-    // it as a pattern the lower() index can serve.
-    if (city) q = q.ilike('location_city', escapeLike(city));
-    if (region) q = q.ilike('location_region', escapeLike(region));
-    if (country) q = q.ilike('location_country', escapeLike(country));
+    if (city) q = q.or(locationBranch('location_city', city));
+    if (region) q = q.or(locationBranch('location_region', region));
+    if (country) q = q.or(locationBranch('location_country', country));
     return q;
   }
 
