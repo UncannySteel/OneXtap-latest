@@ -149,6 +149,33 @@ if (!window.__onextapAutofillLoaded) {
     return normalizeForMatch(parts.join(' '));
   }
 
+  // ── Dial-code stripper ─────────────────────────────────────────────────────
+  /**
+   * Returns the phone number without its leading international dial code.
+   *
+   * Only strips a code it can prove: the profile's own `countryCode`, written
+   * as "+91", as "0091", or as bare "91" followed by a separator. Anything
+   * else is returned untouched — a number that merely starts with the same
+   * digits as the dial code ("915551234" for a +91 profile) keeps them,
+   * because guessing wrong here deletes real digits from a real phone number.
+   *
+   * @param {string} phone
+   * @param {string} dialCode The profile's dial code, e.g. "+91".
+   * @returns {string}
+   */
+  function stripDialCode(phone, dialCode) {
+    const raw = String(phone || '').trim();
+    const digits = String(dialCode || '').replace(/[^0-9]/g, '');
+    if (!raw || !digits) return raw;
+
+    // "+91 555...", "0091-555...", or "91 555..." — the bare form needs a
+    // separator after it so a local number starting with 91 is left alone.
+    const prefix = new RegExp(`^(?:\\+\\s*${digits}|00\\s*${digits}|${digits}(?=[\\s().-]))[\\s().-]*`);
+    // Empty only when the stored value was nothing but a dial code, which is
+    // not a phone number — buildIntents' emptiness filter drops it.
+    return raw.replace(prefix, '').trim();
+  }
+
   // ── Intent list builder ────────────────────────────────────────────────────
   /**
    * Converts the profile object into an ordered array of fill intents.
@@ -190,8 +217,23 @@ if (!window.__onextapAutofillLoaded) {
     // Derive some composite values
     const fullName =
       [p.firstName, p.lastName].filter(Boolean).join(' ');
-    const fullPhone =
-      p.countryCode && p.phone ? `${p.countryCode}${p.phone}` : p.phone || '';
+    // ── Phone, WITHOUT the dial code ──────────────────────────────────────
+    //
+    // The profile stores the dial code (`countryCode`, "+91") beside the
+    // number because the editor shows them as two boxes, and this used to
+    // glue them back together for anything labelled "Phone Number" — a form
+    // asking for a phone number got "+915551234567".
+    //
+    // A phone box wants a phone number. Forms that want the dial code ask for
+    // it in their own field, which is what the `country code` intent below
+    // fills, so nothing needs the glued form any more.
+    //
+    // `stripDialCode` is what makes that true for numbers we did not type
+    // ourselves: the resume parser writes whatever the CV printed, dial code
+    // and all, into `phone`. Dropping the concatenation alone would still
+    // leave those numbers filling as "+91 5551234567".
+    const dialCode = String(p.countryCode || '').trim();
+    const localPhone = stripDialCode(p.phone, dialCode);
     const companyName =
       currentJob.company || (experience[0] && experience[0].company) || '';
     const jobTitle =
@@ -243,18 +285,37 @@ if (!window.__onextapAutofillLoaded) {
 
       // ── Contact ────────────────────────────────────────────────────────────
       {
-        keywords: ['email', 'e-mail', 'mail'],
+        // 'e mail', not 'e-mail': keywords are matched against a signature
+        // that has already been through normalizeForMatch(), where every
+        // hyphen is a space — so the hyphenated spelling could never fire and
+        // bare 'mail' was quietly covering for it. Bare 'mail' also claimed
+        // "mailing address" and "mailing country" for the email box.
+        keywords: ['email', 'e mail'],
         value: p.email,
       },
       {
-        // Prefer full phone with country code for "phone" fields that include
-        // the dialling code in the same box.
+        // BEFORE the phone intents: "phone country code" contains "phone", so
+        // a dial-code box placed after them collects the whole number.
+        //
+        // A plain "country code" field is genuinely ambiguous — some forms
+        // mean "+91", others mean "IN". Trying the dial code here costs
+        // nothing when they meant the ISO code: a <select> of country names
+        // has no option matching "+91", fillSelect reports the miss, and the
+        // `country` intent further down gets its turn at the same field.
+        keywords: [
+          'country code', 'countrycode', 'dial code', 'dialcode',
+          'phone code', 'phonecode', 'isd code', 'calling code',
+          'phone country', 'mobile country',
+        ],
+        value: dialCode,
+      },
+      {
         keywords: ['phone number', 'phonenumber', 'mobile number', 'contact number', 'telephone number'],
-        value: fullPhone || p.phone,
+        value: localPhone,
       },
       {
         keywords: ['phone', 'mobile', 'tel', 'telephone', 'cell'],
-        value: p.phone,
+        value: localPhone,
       },
 
       // ── Social / URL ───────────────────────────────────────────────────────
@@ -297,10 +358,36 @@ if (!window.__onextapAutofillLoaded) {
         value: addr.postalCode,
       },
       {
-        // address-level country — after postal/zip so "country code" doesn't
-        // accidentally pick up postal code fields.
-        keywords: ['country'],
+        // ── The two countries ─────────────────────────────────────────────
+        //
+        // The profile holds a country twice: the one in Basic Info, which
+        // also picks the phone dial code, and the one inside the address.
+        // They are separate on purpose — a mailing address may sit in a
+        // different country from the applicant (resumeToProfile.js refuses to
+        // collapse them for the same reason).
+        //
+        // Which one answers a form's "Country" box was the second half of the
+        // country bug. This used to read `addr.country || p.country`, and
+        // both fields start life as the DEFAULT_PROFILE value, so a user who
+        // set Basic Info to India and never scrolled down to the address
+        // still autofilled "United States" — the default they never chose,
+        // beating the country they did.
+        //
+        // So: an address-scoped label gets the address country, and a bare
+        // "Country" gets the person's. The specific one is listed first
+        // because matching stops at the first hit.
+        keywords: [
+          'address country', 'mailing country', 'country of residence',
+          'residence country', 'permanent country', 'home country',
+        ],
         value: addr.country || p.country,
+      },
+      {
+        // Bare "country" — after postal/zip so it can't reach a postal code
+        // field, and after the dial-code intent up in the Contact block so
+        // "country code" is not read as a request for the country.
+        keywords: ['country'],
+        value: p.country || addr.country,
       },
 
       // ── Personal ──────────────────────────────────────────────────────────
@@ -373,34 +460,56 @@ if (!window.__onextapAutofillLoaded) {
    * @returns {boolean}
    */
   function fillSelect(selectEl, target) {
-    const needle = target.toLowerCase().trim();
-    const options = Array.from(selectEl.options);
+    const needle = String(target || '').toLowerCase().trim();
+    if (!needle) return false;
 
-    // Try exact value match first, then exact text, then substring matches
-    const exactValue = options.find((o) => o.value.toLowerCase() === needle);
-    if (exactValue) {
-      selectEl.value = exactValue.value;
+    // ═══ PLACEHOLDERS ARE NOT CANDIDATES ═══
+    //
+    // This is the country bug. The substring pass asks whether the target
+    // CONTAINS the option's text, which is how "United States" reaches an
+    // option reading "United States of America" — but every string contains
+    // "", so `<option value="">` with empty text matched EVERY target. It is
+    // the first row of almost every country <select>, so it won: the select
+    // was set back to its placeholder, the field was marked filled, and no
+    // later intent could rescue it. Country came out blank, every time.
+    //
+    // An option with an empty value submits nothing, so it is never an
+    // answer. Dropping those also retires "Select...", "-- Choose --", and
+    // the rest of the family.
+    const options = Array.from(selectEl.options)
+      .map((o) => ({ el: o, value: String(o.value || '').trim(), text: String(o.text || '').trim() }))
+      .filter((o) => o.value !== '');
+
+    const choose = (o) => {
+      if (!o) return false;
+      selectEl.value = o.el.value;
       selectEl.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
-    }
+    };
 
-    const exactText = options.find((o) => o.text.toLowerCase() === needle);
-    if (exactText) {
-      selectEl.value = exactText.value;
-      selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    }
+    // Exact match, on the value then the visible text.
+    //
+    // TRIMMED, both sides. Option text arrives with the newlines and
+    // indentation the page's HTML was written with, so the exact pass used to
+    // miss "\n      India\n    " and drop through to the substring pass —
+    // where the placeholder above was waiting.
+    if (choose(options.find((o) => o.value.toLowerCase() === needle))) return true;
+    if (choose(options.find((o) => o.text.toLowerCase() === needle))) return true;
 
-    const partialText = options.find(
-      (o) =>
-        o.text.toLowerCase().includes(needle) ||
-        needle.includes(o.text.toLowerCase().trim())
-    );
-    if (partialText) {
-      selectEl.value = partialText.value;
-      selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    }
+    // Substring, both directions, but only on whole words: plain `includes`
+    // picked "Female" for a target of "Male", and "Niger" for "Nigeria".
+    const holdsPhrase = (haystack, phrase) => {
+      const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(haystack);
+    };
+
+    if (choose(options.find((o) => o.text && holdsPhrase(o.text.toLowerCase(), needle)))) return true;
+
+    // The reverse — the option is a shorter form of the target, e.g. target
+    // "United States" against an option "United". Two characters or fewer is
+    // not evidence of anything ("IN" sits inside a dozen country names), so
+    // those are left to the exact passes above.
+    if (choose(options.find((o) => o.text.length >= 3 && holdsPhrase(needle, o.text.toLowerCase())))) return true;
 
     return false;
   }

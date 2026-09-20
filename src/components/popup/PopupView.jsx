@@ -210,6 +210,20 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches
         </div>
         {hasProfile && (
           <>
+            {/*
+              ═══ APPLICATION TYPE PICKER — HIDDEN, NOT REMOVED ═══
+
+              The popup half of the pair; the dashboard's copy is commented out
+              in src/components/dashboard/DashboardView.jsx and the two belong
+              back on screen together, along with the non-job entries commented
+              out in src/applicationTypes.js — Job is the only type that array
+              still lists, so this dropdown would offer exactly one choice.
+
+              Still wired underneath: `applicationType` state, the stored value
+              read in the mount effect, and `popupAppConfig`, which is what
+              relabels this popup's tabs and buttons per type. Hidden, the popup
+              is always on Job, whatever an older build may have stored.
+
             <select
               value={applicationType}
               onChange={async (e) => {
@@ -223,6 +237,7 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches
                 <option key={t.id} value={t.id}>{t.label}</option>
               ))}
             </select>
+            */}
             <ProfileSwitcher compact onProfileChange={async () => {
               const profile = await refreshProfileState();
               setCoverPanelKey((k) => k + 1);

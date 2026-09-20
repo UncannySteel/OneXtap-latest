@@ -82,44 +82,107 @@ const REMOTE_OPTIONS = [
 ];
 
 /**
- * Turn whatever is in the location box into the filter the server wants.
+ * ═══ THE LOCATION VALUE IS A KIND AND A VALUE, NOT A STRING ═══
  *
- * ONE INPUT, TWO BEHAVIOURS, and the difference is whether we recognise what
- * was typed:
+ * The control used to be a free-text box with a datalist, and the filter was
+ * recovered by looking the typed string up in the facets — countries first,
+ * then regions, then cities. That resolution order was a guess dressed as a
+ * rule, and it was wrong for every value that exists in two buckets: the live
+ * pool holds Paris as a REGION (45 listings, Adzuna's Île-de-France rows) and
+ * Paris as a CITY (147). Picking "Paris" silently meant the region and the
+ * 147 city rows were unreachable through the picker.
  *
- *   a value the API offered  -> the structured filter, matched exactly against
- *                               the location_city/region/country columns
- *   anything else            -> the old free-text substring on the display
- *                               column, which is all we can honestly do
+ * A dropdown does not have that problem, because the option carries which
+ * bucket it came from. So the selection is `"<kind>:<value>"` and this
+ * function just splits it — no lookup, no precedence, no guess.
  *
- * Resolution order is country, then region, then city: broadest wins a tie, so
- * typing "Canada" means the country rather than any city of that name. The
- * comparison is case- and space-insensitive because the user may type the
- * suggestion rather than click it.
+ * The empty string means no location filter. A value with no recognised
+ * prefix is treated as free text, which is the degraded path: when migration
+ * 004 has not been applied there are no facets, the UI falls back to a text
+ * input, and its contents still reach the server's substring match.
  *
- * When migration 004 has not been applied there are no suggestions at all and
- * every value takes the free-text path — the box behaves exactly as it did
- * before, which is the point.
- *
- * @param {string} value Raw contents of the location box.
- * @param {object} locations Facets from fetchJobLocations().
+ * @param {string} selection `"country:Germany"`, `"city:London"`, free text, or ''.
  * @returns {{location?: string, locationCity?: string, locationRegion?: string, locationCountry?: string}}
  */
-function resolveLocationFilter(value, locations) {
-  const typed = String(value || '').trim();
-  if (!typed) return {};
-  const key = typed.toLowerCase();
-  const find = (list) => asObjectArray(list).find((e) => String(e?.value || '').toLowerCase() === key);
+function resolveLocationFilter(selection) {
+  const raw = String(selection || '').trim();
+  if (!raw) return {};
 
-  const country = find(locations?.countries);
-  if (country) return { locationCountry: country.value };
-  const region = find(locations?.regions);
-  if (region) return { locationRegion: region.value };
-  const city = find(locations?.cities);
-  if (city) return { locationCity: city.value };
+  const cut = raw.indexOf(':');
+  const kind = cut > 0 ? raw.slice(0, cut) : '';
+  const value = cut > 0 ? raw.slice(cut + 1).trim() : '';
 
-  return { location: typed };
+  if (value) {
+    if (kind === 'country') return { locationCountry: value };
+    if (kind === 'region') return { locationRegion: value };
+    if (kind === 'city') return { locationCity: value };
+  }
+
+  // Degraded path: a free-text box with no facets behind it.
+  return { location: raw };
 }
+
+/**
+ * The filters that cost a ranking run, as one object.
+ *
+ * Grouped rather than left as three useStates because they now move together:
+ * the user edits a DRAFT and the rank effect reads the APPLIED copy, and two
+ * copies of three separate states is six pieces of state to keep in step. One
+ * object each makes "has anything changed?" a single comparison.
+ *
+ * `sort` is deliberately NOT in here — see the ranking effect.
+ */
+const EMPTY_FILTERS = Object.freeze({ remote: 'any', location: '', sources: [] });
+
+/**
+ * A stable string for one set of applied filters plus the resume behind them.
+ *
+ * Sources are sorted before joining so that ticking A then B and B then A
+ * produce the same key — an unstable one would miss the cache on a reorder
+ * that changed nothing. This mirrors `cacheKey` in server/jobs/rankCache.js,
+ * which canonicalises for exactly the same reason.
+ *
+ * @param {string} resumeSignature
+ * @param {{remote: string, location: string, sources: string[]}} filters
+ * @returns {string}
+ */
+function rankKey(resumeSignature, filters) {
+  const sources = asArray(filters?.sources).slice().sort().join(',');
+  return JSON.stringify([resumeSignature, filters?.remote ?? 'any', filters?.location ?? '', sources]);
+}
+
+/** Same filters? Compared through the key, so there is one definition of "same". */
+function sameFilters(a, b) {
+  return rankKey('', a) === rankKey('', b);
+}
+
+/**
+ * ═══ THE RANK THAT SURVIVES LEAVING THE PAGE ═══
+ *
+ * Module scope, deliberately. DashboardView renders exactly one page at a time
+ * (`switch (activeNav)`), so navigating to My Profile UNMOUNTS this component
+ * and every useState in it is gone. On the way back the ranking effect saw a
+ * fresh mount, no result, and a resume — and ran a ranking run nobody asked
+ * for. From the user's side that is a spinner and a re-shuffled list as the
+ * price of looking at another tab.
+ *
+ * The server does cache a rank for six hours, so the repeat was usually a
+ * cache HIT rather than an LLM bill (see rankWithCache: the cache is read
+ * before the rate limiter, so a hit does not even spend one of the ten runs an
+ * hour). "Usually" is the problem — past the TTL, or after an ingest, the same
+ * navigation buys a full 5-20 second run.
+ *
+ * So the last result is kept here, keyed by the exact question it answers. A
+ * remount restores it with no network call at all. A full page reload clears
+ * it, which is correct: that is a new session, and the pool has probably moved.
+ *
+ * Not sessionStorage: this holds job listings, which are third-party content
+ * rather than the user's own material, and nothing here needs to outlive the
+ * tab. Keeping it in memory means there is no persistence question to answer.
+ *
+ * @type {{key: string, filters: object, result: object}|null}
+ */
+let lastRank = null;
 
 const SORT_OPTIONS = [
   { value: 'match', label: 'Best match' },
@@ -1099,15 +1162,29 @@ const JobMatchesPage = ({ showToast }) => {
   const [metaLoading, setMetaLoading] = useState(true);
   const [locations, setLocations] = useState({ countries: [], regions: [], cities: [], degraded: true });
 
-  // ── Filters that REFETCH ──────────────────────────────────────────
-  const [remote, setRemote] = useState('any');
-  const [location, setLocation] = useState('');
-  const [selectedSources, setSelectedSources] = useState([]);
+  // ── Filters: a DRAFT the user edits, and the APPLIED copy that ranks ──
+  //
+  // Nothing in `draft` reaches the network. The rank effect reads `applied`,
+  // and the only things that copy draft over it are the Apply button and,
+  // for convenience, pressing Enter in the filter card. That is the whole
+  // mechanism behind "filters take effect when I say so".
+  //
+  // Both are seeded from the module-level cache so that coming back from
+  // another page restores the controls the user left set, not the defaults —
+  // showing a result ranked for Germany above a Location box reading "Any"
+  // would be its own small lie.
+  const [draft, setDraft] = useState(() => lastRank?.filters || EMPTY_FILTERS);
+  const [applied, setApplied] = useState(() => lastRank?.filters || EMPTY_FILTERS);
 
   // ── Filters that DO NOT refetch (see the effect below) ───────────
   // Defaults to the least restrictive option: the first run should show the
-  // whole ranking, and narrowing it costs nothing.
+  // whole ranking, and narrowing it costs nothing. Outside the draft/apply
+  // cycle on purpose: it re-orders results already in hand, so gating it
+  // behind a button would make a free, instant control feel expensive.
   const [sort, setSort] = useState('match');
+
+  /** True when the draft says something the current results do not answer. */
+  const pendingFilters = !sameFilters(draft, applied);
 
   const [result, setResult] = useState(null);
   const [ranking, setRanking] = useState(false);
@@ -1135,7 +1212,7 @@ const JobMatchesPage = ({ showToast }) => {
   // Sorted before joining so that checking A then B and B then A produce the
   // same key — the ranking effect keys off this string, and an unstable one
   // would refetch on a reorder that changed nothing.
-  const sourceKey = selectedSources.slice().sort().join(',');
+  const sourceKey = applied.sources.slice().sort().join(',');
 
   // ── Resume ────────────────────────────────────────────────────────
 
@@ -1303,13 +1380,43 @@ const JobMatchesPage = ({ showToast }) => {
   // `minMatch` used to be named here too. It is gone — the score it cut on is
   // no longer shown, and cutting on a number that drifts between models is
   // what made "85%" return an empty page.
+  // ═══ WHY A REMOUNT DOES NOT RE-RANK ═══
+  //
+  // `forcedNonce` is the nonce value this effect has already acted on. It is a
+  // ref, so a remount resets it to 0 — which is exactly what makes the guard
+  // work: on a fresh mount it equals `rankNonce` (also 0), the effect asks the
+  // module-level cache instead of the network, and returning from My Profile
+  // costs nothing. Click Refresh and `rankNonce` moves past it, which is the
+  // one signal that means "go and ask again even though the question is the
+  // same".
+  //
+  // A changed QUESTION — a different resume, or filters the user applied —
+  // changes the cache key instead, misses, and fetches. So there are exactly
+  // two ways to spend a ranking run: ask a new question, or ask for a fresh
+  // answer to the old one. Neither of them is navigation.
+  const forcedNonce = useRef(0);
+
   useEffect(() => {
     // Signature, not the object: it is the empty string exactly when there is
-    // no resume, and unlike  it is in this effect's dependency list.
+    // no resume, and unlike `resume` it is in this effect's dependency list.
     if (!resumeSignature) {
       setResult(null);
       return undefined;
     }
+
+    const key = rankKey(resumeSignature, applied);
+    const wantsFresh = rankNonce !== forcedNonce.current;
+    forcedNonce.current = rankNonce;
+
+    // The answer we already have, for the question being asked. No network, no
+    // spinner, no debounce — this path must be synchronous or the restore
+    // flashes an empty list on every page switch.
+    if (!wantsFresh && lastRank && lastRank.key === key) {
+      setResult(lastRank.result);
+      setLoadError(null);
+      return undefined;
+    }
+
     let cancelled = false;
     const timer = setTimeout(() => {
       setRanking(true);
@@ -1317,16 +1424,21 @@ const JobMatchesPage = ({ showToast }) => {
       rankJobs({
         resumeProfile,
         filters: {
-          remote,
+          remote: applied.remote,
           source: sourceKey,
-          // One box, resolved: a value the API offered becomes an exact
-          // structured filter, anything else stays a free-text substring.
-          ...resolveLocationFilter(location, locations),
+          // The dropdown's selection carries its own bucket, so this is a
+          // split rather than a lookup. See resolveLocationFilter.
+          ...resolveLocationFilter(applied.location),
         },
         resumeHash,
         matcherVersion: MATCHER_VERSION,
       })
         .then((data) => {
+          // Stored even when this effect run was cancelled: the result is
+          // keyed by the question it answers, so it is still the right answer
+          // to that question and the next mount should not have to buy it
+          // again. Only the setState below is guarded.
+          lastRank = { key, filters: applied, result: data };
           if (cancelled) return;
           setResult(data);
           setRanking(false);
@@ -1343,15 +1455,14 @@ const JobMatchesPage = ({ showToast }) => {
       cancelled = true;
       clearTimeout(timer);
     };
-    // / rather than : see the signature
-    // comment above. A rebuilt-but-identical record must not buy a fresh rank.
-    // `locations` is read by resolveLocationFilter above and is deliberately
-    // NOT a dependency. It is a lookup table, not a filter: when the
-    // suggestions finish loading, nothing the user chose has changed, and
-    // re-running on arrival would spend a full rank to reach the same pool.
-    // The box is empty on first load anyway, and any later edit re-runs this
-    // with the table present.
-  }, [resumeSignature, resumeHash, resumeProfile, remote, location, sourceKey, rankNonce]);
+    // `resumeProfile` rather than `resume`: see the signature comment above. A
+    // rebuilt-but-identical record must not buy a fresh rank.
+    //
+    // `applied` rather than the draft, which is the entire point of the pair:
+    // typing in the filter card changes nothing here until Apply copies it
+    // over. `sourceKey` is derived from `applied` and listed so a lint rule
+    // reading this array sees the value the body actually uses.
+  }, [resumeSignature, resumeHash, resumeProfile, applied, sourceKey, rankNonce]);
 
   /**
    * Batch progress.
@@ -1468,33 +1579,96 @@ const JobMatchesPage = ({ showToast }) => {
   }, [builtProfile]);
 
   /**
-   * The datalist's options: countries, then regions, then cities.
+   * The dropdown's option groups: countries, then regions, then cities.
    *
-   * Broadest first, matching resolveLocationFilter's resolution order, so the
-   * order a user reads them in is the order a typed value is interpreted in.
-   * Deduplicated by value because a place can legitimately appear in two
-   * buckets — "Singapore" is both a city and a country in this pool — and a
-   * datalist with the same value twice renders a repeated row.
+   * ═══ NO LONGER DEDUPLICATED BY VALUE ═══
+   *
+   * The datalist this replaced had to collapse duplicates, because a datalist
+   * renders one flat list and the same string twice reads as a rendering bug.
+   * That collapse was hiding real choices: the live pool holds Paris as a
+   * region (45) AND as a city (147), Singapore as a country AND a city, New
+   * York as a region (36) AND a city (49) — and whichever bucket came second
+   * was dropped, unreachable through the control.
+   *
+   * A grouped `<select>` has a place to put both, because the group heading
+   * says which is which, and the option's VALUE carries the bucket so the
+   * filter is unambiguous either way. So all three buckets are offered whole.
+   *
+   * Broadest first: a user looking for somewhere usually wants the country if
+   * we have it, and scrolling past 60 countries to reach the cities is the
+   * same gesture as scrolling past 60 cities to reach the countries.
    */
-  const locationSuggestions = useMemo(() => {
-    const seen = new Set();
-    const out = [];
-    for (const kind of ['countries', 'regions', 'cities']) {
-      for (const entry of asObjectArray(locations?.[kind])) {
-        const value = String(entry?.value || '').trim();
-        if (!value || seen.has(value.toLowerCase())) continue;
-        seen.add(value.toLowerCase());
-        out.push({ kind, value, count: finiteOr(entry?.count, 0) });
-      }
-    }
-    return out;
-  }, [locations]);
+  const locationGroups = useMemo(() => ([
+    { kind: 'country', label: 'Countries', entries: asObjectArray(locations?.countries) },
+    { kind: 'region', label: 'States & regions', entries: asObjectArray(locations?.regions) },
+    { kind: 'city', label: 'Cities', entries: asObjectArray(locations?.cities) },
+  ].map((group) => ({
+    ...group,
+    entries: group.entries
+      .map((entry) => ({ value: String(entry?.value || '').trim(), count: finiteOr(entry?.count, 0) }))
+      .filter((entry) => entry.value),
+  })).filter((group) => group.entries.length)), [locations]);
 
-  const toggleSource = (sourceId) => {
-    setSelectedSources((prev) => (
-      prev.includes(sourceId) ? prev.filter((id) => id !== sourceId) : [...prev, sourceId]
+  /** No facets at all — migration 004 unapplied, or the route failed. */
+  const locationsDegraded = locationGroups.length === 0;
+
+  /**
+   * ═══ A SELECTION THE DROPDOWN NO LONGER OFFERS ═══
+   *
+   * The facets are rebuilt when the pool metadata is refreshed, and a place
+   * whose last listing aged out of the 30-day window leaves the list. If that
+   * happens while it is the current selection, a plain `<select>` silently
+   * snaps to its first option — the filter would change under the user with
+   * no event and nothing on screen to say so.
+   *
+   * So an orphaned selection is re-offered as its own option and named as
+   * such. It still filters correctly; it is simply the last row that holds it.
+   */
+  const orphanedLocation = useMemo(() => {
+    if (!draft.location || locationsDegraded) return null;
+    const present = locationGroups.some((group) => group.entries.some(
+      (entry) => `${group.kind}:${entry.value}` === draft.location
     ));
-  };
+    if (present) return null;
+    const cut = draft.location.indexOf(':');
+    return cut > 0 ? draft.location.slice(cut + 1) : draft.location;
+  }, [draft.location, locationGroups, locationsDegraded]);
+
+  const setDraftField = useCallback((patch) => {
+    setDraft((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const toggleSource = useCallback((sourceId) => {
+    setDraft((prev) => ({
+      ...prev,
+      sources: prev.sources.includes(sourceId)
+        ? prev.sources.filter((id) => id !== sourceId)
+        : [...prev.sources, sourceId],
+    }));
+  }, []);
+
+  /**
+   * Commit the draft. The ONLY thing that changes what is ranked.
+   *
+   * Guarded on `pendingFilters` so that clicking Apply twice is one run, not
+   * two: without it the second click would set an identical object, and a new
+   * object identity in the effect's dependency list is a fresh render pass
+   * that then has to be caught by the cache. Cheaper to not start.
+   */
+  const applyFilters = useCallback(() => {
+    if (!pendingFilters) return;
+    setApplied(draft);
+  }, [draft, pendingFilters]);
+
+  /** Throw away uncommitted edits and put the controls back to what ranked. */
+  const discardDraft = useCallback(() => setDraft(applied), [applied]);
+
+  /** Enter anywhere in the filter card applies, the way a search form would. */
+  const onFilterKeyDown = useCallback((event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    applyFilters();
+  }, [applyFilters]);
 
   // Three separate refresh affordances, deliberately not one. Bumping a nonce
   // re-runs only the effect that reads it, so a failed rank does not also
@@ -1674,47 +1848,74 @@ const JobMatchesPage = ({ showToast }) => {
       {resume && (
         <>
           {/* ══ 2 — FILTERS ═════════════════════════════════════════ */}
-          <section className={CARD}>
+          {/*
+            onKeyDown on the section, not on a <form>: a form inside this card
+            would give the Refresh button below a default submit behaviour it
+            must not have, and the two buttons mean different things.
+          */}
+          <section className={CARD} onKeyDown={onFilterKeyDown}>
             <h2 className={`${HEADING} mb-4`}>Filters</h2>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <SelectField
                 id="jobs-remote"
                 label="Remote"
-                value={remote}
-                onChange={setRemote}
+                value={draft.remote}
+                onChange={(value) => setDraftField({ remote: value })}
                 options={REMOTE_OPTIONS}
               />
 
               <div>
                 <label className={FIELD_LABEL} htmlFor="jobs-location">Location</label>
                 {/*
-                  A native datalist rather than a custom combobox. It gives the
-                  suggest-and-pick behaviour of a job site's location box for
-                  no JavaScript, keeps keyboard and screen-reader support the
-                  platform already provides, and — the part that matters here —
-                  it still accepts free text. So a picked suggestion becomes an
-                  exact structured filter while anything typed falls back to
-                  the old substring match, and a pool whose location columns
-                  are not populated yet simply offers no suggestions.
+                  ═══ A DROPDOWN, NOT A TYPEAHEAD ═══
+
+                  This was a text input with a datalist, which meant a typed
+                  value had to be RESOLVED against the facets — and anything
+                  that did not resolve fell through to a substring match on the
+                  provider's display string. That fallback is the failure the
+                  facets route was built to remove: the provider prints "Tampa
+                  Palms, Hillsborough County", so typing "Florida" matched
+                  nothing and looked exactly like "no jobs in Florida".
+
+                  A select cannot be typed into, so every value is one we hold,
+                  the count beside it is real, and there is no silent
+                  free-text path left to fall down. The text input survives
+                  only for the degraded case below, where there are no facets
+                  to offer and a substring match is better than no control.
                 */}
-                <input
-                  id="jobs-location"
-                  type="text"
-                  list="jobs-location-options"
-                  autoComplete="off"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder={locationSuggestions.length ? 'Start typing, or pick a place' : 'City, region, or country'}
-                  className={FIELD}
-                />
-                <datalist id="jobs-location-options">
-                  {locationSuggestions.map((entry) => (
-                    <option key={`${entry.kind}:${entry.value}`} value={entry.value}>
-                      {`${entry.count} ${entry.count === 1 ? 'job' : 'jobs'}`}
-                    </option>
-                  ))}
-                </datalist>
+                {locationsDegraded ? (
+                  <input
+                    id="jobs-location"
+                    type="text"
+                    autoComplete="off"
+                    value={draft.location}
+                    onChange={(e) => setDraftField({ location: e.target.value })}
+                    placeholder="City, region, or country"
+                    className={FIELD}
+                  />
+                ) : (
+                  <select
+                    id="jobs-location"
+                    value={draft.location}
+                    onChange={(e) => setDraftField({ location: e.target.value })}
+                    className={FIELD}
+                  >
+                    <option value="">Anywhere</option>
+                    {orphanedLocation && (
+                      <option value={draft.location}>{`${orphanedLocation} (no current listings)`}</option>
+                    )}
+                    {locationGroups.map((group) => (
+                      <optgroup key={group.kind} label={group.label}>
+                        {group.entries.map((entry) => (
+                          <option key={`${group.kind}:${entry.value}`} value={`${group.kind}:${entry.value}`}>
+                            {`${entry.value} (${entry.count})`}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <SelectField
@@ -1729,16 +1930,43 @@ const JobMatchesPage = ({ showToast }) => {
             <SourceFilters
               sources={meta?.sources}
               loading={metaLoading}
-              selected={selectedSources}
+              selected={draft.sources}
               onToggle={toggleSource}
             />
 
-            {/* The reason ranking stays affordable, said out loud. */}
+            {/* ── Apply ─────────────────────────────────────────────── */}
+            <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-onextap-primary/10 pt-4 dark:border-onextap-primary-light/15">
+              <button
+                type="button"
+                onClick={applyFilters}
+                disabled={!pendingFilters || ranking}
+                className={BTN_PRIMARY}
+              >
+                {ranking ? <Activity className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                Apply filters
+              </button>
+
+              {pendingFilters && (
+                <button type="button" onClick={discardDraft} className={BTN_GHOST}>
+                  Discard changes
+                </button>
+              )}
+
+              <span className={MUTED}>
+                {pendingFilters
+                  ? 'Not applied yet — the list below still answers the previous filters.'
+                  : 'These filters are the ones the list below was ranked with.'}
+              </span>
+            </div>
+
+            {/* What costs a run and what does not, said out loud. */}
             <p className={`mt-4 flex items-start gap-2 ${MUTED}`}>
               <Info size={12} className="mt-0.5 shrink-0" />
               <span>
-                Remote, location and source changes fetch a fresh ranking. Sort re-orders the
-                results you already have — instantly, and without re-scoring anything.
+                Remote, location and source changes only take effect when you press Apply.
+                Sort re-orders the results you already have — instantly, and without re-scoring
+                anything. Nothing re-ranks on its own, including when you leave this page and
+                come back.
               </span>
             </p>
           </section>

@@ -303,12 +303,35 @@ const ProfilesPage = ({ showToast }) => {
       setProfile({ ...profile, race: [...current, race] });
     }
   };
+  /**
+   * Basic Info's country picker. Sets the country, the dial code beside the
+   * phone box, and — conditionally — the address country.
+   *
+   * ═══ WHY IT REACHES INTO THE ADDRESS ═══
+   *
+   * There are two countries in this profile and both start at the same
+   * DEFAULT_PROFILE value. Autofill answers an address-scoped "Country" from
+   * the address one, so a user who set this picker to India and never scrolled
+   * down to Address kept autofilling "United States" — a default they never
+   * chose, outranking the country they did.
+   *
+   * The mirror only happens while the two agree, i.e. while the address is
+   * still following this picker. Once a user sets a different address country
+   * deliberately — a mailing address abroad is a real thing, and
+   * resumeToProfile.js declines to collapse the two for the same reason —
+   * this stops touching it.
+   */
   const handleCountryChange = (e) => {
     const selectedCountry = COUNTRIES.find(c => c.name === e.target.value);
+    const addr = profile.address || {};
+    const addressWasFollowing = !addr.country || addr.country === profile.country;
     setProfile({
       ...profile,
       country: e.target.value,
-      countryCode: selectedCountry ? selectedCountry.dial_code : profile.countryCode
+      countryCode: selectedCountry ? selectedCountry.dial_code : profile.countryCode,
+      address: addressWasFollowing
+        ? { ...DEFAULT_PROFILE.address, ...addr, country: e.target.value }
+        : profile.address,
     });
   };
 
@@ -611,6 +634,36 @@ const ProfilesPage = ({ showToast }) => {
           </div>
         </div>
 
+        {/* EEO / DEMOGRAPHICS */}
+        <div className={SECTION}>
+          <h4 className={HEADING}><Flag size={16} /> EEO / Demographics</h4>
+          <div className="grid grid-cols-6 gap-6">
+            <div className="col-span-6">
+              <label className={`${LABEL} mb-2`}>Race</label>
+              <div className="flex flex-wrap gap-2">
+                {(RACES || []).map(race => (
+                  <button type="button" key={race} onClick={() => toggleRace(race)} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${(profile.race || []).includes(race) ? 'bg-onextap-primary text-white border-onextap-primary dark:bg-onextap-primary-light dark:border-onextap-primary-light' : 'bg-white border-onextap-primary/30 text-onextap-dark hover:border-onextap-primary dark:bg-white/[0.04] dark:border-onextap-primary-light/25 dark:text-[#E8EFD8] dark:hover:border-onextap-primary-light'}`}>{race}</button>
+                ))}
+              </div>
+            </div>
+            <div className="col-span-3">
+              <label className={LABEL}>Ethnicity</label>
+              <input className={FIELD} value={profile.ethnicity} onChange={e => setProfile({...profile, ethnicity: e.target.value})} placeholder="Optional" />
+            </div>
+            <div className="col-span-3">
+              <label className={LABEL}>Veteran Status</label>
+              <select className={FIELD} value={profile.veteran} onChange={e => setProfile({...profile, veteran: e.target.value})}>
+                <option value="">Select...</option>
+                {(VETERAN_STATUS || []).map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div className="col-span-6">
+              <label className={LABEL}>Disability</label>
+              <input className={FIELD} value={profile.disability} onChange={e => setProfile({...profile, disability: e.target.value})} placeholder="Optional — decline to identify or describe" />
+            </div>
+          </div>
+        </div>
+
         {/* CUSTOM FIELDS */}
         {/*
           Anything the fixed schema above does not have a box for. The label is
@@ -647,36 +700,6 @@ const ProfilesPage = ({ showToast }) => {
             )}
           </div>
           <button type="button" onClick={() => addItem('customFields', emptyCustomField())} className={ADD_BTN}><Plus size={16} /> Add field</button>
-        </div>
-
-        {/* EEO / DEMOGRAPHICS */}
-        <div className={SECTION}>
-          <h4 className={HEADING}><Flag size={16} /> EEO / Demographics</h4>
-          <div className="grid grid-cols-6 gap-6">
-            <div className="col-span-6">
-              <label className={`${LABEL} mb-2`}>Race</label>
-              <div className="flex flex-wrap gap-2">
-                {(RACES || []).map(race => (
-                  <button type="button" key={race} onClick={() => toggleRace(race)} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${(profile.race || []).includes(race) ? 'bg-onextap-primary text-white border-onextap-primary dark:bg-onextap-primary-light dark:border-onextap-primary-light' : 'bg-white border-onextap-primary/30 text-onextap-dark hover:border-onextap-primary dark:bg-white/[0.04] dark:border-onextap-primary-light/25 dark:text-[#E8EFD8] dark:hover:border-onextap-primary-light'}`}>{race}</button>
-                ))}
-              </div>
-            </div>
-            <div className="col-span-3">
-              <label className={LABEL}>Ethnicity</label>
-              <input className={FIELD} value={profile.ethnicity} onChange={e => setProfile({...profile, ethnicity: e.target.value})} placeholder="Optional" />
-            </div>
-            <div className="col-span-3">
-              <label className={LABEL}>Veteran Status</label>
-              <select className={FIELD} value={profile.veteran} onChange={e => setProfile({...profile, veteran: e.target.value})}>
-                <option value="">Select...</option>
-                {(VETERAN_STATUS || []).map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            <div className="col-span-6">
-              <label className={LABEL}>Disability</label>
-              <input className={FIELD} value={profile.disability} onChange={e => setProfile({...profile, disability: e.target.value})} placeholder="Optional — decline to identify or describe" />
-            </div>
-          </div>
         </div>
       </div>
         </div>

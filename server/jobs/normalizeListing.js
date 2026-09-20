@@ -149,15 +149,50 @@ const COUNTRY_BY_LOWER = new Map([
   ...Object.entries(COUNTRY_NAMES).map(([alias, name]) => [alias, name]),
 ]);
 
-/** US state abbreviations, so "San Francisco, CA" resolves to a country. */
-const US_STATES = new Set([
-  'al','ak','az','ar','ca','co','ct','de','fl','ga','hi','id','il','in','ia','ks','ky','la','me',
-  'md','ma','mi','mn','ms','mo','mt','ne','nv','nh','nj','nm','ny','nc','nd','oh','ok','or','pa',
-  'ri','sc','sd','tn','tx','ut','vt','va','wa','wv','wi','wy','dc',
-]);
+/**
+ * US state abbreviations -> the canonical name to STORE.
+ *
+ * ═══ WHY A MAP AND NOT A SET ═══
+ *
+ * It was a Set, and splitLocation stored `last.toUpperCase()` — the code, not
+ * the name. Meanwhile the structured (Adzuna) branch stored `area[1]`, which
+ * is the full name. So one state occupied two rows of the location facets,
+ * each holding part of its listings, and picking either got you that half.
+ * Measured on the live pool 2026-09-20: CA(105, all from `ats`) alongside
+ * California(55, adzuna + remoteok), and NY(144) alongside New York(38).
+ *
+ * This is the same failure the COUNTRY_NAMES table above exists to prevent —
+ * "Deutschland"/"DE"/"Germany" fragmenting one country into three buckets —
+ * arriving one column to the left. The fix is the same shape: one alias table,
+ * one canonical spelling, resolved through canonicalRegion().
+ *
+ * NOTE ON 'de'. It is Delaware here and Germany in COUNTRY_NAMES, and the
+ * free-text branch below checks this table FIRST, so "Berlin, DE" is read as
+ * Delaware. That collision predates this table and is not made worse by it —
+ * but expanding the stored value to "Delaware" does make a wrong parse read as
+ * a confident one. One row in the live pool (an arbeitnow listing) is affected.
+ * Fixing it properly means disambiguating on the city, which is a different
+ * change; see the region-inference note in splitLocation.
+ */
+const US_STATE_NAMES = Object.freeze({
+  al: 'Alabama', ak: 'Alaska', az: 'Arizona', ar: 'Arkansas', ca: 'California',
+  co: 'Colorado', ct: 'Connecticut', de: 'Delaware', fl: 'Florida', ga: 'Georgia',
+  hi: 'Hawaii', id: 'Idaho', il: 'Illinois', in: 'Indiana', ia: 'Iowa',
+  ks: 'Kansas', ky: 'Kentucky', la: 'Louisiana', me: 'Maine', md: 'Maryland',
+  ma: 'Massachusetts', mi: 'Michigan', mn: 'Minnesota', ms: 'Mississippi',
+  mo: 'Missouri', mt: 'Montana', ne: 'Nebraska', nv: 'Nevada', nh: 'New Hampshire',
+  nj: 'New Jersey', nm: 'New Mexico', ny: 'New York', nc: 'North Carolina',
+  nd: 'North Dakota', oh: 'Ohio', ok: 'Oklahoma', or: 'Oregon', pa: 'Pennsylvania',
+  ri: 'Rhode Island', sc: 'South Carolina', sd: 'South Dakota', tn: 'Tennessee',
+  tx: 'Texas', ut: 'Utah', vt: 'Vermont', va: 'Virginia', wa: 'Washington',
+  wv: 'West Virginia', wi: 'Wisconsin', wy: 'Wyoming', dc: 'District of Columbia',
+});
+
+/** The abbreviations alone, so "San Francisco, CA" resolves to a country. */
+const US_STATES = new Set(Object.keys(US_STATE_NAMES));
 
 /**
- * Canadian province abbreviations, so "Toronto, ON" resolves to a country.
+ * Canadian province abbreviations -> the canonical name to store.
  *
  * Without this, 'ON' failed the US_STATES check, fell through to the trailing
  * segment, and was stored as a COUNTRY called "ON" — one of the values that
@@ -168,9 +203,77 @@ const US_STATES = new Set([
  * feed than a Newfoundland posting. COUNTRY_NAMES already resolves it to
  * Netherlands; adding it here would take that away to serve the rarer case.
  */
-const CA_PROVINCES = new Set([
-  'ab','bc','mb','nb','ns','nt','nu','on','pe','qc','sk','yt',
+const CA_PROVINCE_NAMES = Object.freeze({
+  ab: 'Alberta', bc: 'British Columbia', mb: 'Manitoba', nb: 'New Brunswick',
+  ns: 'Nova Scotia', nt: 'Northwest Territories', nu: 'Nunavut', on: 'Ontario',
+  pe: 'Prince Edward Island', qc: 'Quebec', sk: 'Saskatchewan', yt: 'Yukon',
+});
+
+/** The abbreviations alone, so "Toronto, ON" resolves to a country. */
+const CA_PROVINCES = new Set(Object.keys(CA_PROVINCE_NAMES));
+
+/**
+ * lowercase spelling -> the canonical region spelling to store.
+ *
+ * Both directions in one map, exactly like COUNTRY_BY_LOWER: the CODE ('tx')
+ * and the NAME in any case ('texas', 'TEXAS') both land on 'Texas'. Case
+ * matters as much as spelling here, because the facet tally in
+ * /api/jobs/locations groups on the exact stored string.
+ *
+ * Codes and names cannot collide — no state or province is named after another
+ * one's two-letter code — so the spread order below is not load-bearing.
+ */
+const REGION_BY_LOWER = new Map([
+  ...Object.values(US_STATE_NAMES).map((name) => [name.toLowerCase(), name]),
+  ...Object.values(CA_PROVINCE_NAMES).map((name) => [name.toLowerCase(), name]),
+  ...Object.entries(US_STATE_NAMES),
+  ...Object.entries(CA_PROVINCE_NAMES),
 ]);
+
+/** Spelled-out region NAMES only, per country, for the inference below. */
+const US_STATE_BY_NAME = new Set(Object.values(US_STATE_NAMES).map((n) => n.toLowerCase()));
+const CA_PROVINCE_BY_NAME = new Set(Object.values(CA_PROVINCE_NAMES).map((n) => n.toLowerCase()));
+
+/**
+ * Region names that are ALSO country names. The country wins.
+ *
+ * Exactly one entry, and it is not a guess: every US state and Canadian
+ * province name was checked against canonicalCountry, and Georgia is the only
+ * collision. It is kept as a set rather than an `if` because the check belongs
+ * next to the data it guards — if WORLD_COUNTRIES ever gains a name that
+ * collides, this is where the next reader will look.
+ *
+ * WHY THE COUNTRY WINS. "Tbilisi, Georgia" and "Atlanta, Georgia" are
+ * genuinely ambiguous from the string alone, and the two errors are not equal:
+ * filing the country Georgia as a US state puts its listings behind a filter
+ * for the wrong continent, while leaving "Atlanta, Georgia" with a null
+ * country costs it one filter it was already missing before this change. So
+ * the ambiguous case keeps the behaviour it has always had.
+ */
+const REGION_COUNTRY_COLLISIONS = new Set(['georgia']);
+
+/**
+ * The country a spelled-out region name implies, or null.
+ *
+ * Only NAMES reach this — the two-letter codes are matched earlier, by
+ * US_STATES / CA_PROVINCES, because a bare code is far more likely to be a
+ * state than anything else. A name is the safer signal of the two and this is
+ * the later, weaker check.
+ *
+ * Exported for the same reason canonicalCountry and canonicalRegion are: the
+ * backfill in scripts/ repairs rows it did not parse and must reach the
+ * identical judgement, Georgia exclusion included. A second copy of that rule
+ * is how these columns drift apart in the first place.
+ *
+ * @param {string} lower A lowercased trailing segment.
+ * @returns {string|null} 'United States', 'Canada', or null.
+ */
+export function countryOfRegionName(lower) {
+  if (REGION_COUNTRY_COLLISIONS.has(lower)) return null;
+  if (US_STATE_BY_NAME.has(lower)) return 'United States';
+  if (CA_PROVINCE_BY_NAME.has(lower)) return 'Canada';
+  return null;
+}
 
 /** Separators a source uses between two whole locations in one string. */
 const MULTI_LOCATION_SPLIT = /[\u2022;|]/;
@@ -198,6 +301,30 @@ export function canonicalCountry(value) {
   const t = String(value ?? '').trim();
   if (!t) return null;
   return COUNTRY_BY_LOWER.get(t.toLowerCase()) || null;
+}
+
+/**
+ * The canonical spelling for a US state or Canadian province, or null.
+ *
+ * ALIAS SEMANTICS, NOT VALIDATION — the mirror of canonicalCountry, and the
+ * difference matters at every call site. A null here means "not a US state or
+ * Canadian province", which for a region is the ORDINARY case: Île-de-France,
+ * Bayern and Hillsborough County are all real regions this table has never
+ * heard of. So callers fold with `canonicalRegion(v) || v` and pass unknown
+ * values through untouched, rather than treating null as a rejection.
+ *
+ * Exported for the same reason canonicalCountry is: the backfill in scripts/
+ * has to reach the identical judgement about a row it did not parse, and a
+ * second drifting copy of that judgement is how this column got into the state
+ * a backfill is needed to repair.
+ *
+ * @param {unknown} value Any region fragment — a code, a name, any case.
+ * @returns {string|null} The canonical spelling, or null when unrecognised.
+ */
+export function canonicalRegion(value) {
+  const t = String(value ?? '').trim();
+  if (!t) return null;
+  return REGION_BY_LOWER.get(t.toLowerCase()) || null;
 }
 
 /**
@@ -270,6 +397,20 @@ export function splitLocation(area, display) {
     return canonicalCountry(t) || t;
   };
   const asCountry = (v) => canonicalCountry(clean(v));
+  /**
+   * Alias-resolved, for a slot already known to hold a region.
+   *
+   * Folds 'TX' and 'texas' onto 'Texas' and leaves everything else alone —
+   * see canonicalRegion on why an unrecognised region is normal rather than
+   * an error. Applied on EVERY path that writes a region, which is the point:
+   * the two branches disagreeing about how to spell one state is the whole
+   * defect this replaced.
+   */
+  const asRegion = (v) => {
+    const t = clean(v);
+    if (!t) return null;
+    return canonicalRegion(t) || t;
+  };
 
   // ── Structured (Adzuna) ────────────────────────────────────────────
   // area[0] IS the country by the provider's contract, so it is aliased, not
@@ -281,7 +422,9 @@ export function splitLocation(area, display) {
       country: named(parts[0]),
       // area[1] is the state/province. Skipped when the array is only
       // [country, city], which is what a country-level posting looks like.
-      region: parts.length > 2 ? parts[1] : null,
+      // Folded through asRegion so Adzuna's "Texas" and an ATS board's "TX"
+      // reach the facets as one value rather than two.
+      region: parts.length > 2 ? asRegion(parts[1]) : null,
       city: parts.length > 1 ? parts[parts.length - 1] : null,
     };
   }
@@ -310,22 +453,41 @@ export function splitLocation(area, display) {
     return { city: last, region: null, country: null };
   }
 
+  // The stored value is the NAME, not the code that was matched. Storing the
+  // code is what split California into CA(105) and California(55); the code is
+  // only ever an input spelling, never the canonical one.
+  //
   if (US_STATES.has(lastLower)) {
-    return { city: segs[0], region: last.toUpperCase(), country: 'United States' };
+    return { city: segs[0], region: US_STATE_NAMES[lastLower], country: 'United States' };
   }
   if (CA_PROVINCES.has(lastLower)) {
-    return { city: segs[0], region: last.toUpperCase(), country: 'Canada' };
+    return { city: segs[0], region: CA_PROVINCE_NAMES[lastLower], country: 'Canada' };
+  }
+
+  // A state or province spelled out rather than abbreviated. "Austin, Texas"
+  // used to reach the trailing-segment return below and store region 'Texas'
+  // with a NULL country, while "Austin, TX" got 'United States' from the
+  // branch above — the same place described two ways, landing in the country
+  // filter only half the time.
+  //
+  // Checked AFTER the codes and BEFORE asCountry, which is the order that
+  // keeps Georgia working: it is excluded here (see
+  // REGION_COUNTRY_COLLISIONS) and so still falls through to asCountry and is
+  // read as the country, exactly as before.
+  const regionCountry = countryOfRegionName(lastLower);
+  if (regionCountry) {
+    return { city: segs[0], region: asRegion(last), country: regionCountry };
   }
 
   const country = asCountry(last);
   if (country) {
-    return { city: segs[0], region: segs.length > 2 ? segs[1] : null, country };
+    return { city: segs[0], region: segs.length > 2 ? asRegion(segs[1]) : null, country };
   }
 
   // Not a country. `last` is the broadest thing said about this place, so it
   // is the best region candidate — and a wrong region costs a filter nobody
   // reaches for, where a wrong country corrupts the one they do.
-  return { city: segs[0], region: last, country: null };
+  return { city: segs[0], region: asRegion(last), country: null };
 }
 
 /**

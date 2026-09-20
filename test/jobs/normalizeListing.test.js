@@ -9,7 +9,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normalizeListing, dedupeHash, splitLocation } from '../../server/jobs/normalizeListing.js';
+import {
+  normalizeListing, dedupeHash, splitLocation, canonicalRegion,
+} from '../../server/jobs/normalizeListing.js';
 
 const base = {
   source_id: 'abc',
@@ -204,9 +206,11 @@ test('splitLocation prefers the provider structured area, broadest-first', () =>
 });
 
 test('splitLocation resolves a US state abbreviation to its country', () => {
+  // The region is stored under the state's NAME, never the code that matched.
+  // See the cross-path test below for why.
   assert.deepEqual(
     splitLocation(null, 'San Francisco, CA'),
-    { city: 'San Francisco', region: 'CA', country: 'United States' }
+    { city: 'San Francisco', region: 'California', country: 'United States' }
   );
 });
 
@@ -282,8 +286,119 @@ test('splitLocation still reads a real country after the last comma', () => {
 test('splitLocation resolves a Canadian province to its country', () => {
   assert.deepEqual(
     splitLocation(null, 'Toronto, ON'),
-    { city: 'Toronto', region: 'ON', country: 'Canada' }
+    { city: 'Toronto', region: 'Ontario', country: 'Canada' }
   );
+});
+
+// ------------------------------------------------------------------
+// The two paths must agree on how a region is SPELLED
+// ------------------------------------------------------------------
+//
+// ═══ THE DEFECT THIS PINS ═══
+//
+// splitLocation reaches a region two ways, and they used to disagree. The
+// free-text branch matched a two-letter code and stored `last.toUpperCase()`
+// — the CODE. The structured branch took Adzuna's `area[1]` — the NAME. So one
+// state occupied two rows of the location facets, each holding part of its
+// listings, and picking either in the dropdown returned only that half:
+// measured on the live pool 2026-09-20, CA(105) beside California(55) and
+// NY(144) beside New York(38).
+//
+// Nothing in the old tests could catch it, because each branch was asserted
+// on its own and each was self-consistent. Only a test that runs BOTH against
+// the same real place can fail here — which is why this one is written as an
+// equality between paths rather than against a literal.
+
+test('the free-text and structured paths agree on a region, for every state and province', () => {
+  const places = [
+    // [display string, Adzuna area array, expected canonical region]
+    ['Austin, TX', ['US', 'Texas', 'Travis County', 'Austin'], 'Texas'],
+    ['San Francisco, CA', ['US', 'California', 'San Francisco County', 'San Francisco'], 'California'],
+    ['Brooklyn, NY', ['US', 'New York', 'Kings County', 'Brooklyn'], 'New York'],
+    ['Toronto, ON', ['CA', 'Ontario', 'Toronto Division', 'Toronto'], 'Ontario'],
+  ];
+
+  for (const [display, area, expected] of places) {
+    const free = splitLocation(null, display);
+    const structured = splitLocation(area, display);
+
+    assert.equal(free.region, expected, `free-text "${display}" should give ${expected}`);
+    assert.equal(structured.region, expected, `structured ${JSON.stringify(area)} should give ${expected}`);
+    // The claim that actually matters: not what either one says, but that they
+    // say the SAME thing. One place, one facet row.
+    assert.equal(free.region, structured.region, `"${display}" split into two facet values`);
+  }
+});
+
+test('a region already spelled out is folded onto one casing', () => {
+  // "austin, texas" and "Austin, TX" are the same place said two ways, and a
+  // facet grouped on the exact stored string cannot tell that on its own.
+  assert.equal(splitLocation(null, 'Austin, texas').region, 'Texas');
+  assert.equal(splitLocation(null, 'Austin, TEXAS').region, 'Texas');
+  assert.equal(splitLocation(['US', 'texas', 'Austin'], 'Austin').region, 'Texas');
+});
+
+test('a spelled-out state or province resolves to its country too', () => {
+  // "Austin, TX" got country 'United States' from the abbreviation branch;
+  // "Austin, Texas" fell past it and stored a null country. Same place, in the
+  // country filter only half the time.
+  for (const [display, expected] of [
+    ['Austin, Texas', { city: 'Austin', region: 'Texas', country: 'United States' }],
+    ['Austin, TX', { city: 'Austin', region: 'Texas', country: 'United States' }],
+    ['Seattle, Washington', { city: 'Seattle', region: 'Washington', country: 'United States' }],
+    ['Toronto, Ontario', { city: 'Toronto', region: 'Ontario', country: 'Canada' }],
+    ['Toronto, ON', { city: 'Toronto', region: 'Ontario', country: 'Canada' }],
+  ]) {
+    assert.deepEqual(splitLocation(null, display), expected, display);
+  }
+
+  // Spelled out and abbreviated must be indistinguishable once stored.
+  assert.deepEqual(splitLocation(null, 'Austin, Texas'), splitLocation(null, 'Austin, TX'));
+});
+
+test('Georgia stays the country, because the string cannot say which it is', () => {
+  // The one name that is both a US state and a country. "Tbilisi, Georgia" and
+  // "Atlanta, Georgia" are genuinely ambiguous, and filing the country as a US
+  // state is the worse of the two errors — so the country keeps precedence and
+  // this behaviour is unchanged from before state names were recognised.
+  assert.deepEqual(
+    splitLocation(null, 'Tbilisi, Georgia'),
+    { city: 'Tbilisi', region: null, country: 'Georgia' }
+  );
+  assert.deepEqual(
+    splitLocation(null, 'Atlanta, Georgia'),
+    { city: 'Atlanta', region: null, country: 'Georgia' }
+  );
+
+  // Adzuna names the level structurally, so there is no ambiguity to resolve:
+  // area[1] IS the region, and Georgia is read as the state there.
+  assert.deepEqual(
+    splitLocation(['US', 'Georgia', 'Fulton County', 'Atlanta'], 'Atlanta, Fulton County'),
+    { city: 'Atlanta', region: 'Georgia', country: 'United States' }
+  );
+});
+
+test('a region that is not a state or province still yields no country', () => {
+  // The inference must not widen into "any trailing segment is a US state".
+  assert.deepEqual(
+    splitLocation(null, 'Lille, Nord'),
+    { city: 'Lille', region: 'Nord', country: null }
+  );
+  assert.equal(splitLocation(null, 'Paris, Île-de-France').country, null);
+});
+
+test('canonicalRegion passes an unrecognised region through as null', () => {
+  // Alias semantics, not validation — most regions in this pool are neither a
+  // US state nor a Canadian province, and callers fold with `|| value`.
+  assert.equal(canonicalRegion('tx'), 'Texas');
+  assert.equal(canonicalRegion('Texas'), 'Texas');
+  assert.equal(canonicalRegion('Île-de-France'), null);
+  assert.equal(canonicalRegion(''), null);
+  assert.equal(canonicalRegion(null), null);
+
+  // ...and splitLocation keeps those unknowns rather than dropping them.
+  assert.equal(splitLocation(null, 'Lille, Nord').region, 'Nord');
+  assert.equal(splitLocation(['FR', 'Île-de-France', 'Paris'], 'Paris').region, 'Île-de-France');
 });
 
 test('splitLocation keeps NL as the Netherlands, not Newfoundland', () => {

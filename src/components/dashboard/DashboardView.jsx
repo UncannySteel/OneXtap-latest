@@ -376,6 +376,25 @@ const DashboardView = ({ onClose }) => {
           )}
         </div>
 
+        {/*
+          ═══ APPLICATION TYPE PICKER — HIDDEN, NOT REMOVED ═══
+
+          Parked on purpose; uncomment this block to bring it back. Everything
+          it needs is still wired: the `applicationType` state, its loader in
+          the effect above, `handleApplicationTypeChange`, and the nav
+          filtering that reads `appConfig.features`.
+
+          Hiding the control is only half of it — Job is also the only type
+          src/applicationTypes.js still lists, so `getApplicationType()` reads
+          every other id as invalid and answers 'job'. An account that picked
+          College before this was hidden lands back on Job rather than being
+          stranded in a mode with no control to leave it.
+
+          THREE THINGS COME BACK TOGETHER: this block, the matching one in
+          src/components/popup/PopupView.jsx, and the commented-out entries in
+          src/applicationTypes.js. This picker without those entries is a
+          one-option dropdown.
+
         <div className="border-b border-[rgba(42,60,28,0.12)] px-5 py-4 dark:border-[rgba(200,216,168,0.12)]">
           <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.08em] text-onextap-muted dark:text-[#9AB07A]">
             Application type
@@ -391,6 +410,7 @@ const DashboardView = ({ onClose }) => {
           </select>
           <p className="mt-1.5 text-[11px] leading-snug text-onextap-muted dark:text-[#9AB07A]">{appConfig.description}</p>
         </div>
+        */}
 
         <nav className="flex-1 p-5 space-y-2" data-tour="sidebar-nav">
           {dashboardNavItems.map((i, idx) => (
