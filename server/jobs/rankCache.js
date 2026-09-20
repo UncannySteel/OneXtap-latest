@@ -55,6 +55,110 @@ export const RANK_LIMIT_PER_HOUR = 10;
 /** The rate-limit window. */
 export const RATE_WINDOW_MS = 60 * 60 * 1000;
 
+/**
+ * TTL for a result that is good but not perfect — see {@link rankCacheability}.
+ *
+ * Thirty minutes. Long enough to absorb the burst this exists for (a reload, a
+ * navigation, a second look after lunch is NOT this case), short enough that a
+ * partly keyword-scored list is not what the user is still being handed hours
+ * after the provider recovered. The full TTL is twelve times this, which is
+ * the honest gap between "this is the answer" and "this is the answer we could
+ * get at the time".
+ */
+export const PARTIAL_CACHE_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * How much of a returned list must be model-scored to be worth storing.
+ *
+ * 0.8. The case this number exists for is the one measured on 2026-09-20: a
+ * 30-job United States rank where the model scored 28 and two fell back, which
+ * is 0.93 and plainly worth keeping. A list that is half keyword-scored is a
+ * different thing — it is the provider visibly failing, and pinning it for
+ * even thirty minutes means a user who retries gets the same bad list back
+ * without the retry having done anything.
+ *
+ * Measured over the jobs actually RETURNED, not over everything scored: the
+ * question is how good the list in front of the user is.
+ */
+export const PARTIAL_CACHE_MIN_LLM_RATIO = 0.8;
+
+/**
+ * Whether a finished rank is worth storing, and for how long.
+ *
+ * ═══ WHY THIS IS NOT `if (!result.degraded)` ═══
+ *
+ * It was, and that check could not do the job, because `degraded` is one
+ * boolean over five unrelated situations: an unreadable pool, a dead provider,
+ * a few per-job fallbacks inside an otherwise healthy pass, a run that stopped
+ * on its own clock, and a rate-limited keyword list. "Do not cache an outage"
+ * is right about three of those and wrong about one, and the wrong one is the
+ * COMMON one.
+ *
+ * Measured on 2026-09-20: a United States rank scored 28 of 30 jobs with the
+ * model and keyword-scored 2. `rankBatch` sets `degraded` from
+ * `results.some((r) => r.scoredBy !== 'llm')`, so two jobs out of thirty
+ * marked the whole run degraded and nothing was stored. Every repeat of that
+ * search re-ran six model calls — against a free tier rationed at 20 requests
+ * per day per model, which is the budget the GEMINI_RANK_MODELS rotation
+ * exists to stretch. The cache was missing on exactly the runs that cost the
+ * most to produce.
+ *
+ * ═══ THE RULES, IN ORDER ═══
+ *
+ *   1. A pool we could not read is not an answer.
+ *   2. A rate-limited keyword list is not this user's answer, it is a
+ *      placeholder until their window resets.
+ *   3. A run that stopped on its own clock would have returned something else
+ *      with more time, so it is not the answer either.
+ *   4. An EMPTY list is a real answer when the run was healthy — the score
+ *      floor cutting everything is a fact about the market, and re-running six
+ *      model calls to rediscover it every time is the waste this whole
+ *      function is about. Empty after a provider failure is not, because a
+ *      working model might have cleared the floor.
+ *   5. A list with no model scoring in it at all is the provider being down.
+ *   6. A mostly-model-scored list is worth keeping, at the shorter TTL.
+ *
+ * @param {object} result A graph result.
+ * @param {number} [fullTtlMs] TTL for a clean result.
+ * @returns {{cache: boolean, ttlMs: number, reason: string}} `reason` is a
+ *   stable slug, logged rather than shown, so a cache that stops storing
+ *   anything can be diagnosed without re-deriving this ladder by hand.
+ */
+export function rankCacheability(result, fullTtlMs = RANK_CACHE_TTL_MS) {
+  const r = result && typeof result === 'object' ? result : {};
+  const no = (reason) => ({ cache: false, ttlMs: 0, reason });
+
+  if (r.error) return no('pool_error');
+  if (r.limited === true) return no('rate_limited');
+  if (r.budgetExhausted === true) return no('budget_exhausted');
+
+  const jobs = Array.isArray(r.jobs) ? r.jobs : [];
+
+  // Rule 4. `degradeReason` is the discriminator and `scoredBy` cannot be:
+  // an empty list reads as 'keyword' whether the model was never asked or
+  // answered nothing, and those two need opposite decisions.
+  if (jobs.length === 0) {
+    return r.degradeReason
+      ? no('empty_after_provider_failure')
+      : { cache: true, ttlMs: fullTtlMs, reason: 'empty_but_healthy' };
+  }
+
+  // An unlabelled job inherits the run's own summary. Every envelope the graph
+  // builds carries `scoredBy`, but a result can also arrive from a hand-built
+  // caller or an older cached row, and reading a missing field as "not model
+  // scored" would silently stop caching those altogether — a cache that goes
+  // quiet on a shape change is the failure this whole function is repairing.
+  const llm = jobs.filter((job) => (job?.scoredBy ?? r.scoredBy) === 'llm').length;
+  const ratio = llm / jobs.length;
+
+  if (llm === 0) return no('no_model_scoring');
+  if (ratio >= 1) return { cache: true, ttlMs: fullTtlMs, reason: 'fully_scored' };
+  if (ratio >= PARTIAL_CACHE_MIN_LLM_RATIO) {
+    return { cache: true, ttlMs: Math.min(PARTIAL_CACHE_TTL_MS, fullTtlMs), reason: 'mostly_scored' };
+  }
+  return no('too_much_keyword_scoring');
+}
+
 /** Supabase table names, in one place so a rename is one edit. */
 const CACHE_TABLE = 'rank_cache';
 const LIMIT_TABLE = 'rank_rate_limit';
@@ -328,8 +432,12 @@ export function __resetRankStoreForTests() {
  *      result, flagged `limited: true` and `degraded: true`. A job seeker who
  *      hits a ceiling they did not know existed should see a slightly worse
  *      list with an explanation, not an error toast.
- *   4. A DEGRADED RESULT IS NOT CACHED. Caching the output of an outage would
- *      keep serving it for six hours after the provider recovered.
+ *   4. WHAT IS CACHED IS DECIDED BY `rankCacheability`, not by `degraded`.
+ *      Caching the output of an outage would keep serving it for six hours
+ *      after the provider recovered — but `degraded` is also true for a pass
+ *      that model-scored 28 jobs out of 30, and refusing to store THAT meant
+ *      the most expensive runs were the ones that never cached. The predicate
+ *      separates the two and gives a partial result a shorter TTL.
  *
  * `store`, `runGraph` and `keywordFallback` are required. A store that throws
  * is handled — that is the point of steps above — but a missing `runGraph` is
@@ -388,9 +496,22 @@ export async function rankWithCache({
 
   const result = await runGraph();
 
-  if (!result?.degraded) {
+  // `rankCacheability`, not `!result.degraded` — see that function for why one
+  // boolean could not answer this. The decision and its TTL are logged at
+  // debug with the reason slug, so "why is nothing being cached?" is one log
+  // line rather than a re-derivation.
+  const { cache, ttlMs: storeFor, reason } = rankCacheability(result, ttlMs);
+  cacheLog.debug('rank cacheability', {
+    cache,
+    reason,
+    ttlMs: storeFor,
+    jobs: Array.isArray(result?.jobs) ? result.jobs.length : 0,
+    scoredBy: result?.scoredBy ?? null,
+  });
+
+  if (cache) {
     try {
-      await store.set(userId, key, result, ttlMs);
+      await store.set(userId, key, result, storeFor);
     } catch (err) {
       cacheLog.warn('rank cache write failed', { errName: err?.name });
     }

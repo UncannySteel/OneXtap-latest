@@ -26,7 +26,15 @@ import {
 } from './groqClient.js';
 import { ADAPTERS } from './jobs/adapters/index.js';
 import { fetchJobPool, DEFAULT_SINCE_DAYS } from './jobs/query.js';
-import { runRankGraph, keywordOnlyResult, resumeTerms, PREFILTER_LIMIT } from './jobs/graph.js';
+import {
+  runRankGraph,
+  keywordOnlyResult,
+  resumeTerms,
+  PREFILTER_LIMIT,
+  MIN_MATCH_SCORE,
+  applyScoreFloor,
+  summarizeSources,
+} from './jobs/graph.js';
 import { createGroqModelCaller, renderPromptParts } from './jobs/rank.js';
 import {
   cacheKey,
@@ -1789,14 +1797,39 @@ const GEMINI_RANK_TIMEOUT_MS = 25_000;
  * that quota exhaustion raises. This constant just stops handing it a list of
  * one.
  *
- * Order is cheapest-and-fastest first. Ids are verified present on the account;
- * a retired id (gemini-2.5-pro, gemini-2.5-flash-lite) 404s, which the chain
- * also treats as "try the next one", so a stale entry costs a round trip rather
- * than a failed pass.
+ * ═══ ORDER IS BEST-CALIBRATED FIRST, AND IT IS MEASURED ═══
+ *
+ * It used to be "cheapest-and-fastest first", which was an assumption about
+ * these ids rather than an observation of them. Running
+ * test/evals/rankCalibration.test.js across all five on 2026-09-20 (per model:
+ * agreement at the 50 cut / landed-in-band / rank correlation / seconds per
+ * batch):
+ *
+ *   gemini-2.5-flash        91.7  91.7  0.969  2.8   ← best fit, and quick
+ *   gemini-3.5-flash-lite   83.3  83.3  0.975  1.7   ← best ordering, fastest
+ *   gemini-3.5-flash        91.7  91.7  0.950  6.4   ← as accurate, 4x slower
+ *   gemini-3.1-flash-lite   83.3  83.3  0.938  5.1
+ *   gemini-3.6-flash        83.3  75.0  0.942  3.6   ← weakest fit
+ *
+ * The old first entry, gemini-3.1-flash-lite, was the worst pairing on the
+ * board: the slowest of the two "lite" ids AND the lowest rank correlation. It
+ * answered most requests because it was first, so most users got the least
+ * well-calibrated scores and waited longest for them. A 30-job rank is six
+ * batches, so leading with 2.5-flash is ~17s where the old order was ~31s.
+ *
+ * Re-ordering costs nothing: every id has its OWN daily bucket, so the order
+ * decides which is spent first, never how much there is in total.
+ *
+ * The first cut a user actually feels is MIN_MATCH_SCORE at 50, so "agreement
+ * @50" leads the ordering and latency breaks ties.
+ *
+ * Ids are verified present on the account; a retired id (gemini-2.5-pro,
+ * gemini-2.5-flash-lite) 404s, which the chain also treats as "try the next
+ * one", so a stale entry costs a round trip rather than a failed pass.
  */
 const GEMINI_RANK_MODELS = String(
   process.env.GEMINI_RANK_MODELS ||
-    'gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-2.5-flash,gemini-3.5-flash,gemini-3.6-flash'
+    'gemini-2.5-flash,gemini-3.5-flash-lite,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.6-flash'
 )
   .split(',')
   .map((m) => m.trim())
@@ -1948,7 +1981,17 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
     // Always present rather than only on failure, so the sentence above about
     // the body being one shape stays true: the shape is constant, the value
     // varies. A 200 carries `error: null`.
-    const jobs = outcome.jobs || [];
+    // ═══ THE FLOOR, APPLIED TO THE CACHE TOO ═══
+    //
+    // runRankGraph and keywordOnlyResult have both already done this, so on a
+    // fresh result `cutHere` is 0 and this is a single pass over a short list.
+    // It is here for the one case they cannot cover: a CACHED entry, which may
+    // have been stored before the floor existed or under an older
+    // matcherVersion, and which rankWithCache returns without re-running the
+    // graph. Without this, a warm cache is a six-hour hole in a rule that is
+    // supposed to have none.
+    const { kept: jobs, cut: cutHere } = applyScoreFloor(outcome.jobs || []);
+    const belowFloorCount = (outcome.belowFloorCount ?? 0) + cutHere;
     const totalFailure = Boolean(outcome.error) && jobs.length === 0 && outcome.limited !== true;
 
     res.status(totalFailure ? 502 : 200).json({
@@ -1961,7 +2004,19 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
       // without these two, so they travel with it rather than only inside the
       // diagnostics footer.
       relaxedFilters: outcome.relaxedFilters || [],
-      inFilterCount: outcome.inFilterCount ?? jobs.length,
+      // Recounted from `jobs`, not taken from the outcome: when the floor
+      // above cut a cached list, the stored count describes the list BEFORE
+      // the cut and would claim more in-filter jobs than the page can show.
+      // On a fresh result the two are equal, because nothing was cut.
+      inFilterCount: cutHere > 0
+        ? jobs.filter((entry) => !entry?.relaxedFilters).length
+        : outcome.inFilterCount ?? jobs.length,
+      // The floor, and what it cost. `jobs` above has already had it applied,
+      // so these two are the only way the client can tell "the pool held
+      // nothing for these filters" apart from "we scored 30 and none of them
+      // reached 50%" — two empty lists that need two different sentences.
+      belowFloorCount,
+      minScore: MIN_MATCH_SCORE,
       degraded: outcome.degraded === true,
       scoredBy: outcome.scoredBy || 'keyword',
       limited: outcome.limited === true,
@@ -1976,7 +2031,10 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
         sentToScorer: outcome.sentToScorer ?? 0,
         prefilterLimit: PREFILTER_LIMIT,
         matcherVersion: outcome.matcherVersion ?? MATCHER_VERSION,
-        sources: outcome.sources || [],
+        // Same recount, same reason: a cached summary counts jobs the floor
+        // has since removed, and the footer's per-source totals would not add
+        // up to the list underneath it.
+        sources: cutHere > 0 ? summarizeSources(jobs) : outcome.sources || [],
         timings: outcome.timings || null,
         // True when the graph stopped looping because it ran out of wall clock
         // rather than because it was satisfied. Without this the run footer
@@ -2008,6 +2066,8 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
       reformulations: [],
       relaxedFilters: [],
       inFilterCount: 0,
+      belowFloorCount: 0,
+      minScore: MIN_MATCH_SCORE,
       degraded: true,
       scoredBy: 'keyword',
       limited: false,

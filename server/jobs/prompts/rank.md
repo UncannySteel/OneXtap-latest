@@ -13,6 +13,7 @@ input, every time. If you were given no jobs, return `[]`.
 [
   {
     "jobId": "adzuna:12345",
+    "band": "good",
     "score": 72,
     "gapSummary": "Strong backend match, but the role expects Kubernetes ownership the profile never mentions.",
     "matchedSignals": ["Node.js", "PostgreSQL", "5+ years backend"],
@@ -21,15 +22,19 @@ input, every time. If you were given no jobs, return `[]`.
 ]
 ```
 
-Every object has exactly these five keys and no others.
+Every object has exactly these six keys and no others.
 
 Field rules:
 
 - `jobId` — copy the id from the input verbatim. Never invent, reformat, or
   renumber it.
-- `score` — an integer from 0 to 100, placed according to the score bands
-  below. 0 means no plausible fit, 100 means the candidate matches every stated
-  requirement.
+- `band` — the name of the band from the table below that this job falls in:
+  one of `strong`, `good`, `partial`, `weak`, `poor`. **Choose this first**,
+  before the number.
+- `score` — an integer from 0 to 100, and it must lie INSIDE the band you just
+  named. 0 means no plausible fit, 100 means the candidate matches every stated
+  requirement. The band is the judgement; the number only says where in the
+  band the job sits.
 - `gapSummary` — **exactly one sentence**, never two. It names the single most
   important thing standing between this candidate and this job. If nothing is
   standing in the way, say that, still in one sentence.
@@ -46,22 +51,26 @@ describes it, then choose a number inside that band. The bands are what make a
 score comparable between two different jobs, two different runs, and two
 different models — a 72 has to mean the same thing every time.
 
-| Band | Meaning |
-|---|---|
-| 85-100 | Meets every stated must-have, each one directly evidenced in the profile. Reserve the top of this band for a profile that also covers the nice-to-haves. |
-| 70-84  | Meets every stated must-have, but some nice-to-haves are missing or only partly evidenced. |
-| 55-69  | Meets most must-haves with **one** material gap — a required skill, or a seniority or domain mismatch that a hiring manager would raise. |
-| 35-54  | Real overlap, but **several** material gaps, or the profile evidences an adjacent role rather than this one. |
-| 0-34   | A different role, domain, or seniority class. A shared buzzword is not overlap. |
+| `band` | Score | Meaning |
+|---|---|---|
+| `strong`  | 85-100 | Meets every stated must-have, each one directly evidenced in the profile. Reserve the top of this band for a profile that also covers the nice-to-haves. |
+| `good`    | 70-84  | Meets every stated must-have, but some nice-to-haves are missing or only partly evidenced. |
+| `partial` | 55-69  | Meets most must-haves with **one** material gap — a required skill, or a seniority or domain mismatch that a hiring manager would raise. |
+| `weak`    | 35-54  | Real overlap, but **several** material gaps, or the profile evidences an adjacent role rather than this one. |
+| `poor`    | 0-34   | A different role, domain, or seniority class. A shared buzzword is not overlap. |
 
 Two rules govern the bands themselves:
 
 - **The band is chosen on evidence, not on enthusiasm.** If you cannot point to
   the thing in the profile that earns the band, it belongs in the one below.
-- **Use the whole range.** If a batch lands inside one ten-point band, the
-  scores are describing "a job listing" rather than this candidate's fit
-  against it. Do not stretch them apart artificially either — two jobs the
-  candidate fits equally well get the same score.
+- **The score must not depend on the other jobs in the batch.** Score each job
+  as if it were the only one you had been given. The same job and the same
+  profile must produce the same number whether it arrives alone or alongside
+  thirty others — the batch is a unit of work, not a distribution to spread
+  scores across. If every job you are given genuinely belongs in one band,
+  return them all in that band; if they genuinely span four, use four. Two jobs
+  the candidate fits equally well get the same score, and a batch of one is
+  scored exactly as that job would be scored in a batch of thirty.
 
 A `descriptionQuality: "snippet"` job is capped by what is visible; see rule 4
 below, which overrides the bands when the two disagree.

@@ -32,6 +32,9 @@ const {
   RANK_CACHE_TTL_MS,
   RANK_LIMIT_PER_HOUR,
   RATE_WINDOW_MS,
+  rankCacheability,
+  PARTIAL_CACHE_TTL_MS,
+  PARTIAL_CACHE_MIN_LLM_RATIO,
 } = await import('../../server/jobs/rankCache.js');
 
 /** Save and restore the whole environment around a mutation. */
@@ -325,7 +328,8 @@ test('a cache hit does not consume rate-limit budget', async () => {
   assert.equal(gate.count, 2, 'only the first, uncached call consumed budget');
 });
 
-test('a degraded result is not cached, so an outage is not served for six hours', async () => {
+/** Run the same result twice through one store; report whether it was kept. */
+async function cachesAcrossCalls(result) {
   const store = memoryStore();
   let runs = 0;
   const call = () =>
@@ -333,14 +337,81 @@ test('a degraded result is not cached, so an outage is not served for six hours'
       store,
       userId: 'u1',
       key: 'k',
-      runGraph: async () => { runs += 1; return { ...RESULT, degraded: true }; },
+      runGraph: async () => { runs += 1; return result; },
       keywordFallback: async () => FALLBACK,
     });
-
   await call();
   const second = await call();
+  return { runs, cached: second.cached === true };
+}
+
+test('an outage is not cached, so it is not served for six hours', async () => {
+  // A real outage: nothing was model-scored and the provider said why. NOTE
+  // the fixture used to be `{...RESULT, degraded: true}` — a fully
+  // model-scored list with the flag set — which is not an outage at all, and
+  // treating it as one is the bug rankCacheability was written to fix.
+  const outage = {
+    jobs: [{ jobId: 'adzuna:1', score: 80, scoredBy: 'keyword' }],
+    degraded: true,
+    scoredBy: 'keyword',
+    degradeReason: 'provider_down',
+  };
+  const { runs, cached } = await cachesAcrossCalls(outage);
   assert.equal(runs, 2, 'the graph must be retried, not served from the cache');
-  assert.equal(second.cached, false);
+  assert.equal(cached, false);
+});
+
+test('a mostly model-scored run IS cached, even though it is degraded', async () => {
+  // The measured case, 2026-09-20: a United States rank scored 28 of 30 jobs
+  // with the model and keyword-scored 2. `degraded` is true because
+  // rankBatch's rule is `some(r => r.scoredBy !== 'llm')`, and the old check
+  // threw the whole thing away — so the most expensive runs were the ones that
+  // never cached, against a provider rationed per day.
+  const mixed = {
+    jobs: Array.from({ length: 30 }, (_, i) => ({
+      jobId: `adzuna:${i}`, score: 70, scoredBy: i < 28 ? 'llm' : 'keyword',
+    })),
+    degraded: true,
+    scoredBy: 'mixed',
+  };
+  const { runs, cached } = await cachesAcrossCalls(mixed);
+  assert.equal(runs, 1, 'the second call must be served from the cache');
+  assert.equal(cached, true);
+});
+
+test('a half keyword-scored list is not worth pinning', async () => {
+  // The other side of the threshold. Half keyword-scored is the provider
+  // visibly failing, and storing it means a user who retries gets the same bad
+  // list back without the retry having achieved anything.
+  const half = {
+    jobs: Array.from({ length: 10 }, (_, i) => ({
+      jobId: `adzuna:${i}`, score: 70, scoredBy: i < 5 ? 'llm' : 'keyword',
+    })),
+    degraded: true,
+    scoredBy: 'mixed',
+  };
+  const { runs, cached } = await cachesAcrossCalls(half);
+  assert.equal(runs, 2);
+  assert.equal(cached, false);
+});
+
+test('an empty list from a HEALTHY run is cached; from a failed one it is not', async () => {
+  // With the 50% match floor an empty list is a normal outcome — India holds a
+  // handful of listings and none of them suit a software resume. Re-running
+  // six model calls to rediscover that on every visit is exactly the waste
+  // this predicate exists to stop. But empty AFTER a provider failure is not
+  // an answer: a working model might have cleared the floor.
+  const healthy = await cachesAcrossCalls({
+    jobs: [], degraded: false, scoredBy: 'keyword', belowFloorCount: 1, degradeReason: null,
+  });
+  assert.equal(healthy.runs, 1, 'a healthy empty answer is worth remembering');
+  assert.equal(healthy.cached, true);
+
+  const failed = await cachesAcrossCalls({
+    jobs: [], degraded: true, scoredBy: 'keyword', degradeReason: 'rate_limited',
+  });
+  assert.equal(failed.runs, 2, 'empty because the model died must be retried');
+  assert.equal(failed.cached, false);
 });
 
 test('the eleventh call in an hour is limited, still returns jobs, and is never an error', async () => {
@@ -443,4 +514,94 @@ test('a store that throws on write still returns the freshly computed result', a
 test('the documented limit is ten per hour', () => {
   assert.equal(RANK_LIMIT_PER_HOUR, 10);
   assert.equal(RATE_WINDOW_MS, 60 * 60 * 1000);
+});
+
+// ------------------------------------------------------------------
+// rankCacheability
+//
+// The ladder in one place, so a change to the order is a failing test rather
+// than a silently different cache.
+// ------------------------------------------------------------------
+const jobsScored = (llm, keyword) => [
+  ...Array.from({ length: llm }, (_, i) => ({ jobId: `l${i}`, score: 70, scoredBy: 'llm' })),
+  ...Array.from({ length: keyword }, (_, i) => ({ jobId: `k${i}`, score: 70, scoredBy: 'keyword' })),
+];
+
+test('a clean run caches at the full TTL', () => {
+  const d = rankCacheability({ jobs: jobsScored(10, 0), scoredBy: 'llm' });
+  assert.equal(d.cache, true);
+  assert.equal(d.ttlMs, RANK_CACHE_TTL_MS);
+  assert.equal(d.reason, 'fully_scored');
+});
+
+test('a partial run caches at the SHORTER TTL, not the full one', () => {
+  // The shorter TTL is the whole compromise: worth keeping for a burst, not
+  // worth being the answer hours after the provider recovered.
+  const d = rankCacheability({ jobs: jobsScored(28, 2), scoredBy: 'mixed' });
+  assert.equal(d.cache, true);
+  assert.equal(d.reason, 'mostly_scored');
+  assert.equal(d.ttlMs, PARTIAL_CACHE_TTL_MS);
+  assert.ok(d.ttlMs < RANK_CACHE_TTL_MS, 'a partial answer must expire sooner');
+});
+
+test('the partial threshold is a real boundary, tested from both sides', () => {
+  const total = 10;
+  const atRatio = Math.round(PARTIAL_CACHE_MIN_LLM_RATIO * total);
+  const at = rankCacheability({ jobs: jobsScored(atRatio, total - atRatio), scoredBy: 'mixed' });
+  const under = rankCacheability({ jobs: jobsScored(atRatio - 1, total - atRatio + 1), scoredBy: 'mixed' });
+  assert.equal(at.cache, true, 'exactly at the threshold is in');
+  assert.equal(under.cache, false, 'one job under it is out');
+  assert.equal(under.reason, 'too_much_keyword_scoring');
+});
+
+test('the first three rules outrank a perfectly scored list', () => {
+  // Order matters: each of these carries a flawless list and must still be
+  // refused, because what is wrong with them is not the scoring.
+  const clean = { jobs: jobsScored(10, 0), scoredBy: 'llm' };
+  assert.deepEqual(
+    [
+      rankCacheability({ ...clean, error: 'pool unreachable' }).reason,
+      rankCacheability({ ...clean, limited: true }).reason,
+      rankCacheability({ ...clean, budgetExhausted: true }).reason,
+    ],
+    ['pool_error', 'rate_limited', 'budget_exhausted']
+  );
+});
+
+test('no model scoring at all is never cached, however long the list', () => {
+  const d = rankCacheability({ jobs: jobsScored(0, 30), scoredBy: 'keyword' });
+  assert.equal(d.cache, false);
+  assert.equal(d.reason, 'no_model_scoring');
+  assert.equal(d.ttlMs, 0, 'a refusal carries no TTL to misread');
+});
+
+test('an empty list is decided on degradeReason, not on scoredBy', () => {
+  // summarizeScoredBy calls an empty list 'keyword' whether the model was
+  // never asked or answered nothing, so scoredBy cannot separate these two —
+  // and they need opposite decisions.
+  const healthy = rankCacheability({ jobs: [], scoredBy: 'keyword', degradeReason: null });
+  const failed = rankCacheability({ jobs: [], scoredBy: 'keyword', degradeReason: 'timeout' });
+  assert.equal(healthy.cache, true);
+  assert.equal(healthy.reason, 'empty_but_healthy');
+  assert.equal(healthy.ttlMs, RANK_CACHE_TTL_MS);
+  assert.equal(failed.cache, false);
+  assert.equal(failed.reason, 'empty_after_provider_failure');
+});
+
+test('a caller-supplied TTL is respected and still caps the partial one', () => {
+  const short = 60_000;
+  assert.equal(rankCacheability({ jobs: jobsScored(10, 0), scoredBy: 'llm' }, short).ttlMs, short);
+  // A partial result may never outlive the TTL the caller asked for, even
+  // though PARTIAL_CACHE_TTL_MS is normally the smaller of the two.
+  const partial = rankCacheability({ jobs: jobsScored(9, 1), scoredBy: 'mixed' }, short);
+  assert.equal(partial.ttlMs, short);
+});
+
+test('rankCacheability is total: junk is refused, never thrown on', () => {
+  for (const junk of [null, undefined, 0, 'x', [], { jobs: 'not-an-array' }]) {
+    const d = rankCacheability(junk);
+    assert.equal(typeof d.cache, 'boolean');
+    assert.ok(Number.isFinite(d.ttlMs) && d.ttlMs >= 0);
+    assert.equal(typeof d.reason, 'string');
+  }
 });

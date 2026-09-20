@@ -74,20 +74,27 @@ export function configuredCountries() {
 }
 
 /**
- * Map the ingest cursor's flat page number onto (country, page-within-country).
+ * Map a flat page number onto (country, page-within-country).
  *
- * `job_ingest_state` stores ONE integer per source, and reshaping that for a
- * list of countries would mean changing the cursor for every adapter. Instead
- * the countries are round-robined across consecutive cursor values:
+ * ═══ NO LONGER THE INGEST PATH — READ THIS BEFORE TRUSTING IT ═══
+ *
+ * Ingest decodes the country itself, in `cursorToSearch`, and passes it to
+ * `fetch` explicitly. This is now only the fallback for a caller that supplies
+ * a page but no country.
+ *
+ * The round-robin below is correct and always was — on the number it is given.
+ * The bug was upstream: ingest used to hand it a sub-cursor that advanced once
+ * per FULL pass over the 33-term taxonomy, so "consecutive cursor values" were
+ * 33 real cursors apart and country became the slowest-moving dimension of the
+ * three. `ADZUNA_COUNTRIES=us,in` fetched the US for eleven daily runs before
+ * touching India, and at the old sweep depth of 1 the sub-cursor was the
+ * constant 1 and India was never fetched at all. Do not re-point ingest at
+ * this function; the composition, not the rotation, was what was broken.
  *
  *   countries = [in, us, gb]
  *   cursor 1 → in p1    cursor 4 → in p2
  *   cursor 2 → us p1    cursor 5 → us p2
  *   cursor 3 → gb p1    cursor 6 → gb p2
- *
- * Round-robin rather than "finish India, then start the US" on purpose: a run
- * that exhausts its time budget after two pages should have covered two
- * countries, not the first two pages of one.
  *
  * @param {number} cursor 1-based page from job_ingest_state.
  * @param {string[]} countries From configuredCountries().
@@ -144,9 +151,10 @@ export const adzunaAdapter = {
 
     const perPage = clampPageSize(limit, RESULTS_PER_PAGE);
 
-    // An explicit `country` pins the request to it (the ranking path and the
-    // tests do this). Otherwise the cursor decides, rotating through every
-    // configured country — see cursorToTarget.
+    // An explicit `country` pins the request to it — and that is now the
+    // normal path: ingest decodes the country from the cursor (cursorToSearch)
+    // and passes it here, so `page` below is a real page number. Only a caller
+    // that supplies no country falls through to cursorToTarget.
     const countries = configuredCountries();
     const target = cursorToTarget(page, countries);
     const countryCode = country ? safeCountry(country) : target.country;

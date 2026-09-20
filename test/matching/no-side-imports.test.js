@@ -83,7 +83,7 @@ test('no module under src/matching or src/corpus.js imports outside the sandbox'
 test('the guarded modules import cleanly in bare Node with no side effects', async () => {
   const barrel = await import('../../src/matching/index.js');
   assert.equal(typeof barrel.extractKeywords, 'function');
-  assert.equal(barrel.MATCHER_VERSION, 2);
+  assert.equal(barrel.MATCHER_VERSION, 3);
   assert.equal(barrel.SNIPPET_CONFIDENCE, 0.9);
   const corpus = await import('../../src/corpus.js');
   assert.equal(typeof corpus.buildCorpus, 'function');

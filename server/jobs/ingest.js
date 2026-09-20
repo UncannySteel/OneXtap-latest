@@ -75,16 +75,29 @@ export const SWEEP_PAGES_PER_TERM = Math.max(
 /**
  * Advance a search-capable source's cursor, wrapping at the end of the sweep.
  *
- * The cursor is term-major (see cursorToSearch), so +1 is the next occupation
- * and the sweep is `SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM` values long.
+ * The cursor enumerates (country, term, page) — see cursorToSearch — so +1 is
+ * the next COUNTRY for the same occupation, and the sweep is
+ * `countries × SEARCH_TERMS.length × SWEEP_PAGES_PER_TERM` values long.
  * Returning 1 means the sweep is complete and the next run starts over at the
  * first occupation's newest page — which is the refresh, not a failure.
  *
+ * ═══ THE COUNTRY FACTOR IS LOAD-BEARING ═══
+ *
+ * Leave it out and the cursor wraps after `terms × pages` values, which with
+ * two countries is exactly HALF the space. The second country's later
+ * occupations then sit past the wrap point and are never visited — the same
+ * class of silent hole the old two-stage decode had, arrived at from the other
+ * direction. It is derived from `configuredCountries()` rather than passed so
+ * that it cannot drift from the decode.
+ *
  * @param {number} cursor Current 1-based cursor.
+ * @param {number} [countryCount] Countries in the rotation; defaults to the
+ *   configured list. 0 or junk reads as 1.
  * @returns {number} The next cursor, or 1 at the end of a sweep.
  */
-export function nextSweepCursor(cursor) {
-  const sweepLength = SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM;
+export function nextSweepCursor(cursor, countryCount = configuredCountries().length) {
+  const width = Math.max(Number(countryCount) || 1, 1);
+  const sweepLength = width * SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM;
   const next = Math.max(Number(cursor) || 1, 1) + 1;
   return next > sweepLength ? 1 : next;
 }
@@ -302,36 +315,20 @@ export async function runIngest(options = {}) {
   const budgetTimer = setTimeout(() => runController.abort(), budget);
   budgetTimer.unref?.();
 
-  // ═══ THE COUNTRY ROTATION IS ONLY AS WIDE AS THE SWEEP IS DEEP ═══
+  // ═══ EVERY CONFIGURED COUNTRY IS NOW REACHED, BY CONSTRUCTION ═══
   //
-  // These two settings compose and nothing states that they do, which has
-  // already cost one investigation. The cursor is split twice: cursorToSearch
-  // turns it into (term, sub-cursor), then adzuna's cursorToTarget turns that
-  // sub-cursor into (country, page). The sub-cursor is
-  // `floor(zeroBased / SEARCH_TERMS.length) + 1`, so its range is exactly
-  // SWEEP_PAGES_PER_TERM values — and at the default of 1 it is the constant
-  // 1, which makes cursorToTarget return countries[0] for every cursor there
-  // is. ADZUNA_COUNTRIES='us,in,gb' therefore fetches the US and nothing else,
-  // in perfect silence: no error, no empty page, just two countries that are
-  // never asked for.
+  // There used to be a warning here: ADZUNA_COUNTRIES and INGEST_SWEEP_PAGES
+  // composed, nothing said so, and at the default depth of 1 every country
+  // after the first was silently never fetched. The fix was not a louder
+  // warning — it was to stop the two settings composing at all. cursorToSearch
+  // now decodes the country itself, as the fastest-moving dimension, so the
+  // rotation is exactly as wide as the list and INGEST_SWEEP_PAGES means only
+  // what its name says: page depth within one (country, occupation).
   //
-  // Measured on the live pool 2026-09-20: 8 India rows in the 30-day window,
-  // all from himalayas, none from Adzuna — against 1,211 for the US.
-  //
-  // Warn rather than correct. Raising INGEST_SWEEP_PAGES multiplies the sweep
-  // length, so a run that silently "fixed" this would also quietly stretch a
-  // full pass over the taxonomy from ~6 daily runs to ~6 × countries, trading
-  // freshness for reach on nobody's authority.
+  // The list is read once here and threaded through the decode AND the cursor
+  // advance, so there is no second copy that can disagree about how wide the
+  // sweep is.
   const adzunaCountries = configuredCountries();
-  if (adzunaCountries.length > SWEEP_PAGES_PER_TERM) {
-    jobsLog.warn('adzuna countries beyond the sweep depth are unreachable', {
-      configured: adzunaCountries.length,
-      sweepPagesPerTerm: SWEEP_PAGES_PER_TERM,
-      reached: adzunaCountries.slice(0, SWEEP_PAGES_PER_TERM),
-      unreachable: adzunaCountries.slice(SWEEP_PAGES_PER_TERM),
-      fix: 'set INGEST_SWEEP_PAGES to at least the number of ADZUNA_COUNTRIES',
-    });
-  }
 
   const perSource = [];
   let totalInserted = 0;
@@ -462,16 +459,26 @@ export async function runIngest(options = {}) {
             // for a whole year is what filled the pool with trucking: Adzuna
             // with no `what` and no `category` is not "all jobs", it is
             // whatever that provider promotes. See jobs/searchTerms.js.
-            const search = adapter.supportsSearch ? cursorToSearch(page) : null;
+            const search = adapter.supportsSearch
+              ? cursorToSearch(page, undefined, adzunaCountries)
+              : null;
 
             try {
               const result = await adapter.fetch({
-                // A searching source pages WITHIN its current term, so it gets
-                // the decoded sub-page; everything else still gets the raw
-                // cursor it has always been handed.
+                // A searching source pages WITHIN its current (country, term),
+                // so it gets the decoded sub-page; everything else still gets
+                // the raw cursor it has always been handed.
                 page: search ? search.page : page,
                 query: search?.term,
                 category: search?.adzunaCategory,
+                // Passed EXPLICITLY rather than left for the adapter to derive
+                // from the page number. That derivation (cursorToTarget) is
+                // what made country the slowest-moving dimension, and an
+                // adapter re-deriving a value the cursor already decoded is
+                // the second copy that drifts. With this set, adzuna's fetch
+                // takes its documented explicit-country path and uses
+                // `page` as a real page number.
+                country: search?.country,
                 signal: runController.signal,
               });
               const items = Array.isArray(result?.items) ? result.items : [];
@@ -502,7 +509,7 @@ export async function runIngest(options = {}) {
                 // next value is a different occupation and resetting to 1
                 // would throw away the whole sweep because one narrow term
                 // (say 'paralegal') had fewer than 50 listings.
-                page = search ? nextSweepCursor(page) : 1;
+                page = search ? nextSweepCursor(page, adzunaCountries.length) : 1;
                 await persistState(adapter.id, {
                   next_page: page,
                   last_run_at: new Date().toISOString(),
@@ -583,9 +590,9 @@ export async function runIngest(options = {}) {
               // sweep back to the first occupation forever. The sweep's own
               // length is the only thing that ends it.
               const wraps = search
-                ? nextSweepCursor(page) === 1
+                ? nextSweepCursor(page, adzunaCountries.length) === 1
                 : (!adapter.supportsPaging || !result.hasMore);
-              const nextPage = wraps ? 1 : (search ? nextSweepCursor(page) : page + 1);
+              const nextPage = wraps ? 1 : (search ? nextSweepCursor(page, adzunaCountries.length) : page + 1);
               await persistState(adapter.id, {
                 next_page: nextPage,
                 last_run_at: new Date().toISOString(),

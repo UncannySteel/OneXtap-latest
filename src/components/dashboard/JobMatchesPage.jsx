@@ -923,6 +923,15 @@ const RunTransparency = ({ result, meta, returnedCount, open, onToggle, onRetryM
               {finiteOr(result?.meta?.poolSize, 0)} in the pool ·{' '}
               {finiteOr(result?.meta?.sentToScorer, finiteOr(result?.meta?.prefilterLimit, PREFILTER_LIMIT_ESTIMATE))} sent to the scorer ·{' '}
               {returnedCount} returned
+              {/* The gap between "sent to the scorer" and "returned" is the
+                  floor, and unexplained it reads as jobs going missing: 30
+                  scored, 4 shown, nothing saying why. This is the same fact
+                  the empty state carries, stated for the runs that are merely
+                  SHORT rather than empty — the more common case, and the one
+                  with no other place to say it. */}
+              {Number.isFinite(result?.belowFloorCount) && result.belowFloorCount > 0
+                && Number.isFinite(result?.minScore)
+                && ` · ${result.belowFloorCount} below the ${result.minScore}% match floor, not shown`}
             </dd>
           </div>
 
@@ -1864,6 +1873,28 @@ const JobMatchesPage = ({ showToast }) => {
     ? result.inFilterCount
     : rankedJobs.filter((entry) => !entry?.relaxedFilters).length;
 
+  /**
+   * ═══ THE TWO WAYS A LIST CAN BE EMPTY ═══
+   *
+   * They look identical on screen and need opposite sentences:
+   *
+   *   nothing was SCORED  — the pool holds nothing for these filters. The
+   *                         place is thin, or the filters exclude everything.
+   *   nothing CLEARED     — jobs were found and scored, and every one of them
+   *                         came back under the bar. That is a statement about
+   *                         fit, not about coverage, and telling someone their
+   *                         filters are too narrow when the real answer is
+   *                         "none of these suit you" sends them to change the
+   *                         one control that was not the problem.
+   *
+   * `belowFloorCount` is what separates them. Guarded rather than trusted for
+   * the same reason `inFilterCount` above is: it comes off the wire, and an
+   * older server that does not send it reads as 0, which degrades to the
+   * pre-floor wording rather than to "undefined listings".
+   */
+  const belowFloorCount = Number.isFinite(result?.belowFloorCount) ? result.belowFloorCount : 0;
+  const minScore = Number.isFinite(result?.minScore) ? result.minScore : null;
+
   // ── Render ────────────────────────────────────────────────────────
 
   return (
@@ -2119,8 +2150,17 @@ const JobMatchesPage = ({ showToast }) => {
               <Notice tone="amber" icon={AlertTriangle} className="mb-4">
                 <div>
                   <p className="font-medium">Some jobs were scored by keyword only.</p>
+                  {/* This used to promise "mixed runs are not cached, so a
+                      refresh re-scores them", and that stopped being true when
+                      rankCacheability replaced the blanket `degraded` check —
+                      a mostly-AI-scored run is now kept, at a shorter TTL than
+                      a clean one. Refresh still works; it just may not be
+                      needed, and promising a re-score we might serve from the
+                      cache is the kind of small lie that costs trust in the
+                      whole footer. */}
                   <p className="mt-1 text-xs opacity-90">
-                    The rest are AI-scored. Mixed runs are not cached, so a refresh re-scores them.
+                    The rest are AI-scored. This result is kept for a shorter time than a fully
+                    scored one, so it refreshes sooner on its own.
                   </p>
                 </div>
               </Notice>
@@ -2203,10 +2243,18 @@ const JobMatchesPage = ({ showToast }) => {
               </div>
             ) : visibleJobs.length === 0 ? (
               <div className={EMPTY_BOX}>
-                {/* With no threshold, empty can only mean the pool held
-                    nothing for these filters — never "nothing cleared your
-                    bar". The old copy said the latter and sent people to
-                    lower a control that was hiding real results.
+                {/* Empty now means one of two things, and the paragraph
+                    below picks between them on `belowFloorCount`. The old copy
+                    could only say one — it was written when there was no
+                    threshold at all — and a run that scored thirty jobs and
+                    showed none of them would have read as "your filters are
+                    too narrow", which is the one thing it is not.
+
+                    The bar is server-side and fixed (MIN_MATCH_SCORE in
+                    server/jobs/graph.js). That is what keeps this different
+                    from the `minMatch` slider this page used to carry: there
+                    is no control here for the user to go and lower, so the
+                    sentence is a fact to absorb rather than a puzzle to solve.
 
                     ═══ WHY THIS NAMES THE PLACE ═══
 
@@ -2221,13 +2269,22 @@ const JobMatchesPage = ({ showToast }) => {
                     another country's jobs instead is what this replaces. */}
                 <p className={STRONG_TEXT}>
                   {emptyPlace
-                    ? `No matching jobs in ${emptyPlace} right now.`
-                    : 'Nothing matched these filters.'}
+                    ? `No matches available in ${emptyPlace} right now.`
+                    : 'No matches available right now.'}
                 </p>
+                {/* Scored-but-cut is a different fact from found-nothing, and
+                    it is the one that has to name the bar. Saying "we scored
+                    26 and none reached 50%" is the whole answer: the search
+                    worked, the pool had jobs, and none of them fit well enough
+                    to be worth the user's time. The sentence after it is the
+                    promise this panel exists to keep — nothing from another
+                    place was substituted in to pad the list. */}
                 <p className={`mt-1 ${SUBTEXT}`}>
-                  {emptyPlace && emptyPlaceCount !== null && emptyPlaceCount <= THIN_POOL
-                    ? `We are only holding ${emptyPlaceCount} ${emptyPlaceCount === 1 ? 'listing' : 'listings'} for ${emptyPlace}, and none of them line up with your resume. Nothing was substituted from elsewhere.`
-                    : 'Nothing was substituted from another location. Try a different place, or turn off a source filter.'}
+                  {belowFloorCount > 0 && minScore !== null
+                    ? `We scored ${belowFloorCount} ${belowFloorCount === 1 ? 'listing' : 'listings'}${emptyPlace ? ` in ${emptyPlace}` : ''} and none reached a ${minScore}% match, so none are shown. Nothing was substituted from elsewhere.`
+                    : emptyPlace && emptyPlaceCount !== null && emptyPlaceCount <= THIN_POOL
+                      ? `We are only holding ${emptyPlaceCount} ${emptyPlaceCount === 1 ? 'listing' : 'listings'} for ${emptyPlace}, and none of them line up with your resume. Nothing was substituted from elsewhere.`
+                      : 'Nothing was substituted from another location. Try a different place, or turn off a source filter.'}
                 </p>
               </div>
             ) : (

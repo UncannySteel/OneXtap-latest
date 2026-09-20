@@ -43,7 +43,7 @@ export const PROMPTS_DIR = fileURLToPath(new URL('./', import.meta.url));
  * @type {Readonly<Record<string, number>>}
  */
 export const PROMPT_VERSIONS = Object.freeze({
-  rank: 3,
+  rank: 4,
   reformulate: 2,
   explain: 2,
   suggest_tailoring: 2,

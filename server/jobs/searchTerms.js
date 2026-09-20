@@ -104,29 +104,66 @@ export const SEARCH_TERMS = Object.freeze([
 ].map(Object.freeze));
 
 /**
- * Map the ingest cursor onto one search term plus a page within it.
+ * Map the ingest cursor onto one (country, term, page) triple.
  *
- * Deliberately the same shape as `cursorToTarget` in adapters/adzuna.js, and
- * it composes with it: this splits the flat cursor into (term, sub-cursor),
- * and Adzuna then splits that sub-cursor into (country, page). Each cursor
- * value therefore names a distinct (term, country, page) triple.
+ * ═══ WHY THIS DECODES ALL THREE, AND USED TO DECODE TWO ═══
  *
- * Term-major on purpose. Walking pages within one term before moving on would
- * spend an entire run — the whole daily budget — deepening one occupation,
- * which is the failure this file exists to undo. Rotating first means a run
- * that dies at page 3 still touched three different occupations.
+ * The cursor used to be split in two places: this returned (term, sub-cursor),
+ * and `cursorToTarget` in adapters/adzuna.js split that sub-cursor into
+ * (country, page). Nothing stated that they composed, and the composition was
+ * wrong in a way neither half could show on its own.
+ *
+ * The sub-cursor was `floor(zeroBased / SEARCH_TERMS.length) + 1`, so it moved
+ * ONCE PER FULL PASS OVER THE TAXONOMY — which made country the SLOWEST-moving
+ * dimension of the three. `cursorToTarget`'s own docstring promises round-robin
+ * ("a run that exhausts its time budget after two pages should have covered two
+ * countries, not the first two pages of one"), and it delivers that on the
+ * number it is given; it simply was never given a number that moved. With 33
+ * terms and `ADZUNA_COUNTRIES=us,in`, cursors 1-33 were all the US and India
+ * began at 34 — eleven daily runs of nothing. At the old default of
+ * INGEST_SWEEP_PAGES=1 the sub-cursor was the CONSTANT 1 and India was never
+ * reached at all. Measured 2026-09-20: 8 India rows in the 30-day window, none
+ * of them from Adzuna, against 1,211 for the US.
+ *
+ * So the decode lives in one function now, and country is the FASTEST-moving
+ * dimension: consecutive cursors are the same occupation in each country in
+ * turn, then the next occupation. Every run covers every country. The ordering
+ * within the other two is unchanged — term-major over page, because walking
+ * pages within one term would spend a whole daily budget deepening a single
+ * occupation, which is the failure this file exists to undo.
+ *
+ *   countries = [us, in]
+ *   cursor 1 → us, software engineer, p1    cursor 4 → in, python developer, p1
+ *   cursor 2 → in, software engineer, p1    cursor 5 → us, frontend developer, p1
+ *   cursor 3 → us, python developer, p1     ...
+ *
+ * Called with no `countries` the decode is byte-identical to the old
+ * term-major one (a single implied country), which is what every non-Adzuna
+ * caller and the existing tests rely on.
  *
  * @param {number} cursor 1-based page from job_ingest_state.
  * @param {readonly SearchTerm[]} [terms] Defaults to SEARCH_TERMS.
- * @returns {{term: string, adzunaCategory: string, page: number}}
+ * @param {readonly string[]} [countries] Two-letter codes from
+ *   `configuredCountries()`. Empty or absent means the caller has one implied
+ *   country and `country` comes back undefined.
+ * @returns {{term: string, adzunaCategory: string, country: string|undefined,
+ *   page: number}} `page` is the page WITHIN that (country, term).
  */
-export function cursorToSearch(cursor, terms = SEARCH_TERMS) {
+export function cursorToSearch(cursor, terms = SEARCH_TERMS, countries = []) {
   const list = Array.isArray(terms) && terms.length ? terms : SEARCH_TERMS;
+  const places = Array.isArray(countries) ? countries.filter(Boolean) : [];
+  const width = Math.max(places.length, 1);
   const zeroBased = Math.max(Number(cursor) || 1, 1) - 1;
-  const entry = list[zeroBased % list.length];
+
+  // Country first, so it is the dimension that moves on every single cursor
+  // value; the remaining quotient is the old term-major cursor exactly.
+  const country = places.length ? places[zeroBased % width] : undefined;
+  const slot = Math.floor(zeroBased / width);
+  const entry = list[slot % list.length];
   return {
     term: entry.term,
     adzunaCategory: entry.adzunaCategory,
-    page: Math.floor(zeroBased / list.length) + 1,
+    country,
+    page: Math.floor(slot / list.length) + 1,
   };
 }

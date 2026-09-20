@@ -91,5 +91,12 @@ export {
  * rebuilds it from `cvText` only when this number is ahead of the record's.
  * Without the bump, every existing user keeps a dateless corpus and goes on
  * seeing their own start date reported as a fabrication.
+ *
+ * 3 — ranking gained a hard minimum match score (MIN_MATCH_SCORE in
+ * server/jobs/graph.js): jobs below it are no longer returned at all. The
+ * ranking cache is keyed on this number (`cacheKey` in server/jobs/rankCache.js),
+ * so without the bump every user with a warm cache would keep being served the
+ * sub-50% list for up to six hours — the exact results the floor exists to
+ * remove, and indistinguishable from the floor not working.
  */
-export const MATCHER_VERSION = 2;
+export const MATCHER_VERSION = 3;

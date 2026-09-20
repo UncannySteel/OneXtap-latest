@@ -29,6 +29,9 @@ const {
   GOOD_SCORE,
   ENOUGH_GOOD_MATCHES,
   PREFILTER_LIMIT,
+  MIN_MATCH_SCORE,
+  applyScoreFloor,
+  summarizeSources,
 } = await import('../../server/jobs/graph.js');
 const { buildResumeProfile } = await import('../../src/matching/index.js');
 
@@ -160,7 +163,14 @@ test('reformulation stops at exactly MAX_LOOPS when the gate never passes', asyn
   assert.equal(result.reformulations.length, 2);
   // One read per pass: the initial one plus one per loop.
   assert.equal(pool.seen.length, MAX_LOOPS + 1);
-  assert.ok(result.jobs.length > 0, 'a failed search still returns what it found');
+  // It found 20 jobs and every one of them scored 5, so the floor returns
+  // NONE of them. This assertion used to read `jobs.length > 0` — "a failed
+  // search still returns what it found" — and that is the behaviour
+  // MIN_MATCH_SCORE exists to end: what it found was twenty 5% matches, and
+  // showing them is how the page filled up with work nobody can use. The
+  // count has to survive, though; it is what the empty state says instead.
+  assert.equal(result.jobs.length, 0, 'nothing scoring 5 may be returned');
+  assert.equal(result.belowFloorCount, 20, 'and the run still reports what it cut');
 });
 
 test('options.maxLoops can lower the bound but never raise it', async () => {
@@ -718,4 +728,159 @@ test('options.broaden restores the ladder without a redeploy', async () => {
   assert.equal(on.loops, MAX_LOOPS, 'the ladder still runs when it is asked for');
   assert.ok(on.reformulations.some((r) => r.step === 'drop_location'));
   assert.ok(on.jobs.length > off.jobs.length, 'broadening is what adds the extra jobs');
+});
+
+// ------------------------------------------------------------------
+// The match floor
+//
+// The product rule these encode: a listing below MIN_MATCH_SCORE is never
+// shown, in any country, from any source, however short the list becomes. The
+// answer to "nothing cleared the bar" is an empty list and a sentence — never
+// a wider search. See MIN_MATCH_SCORE and BROADEN_WHEN_THIN in graph.js.
+// ------------------------------------------------------------------
+test('the floor is 50 and is what the result reports it used', async () => {
+  assert.equal(MIN_MATCH_SCORE, 50, 'the documented product bar');
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    deps: { fetchJobs: poolOf(makeJobs(3)).fetchJobs, callModel: scorer(80) },
+  });
+  assert.equal(result.minScore, MIN_MATCH_SCORE);
+});
+
+test('a job one point below the floor is not returned; one point above is', async () => {
+  const below = await runRankGraph({
+    resumeProfile: PROFILE,
+    deps: { fetchJobs: poolOf(makeJobs(4)).fetchJobs, callModel: scorer(MIN_MATCH_SCORE - 1) },
+  });
+  const at = await runRankGraph({
+    resumeProfile: PROFILE,
+    deps: { fetchJobs: poolOf(makeJobs(4)).fetchJobs, callModel: scorer(MIN_MATCH_SCORE) },
+  });
+
+  assert.equal(below.jobs.length, 0, 'one point under is out');
+  assert.equal(below.belowFloorCount, 4);
+  // At the floor, not above it: the bar is "50% or better", so an exactly-50
+  // job is a match. Off-by-one here silently drops a whole score band.
+  assert.equal(at.jobs.length, 4, 'exactly at the floor is in');
+  assert.equal(at.belowFloorCount, 0);
+});
+
+test('a mixed list keeps only what cleared the floor, and counts the rest', async () => {
+  const jobs = makeJobs(6);
+  // Scores by index: 90, 70, 50 clear; 49, 20, 0 do not.
+  const byIndex = [90, 70, 50, 49, 20, 0];
+  const callModel = async ({ user }) => {
+    const ids = [...String(user).matchAll(/"jobId":\s*"([^"]+)"/g)].map((m) => m[1]);
+    return JSON.stringify(ids.map((jobId) => ({
+      jobId,
+      score: byIndex[Number(jobId.split(':')[1])] ?? 0,
+      gapSummary: 'A sentence.',
+      matchedSignals: [],
+      missingSignals: [],
+    })));
+  };
+
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    deps: { fetchJobs: poolOf(jobs).fetchJobs, callModel },
+  });
+
+  assert.deepEqual(result.jobs.map((j) => j.score), [90, 70, 50]);
+  assert.equal(result.belowFloorCount, 3);
+  // Every derived count describes the LIST, not the scoring run, or the footer
+  // and the page disagree about how many jobs there are.
+  assert.equal(result.inFilterCount, 3);
+  assert.equal(result.sources.reduce((n, s) => n + s.count, 0), 3);
+  // ...while the pool numbers still describe the SEARCH. This pair is what
+  // lets the empty state say "we scored 6 and none reached 50%".
+  assert.equal(result.poolSize, 6);
+  assert.equal(result.sentToScorer, 6);
+});
+
+test('a thin country returns nothing rather than a low-scoring match', async () => {
+  // The India case, in miniature: a handful of listings, one of which shares a
+  // term with the resume and scores 10. The old behaviour rendered that 10 as
+  // a match; the rule is that it is not one, and that nothing is substituted
+  // from anywhere else to replace it.
+  const pool = poolOf(makeJobs(3, { location: 'Bengaluru, India' }));
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    filters: { locationCountry: 'India' },
+    deps: { fetchJobs: pool.fetchJobs, callModel: scorer(10) },
+  });
+
+  assert.equal(result.jobs.length, 0, 'not available, rather than unrelated');
+  assert.equal(result.belowFloorCount, 3, 'and the count that explains it');
+  assert.deepEqual(result.relaxedFilters, [], 'no filter was given up');
+  assert.equal(result.loops, 0, 'and no broadening loop was even attempted');
+  // One read, under the caller's own filters, every time.
+  assert.equal(pool.seen.length, 1);
+  assert.equal(pool.seen[0].locationCountry, 'India');
+});
+
+test('the floor applies to the degraded keyword path too', async () => {
+  // A rate-limited run is the one most likely to be someone's first
+  // impression; it must not be the one that shows 10% matches.
+  const result = keywordOnlyResult(PROFILE, makeJobs(5, {
+    title: 'Pastry Chef',
+    keywordTerms: ['baking'],
+    keywords: [{ t: 'baking', w: 1 }],
+  }), 'rate_limited');
+
+  assert.equal(result.jobs.length, 0);
+  assert.equal(result.minScore, MIN_MATCH_SCORE);
+  assert.ok(result.jobs.every((j) => j.score >= MIN_MATCH_SCORE));
+  assert.equal(result.degraded, true);
+});
+
+test('broadening, when switched on, still may not return a sub-floor job', async () => {
+  // The two policies compose in one direction only: broadening changes WHERE
+  // jobs may come from, never how good they must be. A run with the ladder on
+  // and every job scoring 5 returns an empty list exactly like a run with it
+  // off — otherwise RANK_BROADEN=1 would quietly reopen the hole the floor
+  // was added to close.
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    filters: { location: 'Berlin', remote: 'true' },
+    deps: { fetchJobs: poolOf(makeJobs(20)).fetchJobs, callModel: scorer(5) },
+    options: { broaden: true },
+  });
+
+  assert.ok(result.loops > 0, 'the ladder did run');
+  assert.equal(result.jobs.length, 0, 'and still returned nothing below the floor');
+});
+
+test('applyScoreFloor is idempotent, which is what lets the route re-apply it', () => {
+  // The route runs this a second time over whatever rankWithCache returned, to
+  // catch a list cached before the floor existed. That is only safe if a
+  // second pass over an already-filtered list cuts nothing.
+  const list = [{ score: 90 }, { score: 50 }, { score: 49 }, { score: 0 }];
+  const once = applyScoreFloor(list);
+  assert.equal(once.cut, 2);
+  assert.deepEqual(once.kept.map((j) => j.score), [90, 50]);
+
+  const twice = applyScoreFloor(once.kept);
+  assert.equal(twice.cut, 0, 'a second pass must be a no-op');
+  assert.deepEqual(twice.kept, once.kept);
+});
+
+test('applyScoreFloor survives the shapes the wire can actually deliver', () => {
+  // It runs on `outcome.jobs` straight off a cache row, so a missing or
+  // non-numeric score must be CUT rather than throw or sneak through as NaN.
+  assert.deepEqual(applyScoreFloor(null), { kept: [], cut: 0 });
+  assert.deepEqual(applyScoreFloor(undefined), { kept: [], cut: 0 });
+  const mixed = applyScoreFloor([{ score: 60 }, {}, { score: null }, { score: 'x' }, null]);
+  assert.equal(mixed.kept.length, 1);
+  assert.equal(mixed.cut, 4);
+});
+
+test('summarizeSources counts the list it is given, largest first', () => {
+  // The route calls this to rebuild meta.sources after a cache cut, so the
+  // footer's per-source totals add up to the list under it.
+  const summary = summarizeSources([
+    { job: { source: 'jobicy' } },
+    { job: { source: 'adzuna' } },
+    { job: { source: 'jobicy' } },
+  ]);
+  assert.deepEqual(summary, [{ id: 'jobicy', count: 2 }, { id: 'adzuna', count: 1 }]);
 });

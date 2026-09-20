@@ -116,8 +116,27 @@ export const RANK_CONCURRENCY = envInt('RANK_CONCURRENCY', 1, 1, 8);
  */
 export const RANK_MAX_TOKENS = envInt('RANK_MAX_TOKENS', 5000, 512, 16000);
 
-/** Low, because this is a judgement task and we want it repeatable. */
-export const RANK_TEMPERATURE = 0.2;
+/**
+ * Zero, because this is a CLASSIFICATION task and every point of sampling
+ * noise is a point of drift.
+ *
+ * It was 0.2, "low, because this is a judgement task and we want it
+ * repeatable". Repeatable was the right goal and 0.2 was not it: measured
+ * 2026-09-20 over three runs of one fixture batch per model, the same job in
+ * the same batch moved by a mean of 3.1 points and a maximum of 10 — a
+ * `Senior UX Designer` that should be nowhere near the page came back 0, 10
+ * and 5 on consecutive identical calls.
+ *
+ * A rank score is not creative writing. The model picks a band from a table
+ * and a number inside it, so there is no diversity worth sampling for, and
+ * the cost of the noise is concrete: 50 is a hard cut (MIN_MATCH_SCORE), so a
+ * job sitting near it appears and disappears between two identical searches.
+ *
+ * The prompt carries the other, larger half of this — see the "must not depend
+ * on the other jobs in the batch" rule in prompts/rank.md, which was worth
+ * 6.6 points on average against this one's 3.1.
+ */
+export const RANK_TEMPERATURE = 0;
 
 /**
  * Matched/missing signals kept per job.
@@ -233,6 +252,59 @@ function clampScore(value) {
   const n = typeof value === 'number' ? value : Number.parseFloat(value);
   if (!Number.isFinite(n)) return null;
   return Math.min(100, Math.max(0, Math.round(n)));
+}
+
+/**
+ * The score bands from prompts/rank.md, as inclusive [min, max] ranges.
+ *
+ * Duplicated from the prompt text on purpose: the prompt is what the model
+ * reads and this is what the server enforces, and an enforcement that derived
+ * itself from the prose would be trusting the thing it is supposed to check.
+ * `test/evals/fixtures/rankPairs.js` holds a third copy for the same reason —
+ * a fixture that imported the server's numbers could not catch the server
+ * changing them. A test asserts these two agree.
+ */
+export const SCORE_BANDS = Object.freeze({
+  strong: Object.freeze([85, 100]),
+  good: Object.freeze([70, 84]),
+  partial: Object.freeze([55, 69]),
+  weak: Object.freeze([35, 54]),
+  poor: Object.freeze([0, 34]),
+});
+
+/**
+ * Pull a score into the band the model named for it.
+ *
+ * ═══ WHY THE BAND OUTRANKS THE NUMBER ═══
+ *
+ * Measured 2026-09-20, three identical runs per model over a fixture batch:
+ * the same job in the same batch moved up to 10 points run-to-run, and the
+ * SAME job moved up to 18 points depending only on which other jobs shared its
+ * batch. A `Backend Engineer, Payments` that is hand-labelled `weak` scored 40
+ * inside a five-job batch and 58 alone — across the 50 cut, which is the line
+ * that decides whether a user sees it at all. That is the India case in
+ * miniature: a thin country produces a batch of one, a batch of one has no
+ * comparison to calibrate against, and the score floats up.
+ *
+ * A discrete label is far steadier than a point estimate, so the prompt now
+ * asks for the band FIRST and the number second, and this puts the number back
+ * inside the band whenever the model lets them disagree. The band is the
+ * judgement; the number is where in the band it sits.
+ *
+ * An unknown or missing band returns the score untouched — the field is new,
+ * and a cached or older response that predates it must still score rather than
+ * be thrown away.
+ *
+ * @param {number} score Already through {@link clampScore}.
+ * @param {unknown} band The model's `band`, any case; junk is ignored.
+ * @returns {{score: number, clamped: boolean}}
+ */
+function toBand(score, band) {
+  const range = SCORE_BANDS[String(band ?? '').trim().toLowerCase()];
+  if (!range) return { score, clamped: false };
+  const [lo, hi] = range;
+  const pulled = Math.min(hi, Math.max(lo, score));
+  return { score: pulled, clamped: pulled !== score };
 }
 
 /**
@@ -493,17 +565,24 @@ export async function rankBatch(params = {}) {
       }
 
       let recovered = 0;
+      let clamped = 0;
       const out = batch.map((job) => {
         const entry = byId.get(jobKey(job));
-        const score = entry ? clampScore(entry.score) : null;
-        if (score === null) {
+        const raw = entry ? clampScore(entry.score) : null;
+        if (raw === null) {
           recovered += 1;
           return keywordResult(resumeProfile, job, entry ? 'unparseable_score' : 'missing_entry');
         }
+        // The band the model named wins over the number it then wrote — see
+        // toBand. A disagreement is the model contradicting itself within one
+        // object, and the label is the steadier half.
+        const pulled = toBand(raw, entry.band);
+        if (pulled.clamped) clamped += 1;
         return {
           job,
           jobId: jobKey(job),
-          score,
+          score: pulled.score,
+          band: typeof entry.band === 'string' ? entry.band.trim().toLowerCase() : null,
           gapSummary: toGapSummary(entry.gapSummary),
           matchedSignals: toStringList(entry.matchedSignals, 6),
           missingSignals: toStringList(entry.missingSignals, 6),
@@ -512,8 +591,19 @@ export async function rankBatch(params = {}) {
         };
       });
 
+      if (clamped) {
+        // Not a warning: the clamp WORKING is the normal case this exists for.
+        // Worth a line because a batch where most scores need pulling means
+        // the band table and the numbers have drifted apart in the prompt.
+        rankLog.debug('scores pulled into their named band', {
+          batch: index,
+          clamped,
+          of: out.length,
+        });
+      }
+
       span?.update?.({
-        output: { scored: out.length - recovered, recovered },
+        output: { scored: out.length - recovered, recovered, clamped },
         metadata: { returned: parsed.length },
       })?.end?.();
 

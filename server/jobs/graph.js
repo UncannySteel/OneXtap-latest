@@ -59,6 +59,77 @@ export const GOOD_SCORE = 60;
 export const ENOUGH_GOOD_MATCHES = 5;
 
 /**
+ * The lowest score a job may carry and still be RETURNED.
+ *
+ * ═══ THIS IS A FLOOR, NOT A GATE ═══
+ *
+ * GOOD_SCORE above decides whether to keep LOOKING. This decides what the user
+ * is allowed to SEE, and the two are separate questions: a run can be perfectly
+ * satisfied with its own search and still be holding nothing worth showing.
+ *
+ * ═══ WHY A HARD NUMBER, AFTER ONE WAS REMOVED ═══
+ *
+ * There used to be a `minMatch` control on the client and it was taken out,
+ * for a real reason: it cut on a score that drifts between models, so a user
+ * who set it to 85% got an empty page that looked like a bug. The conclusion
+ * drawn then was "no threshold at all", and that is the half that was wrong.
+ * Removing the control removed the CEILING on how low a rendered match could
+ * be, and what the page showed instead was everything the prefilter did not
+ * drop — which, measured against the live pool on 2026-09-20 with a software
+ * résumé, was 26 of 30 United States results under 50% and, for India, a
+ * single 10% "Freelance Agent Evaluation Engineer" rendered as a match.
+ *
+ * 50 is the product decision: at or above it a listing is a real candidate,
+ * below it we are padding a list to avoid printing a short one. It is fixed and
+ * server-side precisely because the old control was neither — a user cannot set
+ * it to a number that empties their page, and it applies identically to every
+ * country, every source and every résumé.
+ *
+ * ═══ WHY THIS DOES NOT REINTRODUCE "85% RETURNS NOTHING" ═══
+ *
+ * Because an empty list is now an honest, explained outcome rather than a
+ * puzzle. When nothing clears the floor the result still carries `poolSize`,
+ * `sentToScorer` and `belowFloorCount`, and the client renders "we scored N
+ * listings and none reached 50%" — a fact about the market, not a control the
+ * user is invited to go and lower. See BROADEN_WHEN_THIN: the answer to a thin
+ * result is a sentence, never a wider search.
+ *
+ * RANK_MIN_SCORE moves it without a deploy, clamped to [0, 100]. Zero disables
+ * the floor.
+ */
+const _floor = Number.parseInt(process.env.RANK_MIN_SCORE || '', 10);
+export const MIN_MATCH_SCORE =
+  Number.isFinite(_floor) && _floor >= 0 ? Math.min(_floor, 100) : 50;
+
+/**
+ * Drop every job scoring below {@link MIN_MATCH_SCORE}.
+ *
+ * Applied once, at the very end, to the list the caller will actually receive —
+ * not inside the loop. The gate, the reformulation records and `poolSize` all
+ * describe the SEARCH, and they stay describing the whole of it; this describes
+ * what the search was willing to show for it. Filtering earlier would make a
+ * run report that it scored 30 jobs and looked at 4.
+ *
+ * Exported because the route applies it a SECOND time, to whatever comes back
+ * from the cache. A result stored before this floor existed — or by a client
+ * still sending the old matcherVersion, which is what the cache is keyed on —
+ * is a pre-floor list, and serving it would mean "50% is compulsory" quietly
+ * held for everyone except the users with a warm cache. Re-running it on an
+ * already-filtered list costs one pass and cuts nothing.
+ *
+ * @param {object[]} jobs Ranked envelopes.
+ * @returns {{kept: object[], cut: number}} `cut` is how many were dropped, and
+ *   it is what lets the empty state say "we scored N and none reached 50%"
+ *   instead of the much vaguer "nothing matched".
+ */
+export function applyScoreFloor(jobs) {
+  const list = Array.isArray(jobs) ? jobs : [];
+  if (MIN_MATCH_SCORE <= 0) return { kept: list, cut: 0 };
+  const kept = list.filter((entry) => Number(entry?.score) >= MIN_MATCH_SCORE);
+  return { kept, cut: list.length - kept.length };
+}
+
+/**
  * Hard cap on reformulation loops.
  *
  * Two, and not "until it finds enough": some searches have no good matches in
@@ -192,10 +263,14 @@ const ERROR_TEXT_CHARS = 300;
 /**
  * Distinct sources present in a result list, with counts, largest first.
  * @param {object[]} jobs Ranked-job envelopes, or bare jobs.
+ * Exported under the name the route uses it by — the route re-summarises a
+ * cached list after applying the score floor to it, and a second definition
+ * there would be the one place the two could disagree about what a source is.
+ *
  * @returns {{id: string, count: number}[]} Ties break on id, so the order is
  *   stable across runs and two identical searches render identically.
  */
-function summarizeSources(jobs) {
+export function summarizeSources(jobs) {
   const counts = new Map();
   for (const entry of jobs) {
     const source = entry?.job?.source || entry?.source || 'unknown';
@@ -459,12 +534,17 @@ function reformulateQuery(state, loopIndex) {
  *   relax the caller's filters. Defaults to BROADEN_WHEN_THIN, which is off —
  *   see that constant for why.
  * @returns {Promise<{jobs: object[], loops: number, reformulations: object[],
- *   relaxedFilters: string[], inFilterCount: number, degraded: boolean,
- *   scoredBy: string, sources: object[], timings: object}>}
- *   `jobs` is every job scored across every loop, deduplicated and ordered
- *   with the ones honouring the caller's filters first. Each carries
- *   `relaxedFilters`: null when it honours them all, otherwise the filters
- *   that had been dropped when it was found.
+ *   relaxedFilters: string[], inFilterCount: number, belowFloorCount: number,
+ *   minScore: number, degraded: boolean, scoredBy: string, sources: object[],
+ *   timings: object}>}
+ *   `jobs` is every job scored across every loop that reached
+ *   {@link MIN_MATCH_SCORE}, deduplicated and ordered with the ones honouring
+ *   the caller's filters first. Each carries `relaxedFilters`: null when it
+ *   honours them all, otherwise the filters that had been dropped when it was
+ *   found. `belowFloorCount` is how many scored jobs the floor removed — an
+ *   empty `jobs` with a non-zero count there is "nothing was good enough",
+ *   which reads differently from "nothing was found" and must be rendered
+ *   differently.
  */
 export async function runRankGraph(params = {}) {
   // Destructured defensively rather than in the signature: a default only
@@ -739,10 +819,52 @@ export async function runRankGraph(params = {}) {
 
   timings.totalMs = Date.now() - startedAt;
 
+  // THE FLOOR. Everything below is computed from the list the user receives,
+  // so `inFilterCount`, `sources` and `meta.total` describe what is on the
+  // page rather than what was scored on the way to it. `poolSize` and
+  // `sentToScorer` deliberately still describe the search — that is the pair
+  // the empty state needs to explain itself.
+  const { kept, cut: belowFloorCount } = applyScoreFloor(ranked);
+  ranked = kept;
+
+  // ═══ scoredBy DESCRIBES THE LIST, NOT THE PASS ═══
+  //
+  // Recomputed over the SURVIVORS, because the floor changes the answer and
+  // the label is read by a user-facing banner ("Some jobs were scored by
+  // keyword only"). The keyword scorer is systematically more pessimistic than
+  // the model — it can only see term overlap — so the jobs it scored are
+  // exactly the ones most likely to fall under the floor. The common case is
+  // therefore a pass that really was 'mixed' returning a list that is entirely
+  // model-scored, and a banner apologising for keyword scoring that is not on
+  // the page is a caveat about jobs the user cannot see.
+  //
+  // Nothing is hidden by this. `degraded` stays true, `degradeReason` still
+  // names what the provider did, and the diagnostics footer still renders
+  // both. What changes is that the LABEL on a list now belongs to that list.
+  //
+  // An empty list reads as 'keyword' by summarizeScoredBy's own convention;
+  // callers that care about the difference between "nothing to score" and "the
+  // model died" must read `degradeReason`, not this — see rankCacheability.
+  const listScoredBy = summarizeScoredBy(ranked);
+  if (listScoredBy !== scoredBy) {
+    graphLog.debug('score floor changed the list label', {
+      pass: scoredBy,
+      list: listScoredBy,
+      kept: ranked.length,
+      cut: belowFloorCount,
+    });
+  }
+  scoredBy = listScoredBy;
+
   const result = {
     jobs: ranked,
     loops,
     reformulations,
+    // How many scored jobs the floor removed, and the floor it used. Sent
+    // always, not only when the list is empty: a run showing 2 jobs out of 30
+    // scored is a fact the footer states for the same reason.
+    belowFloorCount,
+    minScore: MIN_MATCH_SCORE,
     // The banner's inputs, computed here rather than re-derived on the client.
     // `reformulations` already describes what happened, but it describes it as
     // a list of steps for the diagnostics footer; these two say the one thing
@@ -865,18 +987,32 @@ function prefilterClientJobs(resumeProfile, jobs, limit) {
  * @param {string} [reason] Recorded on every row as `fallbackReason`.
  * @returns {object} The same shape {@link runRankGraph} returns, always with
  *   `degraded: true` and `loops: 0` — no model ran, so nothing was broadened.
+ *   {@link MIN_MATCH_SCORE} applies here too.
  */
 export function keywordOnlyResult(resumeProfile, jobs, reason = 'rate_limited') {
   const list = Array.isArray(jobs) ? jobs : [];
   const candidates = prefilterClientJobs(resumeProfile, list, PREFILTER_LIMIT);
-  const ranked = candidates
+  const scored = candidates
     .map((job) => keywordResult(resumeProfile, job, reason))
     .sort((a, b) => b.score - a.score);
+
+  // The same floor the graph applies, for the same reason. This path exists to
+  // be indistinguishable in shape from a real run — a rate-limited user seeing
+  // 10% matches that a scored run would have hidden is the floor failing on the
+  // one request most likely to be someone's first impression.
+  //
+  // Note it cuts HARDER here: the keyword scorer is systematically more
+  // pessimistic than the model (it can only see term overlap), so a degraded
+  // run legitimately shows fewer jobs. `degraded: true` and `scoredBy:
+  // 'keyword'` already tell the client to say so.
+  const { kept: ranked, cut: belowFloorCount } = applyScoreFloor(scored);
 
   return {
     jobs: ranked,
     loops: 0,
     reformulations: [],
+    belowFloorCount,
+    minScore: MIN_MATCH_SCORE,
     // Nothing was broadened — this path reads the pool once, under the user's
     // own filters — so every job on it honours them.
     relaxedFilters: [],

@@ -16,9 +16,15 @@ import assert from 'node:assert/strict';
 
 process.env.LOG_LEVEL = 'error';
 
-const { rankBatch, keywordResult, renderPromptParts, BATCH_SIZE, RANK_CONCURRENCY } = await import(
-  '../../server/jobs/rank.js'
-);
+const {
+  rankBatch,
+  keywordResult,
+  renderPromptParts,
+  BATCH_SIZE,
+  RANK_CONCURRENCY,
+  SCORE_BANDS,
+  RANK_TEMPERATURE,
+} = await import('../../server/jobs/rank.js');
 const { buildResumeProfile } = await import('../../src/matching/index.js');
 
 const PROFILE = buildResumeProfile({
@@ -454,4 +460,117 @@ test('spans are opened per batch when a trace is given, and no span call throws'
 
   assert.equal(opened.length, Math.ceil((BATCH_SIZE * 2 + 1) / BATCH_SIZE));
   assert.ok(opened.every((n) => n === 'rank_batch'));
+});
+
+// ------------------------------------------------------------------
+// Score bands
+//
+// The prompt asks for a `band` name FIRST and a number second, and the server
+// pulls the number into the band whenever the model lets the two disagree.
+// Measured 2026-09-20: the band label was identical across three repeat runs
+// AND across a batch-of-one vs a batch-of-five for 10 of 10 job/model pairs,
+// while the raw number moved by up to 18 points on the same job.
+// ------------------------------------------------------------------
+const bandJobs = (n) => Array.from({ length: n }, (_, i) => ({
+  jobId: `adzuna:${i}`, id: `u${i}`, source: 'adzuna', title: `Backend Engineer ${i}`,
+  company: 'Acme', location: 'Berlin', isRemote: true,
+  keywordTerms: ['javascript', 'node.js'], descriptionQuality: 'full',
+}));
+
+/** A model returning a fixed band/score pair for every job it is asked about. */
+const bandScorer = (band, score) => async ({ user }) =>
+  JSON.stringify([...String(user).matchAll(/"jobId":\s*"([^"]+)"/g)].map((m) => ({
+    jobId: m[1], band, score, gapSummary: 'A sentence.', matchedSignals: [], missingSignals: [],
+  })));
+
+test('a score above its named band is pulled down into it', async () => {
+  // The exact failure this exists for: a model that names `weak` and then
+  // writes 58, which is on the far side of the 50 cut from where it just said
+  // the job belongs.
+  const { results } = await rankBatch({
+    jobs: bandJobs(3), resumeProfile: PROFILE, callModel: bandScorer('weak', 58),
+  });
+  assert.deepEqual(results.map((r) => r.score), [54, 54, 54]);
+  assert.deepEqual(results.map((r) => r.band), ['weak', 'weak', 'weak']);
+});
+
+test('a score below its named band is pulled up into it', async () => {
+  const { results } = await rankBatch({
+    jobs: bandJobs(2), resumeProfile: PROFILE, callModel: bandScorer('strong', 40),
+  });
+  assert.deepEqual(results.map((r) => r.score), [85, 85]);
+});
+
+test('a score already inside its band is left exactly alone', async () => {
+  const { results } = await rankBatch({
+    jobs: bandJobs(2), resumeProfile: PROFILE, callModel: bandScorer('partial', 62),
+  });
+  assert.deepEqual(results.map((r) => r.score), [62, 62]);
+});
+
+test('an absent or unknown band leaves the score untouched', async () => {
+  // The field is new. A cached row or an older response that predates it must
+  // still score, not be discarded — and a hallucinated band name must not be
+  // treated as a real range.
+  for (const band of [undefined, null, '', 'excellent', 42, {}]) {
+    const { results } = await rankBatch({
+      jobs: bandJobs(1), resumeProfile: PROFILE, callModel: bandScorer(band, 58),
+    });
+    assert.equal(results[0].score, 58, `band ${JSON.stringify(band)} must not move the score`);
+    assert.equal(results[0].scoredBy, 'llm', 'and must not drop it to the keyword scorer');
+  }
+});
+
+test('band names are matched case- and space-insensitively', async () => {
+  for (const band of ['WEAK', ' weak ', 'Weak']) {
+    const { results } = await rankBatch({
+      jobs: bandJobs(1), resumeProfile: PROFILE, callModel: bandScorer(band, 58),
+    });
+    assert.equal(results[0].score, 54, `"${band}" must resolve to the weak band`);
+    assert.equal(results[0].band, 'weak', 'and be normalised on the envelope');
+  }
+});
+
+test('the bands cover 0-100 exactly once, with no gap and no overlap', () => {
+  // A gap would make some scores unreachable through any band; an overlap
+  // would make the clamp depend on key order.
+  const ranges = Object.values(SCORE_BANDS).slice().sort((a, b) => a[0] - b[0]);
+  assert.equal(ranges[0][0], 0, 'the lowest band starts at 0');
+  assert.equal(ranges[ranges.length - 1][1], 100, 'the highest band ends at 100');
+  for (let i = 1; i < ranges.length; i += 1) {
+    assert.equal(ranges[i][0], ranges[i - 1][1] + 1,
+      `bands ${ranges[i - 1]} and ${ranges[i]} must be adjacent`);
+  }
+});
+
+test('the prompt text and the server agree about every band', async () => {
+  // Three copies of these numbers exist on purpose (server, prompt, fixture) —
+  // see SCORE_BANDS. This is the test that stops them drifting: the prompt is
+  // what the model reads, so a server clamping to a range the prompt never
+  // stated would silently overrule the model for no reason it could know.
+  const { getPrompt } = await import('../../server/jobs/prompts/index.js');
+  const text = getPrompt('rank').text;
+  for (const [name, [lo, hi]] of Object.entries(SCORE_BANDS)) {
+    assert.match(text, new RegExp(`\`${name}\`\\s*\\|\\s*${lo}-${hi}`),
+      `prompts/rank.md must list \`${name}\` as ${lo}-${hi}`);
+  }
+});
+
+test('ranking runs at temperature zero', () => {
+  // Scoring is classification, not generation: measured 2026-09-20, dropping
+  // from 0.2 to 0 took the run-to-run spread on an identical batch from a mean
+  // of 3.1 points (max 10) to 0.8 (max 3). A job near the 50 cut appearing and
+  // disappearing between two identical searches is the symptom.
+  assert.equal(RANK_TEMPERATURE, 0);
+});
+
+test('the eval fixture and the server agree about every band', async () => {
+  // The third copy. The fixture's bands are the hand-labels RankCalibration
+  // scores against, so if they drifted from the server's the eval would be
+  // measuring the model against a rubric nothing enforces.
+  const { BANDS } = await import('../evals/fixtures/rankPairs.js');
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(BANDS).map(([k, v]) => [k, [...v]])),
+    Object.fromEntries(Object.entries(SCORE_BANDS).map(([k, v]) => [k, [...v]]))
+  );
 });

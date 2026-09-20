@@ -193,19 +193,43 @@ test('runIngest never throws, whatever it is handed', async () => {
 // ------------------------------------------------------------------
 
 test('nextSweepCursor walks every occupation, then wraps to 1', () => {
+  // One country, stated rather than inherited from the ambient env: the
+  // default now reads configuredCountries(), so an unpinned assertion here
+  // would silently change meaning with ADZUNA_COUNTRIES.
   const sweepLength = SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM;
-  assert.equal(nextSweepCursor(1), 2);
-  assert.equal(nextSweepCursor(sweepLength - 1), sweepLength);
-  assert.equal(nextSweepCursor(sweepLength), 1, 'end of sweep must restart');
+  assert.equal(nextSweepCursor(1, 1), 2);
+  assert.equal(nextSweepCursor(sweepLength - 1, 1), sweepLength);
+  assert.equal(nextSweepCursor(sweepLength, 1), 1, 'end of sweep must restart');
   // Past the end (a shortened taxonomy, a stale stored cursor) also restarts
   // rather than paging into nothing forever.
-  assert.equal(nextSweepCursor(sweepLength + 50), 1);
+  assert.equal(nextSweepCursor(sweepLength + 50, 1), 1);
+});
+
+test('the sweep is as long as the country rotation is wide', () => {
+  // The hole this closes: leave the country factor out and the cursor wraps
+  // after `terms x pages` values, which with two countries is HALF the space —
+  // so the second country's later occupations sit past the wrap point and are
+  // never visited. Same class of silent gap as the bug this replaced,
+  // approached from the other side.
+  const perCountry = SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM;
+  for (const width of [1, 2, 3]) {
+    const sweepLength = width * perCountry;
+    assert.equal(nextSweepCursor(sweepLength - 1, width), sweepLength,
+      `a ${width}-country sweep must reach its own last cursor`);
+    assert.equal(nextSweepCursor(sweepLength, width), 1, 'and wrap only there');
+  }
+  // Concretely: with two countries, cursor 33 is mid-sweep, not the end.
+  assert.equal(nextSweepCursor(perCountry, 2), perCountry + 1,
+    'the second country lives past where a one-country sweep would have wrapped');
 });
 
 test('nextSweepCursor is total: junk restarts the sweep safely', () => {
   for (const junk of [0, -1, NaN, undefined, null, 'x']) {
-    const next = nextSweepCursor(junk);
-    assert.ok(next >= 1 && next <= SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM);
+    for (const width of [1, 2, undefined, null, 0, NaN, 'x']) {
+      const next = nextSweepCursor(junk, width);
+      assert.ok(Number.isInteger(next) && next >= 1, `junk cursor/width gave ${next}`);
+      assert.ok(next <= 3 * SEARCH_TERMS.length * SWEEP_PAGES_PER_TERM);
+    }
   }
 });
 
@@ -215,7 +239,7 @@ test('a term with fewer listings than one page must not reset the sweep', () => 
   // returning 30 rows would have pinned ingest to the first occupation
   // forever. Only the sweep's own length may end it.
   const midSweep = Math.floor(SEARCH_TERMS.length / 2);
-  assert.notEqual(nextSweepCursor(midSweep), 1);
+  assert.notEqual(nextSweepCursor(midSweep, 1), 1);
 });
 
 // ------------------------------------------------------------------
