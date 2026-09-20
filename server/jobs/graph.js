@@ -88,6 +88,38 @@ const _loops = Number.parseInt(process.env.RANK_MAX_LOOPS || '', 10);
 export const MAX_LOOPS = Number.isFinite(_loops) && _loops >= 0 ? Math.min(_loops, 2) : 2;
 
 /**
+ * Whether a thin result may be widened past the filters the user set.
+ *
+ * ═══ OFF, AND THAT IS THE PRODUCT DECISION ═══
+ *
+ * The ladder below (drop_location → relax_remote → widen_terms) was built on
+ * the premise that a short list is a failure to be recovered from. It is not.
+ * A user who filters to India and is handed United States listings badged
+ * "ignores location" has not been helped — they have been given a list they
+ * must now re-filter by hand, and the badge is read as a bug rather than as an
+ * offer. The same is true one rung down: `widen_terms` lends the profile terms
+ * from adjacent categories at BORROWED_TERM_WEIGHT, which is precisely what
+ * lifts a zero-overlap job over the prefilter's floor and back onto the page.
+ *
+ * So the honest answer to "we hold 8 listings for India and one of them suits
+ * you" is one job and a sentence saying so. `relaxedFilters` then stays empty,
+ * every job on the list honours every filter, and the empty state means what
+ * it says.
+ *
+ * ═══ WHY THE LADDER IS STILL HERE ═══
+ *
+ * Because the decision is a policy, not a discovery. RANK_BROADEN=1 restores
+ * the old behaviour without a deploy, and the ladder, its records and its
+ * tests stay exercisable. Deleting it would make the choice unreviewable and
+ * the reversal a rewrite.
+ *
+ * Costs nothing to leave off: with no loops a rank is one pool read and one
+ * scoring pass, which is also the cheapest it has ever been against the
+ * per-model daily quotas the rotation exists to stretch.
+ */
+export const BROADEN_WHEN_THIN = /^(1|true|yes)$/i.test(String(process.env.RANK_BROADEN || ''));
+
+/**
  * Wall-clock budget for one whole rank, in milliseconds.
  *
  * ═══ WHY A GRAPH THAT CANNOT THROW STILL NEEDS A CLOCK ═══
@@ -423,6 +455,9 @@ function reformulateQuery(state, loopIndex) {
  * @param {object} [params.deps.trace] Injected root trace; one is opened if not.
  * @param {object} [params.options]
  * @param {number} [params.options.maxLoops] Lowered only; never above MAX_LOOPS.
+ * @param {boolean} [params.options.broaden] Allow the reformulation ladder to
+ *   relax the caller's filters. Defaults to BROADEN_WHEN_THIN, which is off —
+ *   see that constant for why.
  * @returns {Promise<{jobs: object[], loops: number, reformulations: object[],
  *   relaxedFilters: string[], inFilterCount: number, degraded: boolean,
  *   scoredBy: string, sources: object[], timings: object}>}
@@ -444,10 +479,21 @@ export async function runRankGraph(params = {}) {
   const timings = { totalMs: 0, prefilterMs: 0, rankMs: 0, reformulateMs: 0 };
   const reformulations = [];
 
+  // The ceiling is zero unless broadening is switched on, so `maxLoops` below
+  // clamps to 0 and the loop runs exactly one pass under the user's own
+  // filters. A caller may still ask for FEWER loops, never more.
+  //
+  // `options.broaden` is the per-call override and BROADEN_WHEN_THIN the
+  // deployment default. The option exists so the ladder stays reachable from a
+  // test without a module reload — the env is read once at import, and a
+  // policy that can only be flipped by re-importing the module under test is a
+  // policy whose OTHER branch quietly stops being exercised.
+  const broaden = typeof options.broaden === 'boolean' ? options.broaden : BROADEN_WHEN_THIN;
+  const loopCeiling = broaden ? MAX_LOOPS : 0;
   const requestedLoops = Number.parseInt(options.maxLoops, 10);
   const maxLoops = Number.isFinite(requestedLoops)
-    ? Math.max(0, Math.min(requestedLoops, MAX_LOOPS))
-    : MAX_LOOPS;
+    ? Math.max(0, Math.min(requestedLoops, loopCeiling))
+    : loopCeiling;
 
   // Lowered only, never raised: a caller may ask for a tighter budget than the
   // deploy's, but not a looser one, so no request can opt itself past the
@@ -796,8 +842,12 @@ function prefilterClientJobs(resumeProfile, jobs, limit) {
   });
   // minScore 0: drop the ZERO-overlap tail only. The pool read tops itself up
   // with recency when relevance underfills, so without this the filler rides
-  // through to the scorer and onto the page. prefilterJobs keeps at least
-  // MIN_KEPT_CANDIDATES regardless, so this thins a list and never empties it.
+  // through to the scorer and onto the page.
+  //
+  // This CAN now return an empty list, and that is deliberate — see THE FLOOR
+  // in src/matching/prefilter.js. An empty candidate set means nothing in the
+  // pool shares a term with the résumé, which for a thin location is the true
+  // answer and is rendered as "no matches" rather than broadened away.
   return prefilterJobs(resumeProfile, views, { limit, minScore: 0 })
     .map((entry) => origins.get(entry.job));
 }

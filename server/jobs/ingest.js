@@ -46,6 +46,7 @@ import { log } from '../logger.js';
 import { ADAPTERS, getAdapter } from './adapters/index.js';
 import { normalizeListing } from './normalizeListing.js';
 import { SEARCH_TERMS, cursorToSearch } from './searchTerms.js';
+import { configuredCountries } from './adapters/adzuna.js';
 import { startTrace, flushTracing, SpanType } from '../observability/opik.js';
 
 const jobsLog = log.child('jobs');
@@ -300,6 +301,37 @@ export async function runIngest(options = {}) {
   const runController = new AbortController();
   const budgetTimer = setTimeout(() => runController.abort(), budget);
   budgetTimer.unref?.();
+
+  // ═══ THE COUNTRY ROTATION IS ONLY AS WIDE AS THE SWEEP IS DEEP ═══
+  //
+  // These two settings compose and nothing states that they do, which has
+  // already cost one investigation. The cursor is split twice: cursorToSearch
+  // turns it into (term, sub-cursor), then adzuna's cursorToTarget turns that
+  // sub-cursor into (country, page). The sub-cursor is
+  // `floor(zeroBased / SEARCH_TERMS.length) + 1`, so its range is exactly
+  // SWEEP_PAGES_PER_TERM values — and at the default of 1 it is the constant
+  // 1, which makes cursorToTarget return countries[0] for every cursor there
+  // is. ADZUNA_COUNTRIES='us,in,gb' therefore fetches the US and nothing else,
+  // in perfect silence: no error, no empty page, just two countries that are
+  // never asked for.
+  //
+  // Measured on the live pool 2026-09-20: 8 India rows in the 30-day window,
+  // all from himalayas, none from Adzuna — against 1,211 for the US.
+  //
+  // Warn rather than correct. Raising INGEST_SWEEP_PAGES multiplies the sweep
+  // length, so a run that silently "fixed" this would also quietly stretch a
+  // full pass over the taxonomy from ~6 daily runs to ~6 × countries, trading
+  // freshness for reach on nobody's authority.
+  const adzunaCountries = configuredCountries();
+  if (adzunaCountries.length > SWEEP_PAGES_PER_TERM) {
+    jobsLog.warn('adzuna countries beyond the sweep depth are unreachable', {
+      configured: adzunaCountries.length,
+      sweepPagesPerTerm: SWEEP_PAGES_PER_TERM,
+      reached: adzunaCountries.slice(0, SWEEP_PAGES_PER_TERM),
+      unreachable: adzunaCountries.slice(SWEEP_PAGES_PER_TERM),
+      fix: 'set INGEST_SWEEP_PAGES to at least the number of ADZUNA_COUNTRIES',
+    });
+  }
 
   const perSource = [];
   let totalInserted = 0;

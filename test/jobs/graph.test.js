@@ -109,6 +109,7 @@ test('a score one point below GOOD_SCORE does not satisfy the gate', async () =>
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: pool.fetchJobs, callModel: scorer(GOOD_SCORE - 1) },
+    options: { broaden: true },
   });
   assert.ok(result.loops > 0, 'below the threshold the graph must broaden');
 });
@@ -137,6 +138,7 @@ test('enough jobs but not enough GOOD ones still reformulates', async () => {
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: pool.fetchJobs, callModel },
+    options: { broaden: true },
   });
   assert.ok(result.loops >= 1);
 });
@@ -150,6 +152,7 @@ test('reformulation stops at exactly MAX_LOOPS when the gate never passes', asyn
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: pool.fetchJobs, callModel: scorer(5) },
+    options: { broaden: true },
   });
 
   assert.equal(MAX_LOOPS, 2, 'this test encodes the documented bound');
@@ -165,7 +168,8 @@ test('options.maxLoops can lower the bound but never raise it', async () => {
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: poolOf(makeJobs(20)).fetchJobs, callModel: scorer(5) },
-    options: { maxLoops: 1 },
+    options: { broaden: true },
+    options: { broaden: true, maxLoops: 1 },
   });
   assert.equal(low.loops, 1);
 
@@ -173,7 +177,8 @@ test('options.maxLoops can lower the bound but never raise it', async () => {
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: poolOf(makeJobs(20)).fetchJobs, callModel: scorer(5) },
-    options: { maxLoops: 99 },
+    options: { broaden: true },
+    options: { broaden: true, maxLoops: 99 },
   });
   assert.equal(high.loops, MAX_LOOPS, 'the hard cap wins over the option');
 
@@ -181,7 +186,8 @@ test('options.maxLoops can lower the bound but never raise it', async () => {
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: poolOf(makeJobs(20)).fetchJobs, callModel: scorer(5) },
-    options: { maxLoops: 0 },
+    options: { broaden: true },
+    options: { broaden: true, maxLoops: 0 },
   });
   assert.equal(none.loops, 0);
   assert.deepEqual(none.reformulations, []);
@@ -196,6 +202,7 @@ test('reformulations record what was broadened, from what, to what, and why', as
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: pool.fetchJobs, callModel: scorer(5) },
+    options: { broaden: true },
   });
 
   const [first, second] = result.reformulations;
@@ -220,6 +227,7 @@ test('the broadened filters are actually applied to the next pool read', async (
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: pool.fetchJobs, callModel: scorer(5) },
+    options: { broaden: true },
   });
 
   assert.equal(pool.seen[0].location, 'Berlin');
@@ -234,6 +242,7 @@ test('with no location and no remote filter, broadening widens the skill terms i
     resumeProfile: PROFILE,
     filters: {},
     deps: { fetchJobs: pool.fetchJobs, callModel: scorer(5) },
+    options: { broaden: true },
   });
 
   assert.equal(result.loops, 2);
@@ -398,6 +407,7 @@ test('the injected trace is used and no span call is required to exist', async (
     resumeProfile: PROFILE,
     filters: { location: 'Berlin' },
     deps: { fetchJobs: poolOf(makeJobs(20)).fetchJobs, callModel: scorer(5), trace: handle },
+    options: { broaden: true },
   });
 
   assert.ok(opened.includes('prefilter'));
@@ -410,6 +420,7 @@ test('the injected trace is used and no span call is required to exist', async (
   const bare = await runRankGraph({
     resumeProfile: PROFILE,
     deps: { fetchJobs: poolOf(makeJobs(6)).fetchJobs, callModel: scorer(95), trace: {} },
+    options: { broaden: true },
   });
   assert.equal(bare.jobs.length, 6);
 });
@@ -467,7 +478,11 @@ test('a job whose skills live only in keywordTerms survives the prefilter cut', 
   }));
 
   const ranked = keywordOnlyResult(PROFILE, [...unrelated, matching]).jobs;
-  assert.equal(ranked.length, PREFILTER_LIMIT, 'the prefilter should cut to its limit');
+  // The cut is now the FLOOR, not the limit: the 35 forklift rows share no
+  // term with the resume, so they are dropped rather than padding the list out
+  // to PREFILTER_LIMIT. See THE FLOOR in src/matching/prefilter.js.
+  assert.ok(ranked.length <= PREFILTER_LIMIT, 'the prefilter must respect its limit');
+  assert.equal(ranked.length, 1, 'only the overlapping job should survive the floor');
   assert.ok(
     ranked.some((entry) => entry.job.id === 'zzz-match'),
     'the only job overlapping the resume was cut from the candidate set'
@@ -524,6 +539,7 @@ test('jobs found under the caller\'s filters survive every later broadening', as
     resumeProfile: PROFILE,
     filters: { location: 'Berlin' },
     deps: { fetchJobs: pool.fetchJobs, callModel: scorer(GOOD_SCORE - 1) },
+    options: { broaden: true },
   });
 
   assert.ok(result.reformulations.some((r) => r.step === 'drop_location'), 'the location was dropped');
@@ -547,6 +563,7 @@ test('in-filter jobs lead the list and are the ones counted by inFilterCount', a
     resumeProfile: PROFILE,
     filters: { location: 'Berlin' },
     deps: { fetchJobs: pool.fetchJobs, callModel: scorer(GOOD_SCORE - 1) },
+    options: { broaden: true },
   });
 
   assert.equal(result.inFilterCount, berlin.length);
@@ -598,4 +615,107 @@ test('widening terms is not reported as relaxing a filter', async () => {
   );
   assert.deepEqual(result.relaxedFilters, []);
   assert.ok(result.jobs.every((entry) => entry.relaxedFilters === null));
+});
+
+// ------------------------------------------------------------------
+// The no-broadening default
+// ------------------------------------------------------------------
+//
+// Every test above that reaches the ladder passes `options: { broaden: true }`.
+// These are the ones that pin the DEFAULT, which is the shipped behaviour: a
+// thin location returns a short list under the user's own filters rather than
+// a long list from somewhere else.
+
+test('by default a thin location is never widened past the filters the user set', async () => {
+  // Two in Berlin, ten elsewhere, and a scorer that never reaches the gate —
+  // the exact shape that used to force drop_location on loop 1.
+  const berlin = makeJobs(2).map((j, i) => ({ ...j, jobId: `berlin:${i}`, id: `b${i}` }));
+  const elsewhere = makeJobs(10).map((j, i) => ({
+    ...j, jobId: `dallas:${i}`, id: `d${i}`, location: 'Dallas', isRemote: false,
+  }));
+  const pool = locationAwarePool(berlin, elsewhere);
+
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    filters: { location: 'Berlin' },
+    deps: { fetchJobs: pool.fetchJobs, callModel: scorer(GOOD_SCORE - 1) },
+  });
+
+  assert.equal(result.loops, 0, 'the gate must not trigger a reformulation');
+  assert.deepEqual(result.reformulations, [], 'nothing was broadened');
+  assert.deepEqual(result.relaxedFilters, [], 'no filter was given up');
+  assert.equal(pool.seen.length, 1, 'the pool is read exactly once');
+  assert.ok(
+    pool.seen.every((f) => f.location === 'Berlin'),
+    'every pool read must carry the location the user set'
+  );
+
+  const ids = result.jobs.map((entry) => entry.jobId);
+  assert.ok(ids.length > 0, 'a thin location still returns what it has');
+  assert.ok(
+    ids.every((id) => id.startsWith('berlin:')),
+    `out-of-filter jobs leaked into the list: ${ids.join(', ')}`
+  );
+  assert.equal(result.inFilterCount, ids.length, 'every job honours the filters');
+  assert.ok(result.jobs.every((entry) => !entry.relaxedFilters));
+});
+
+test('a location holding nothing relevant returns an empty list, not a wider one', async () => {
+  // The India case: a handful of listings, none sharing a term with the
+  // resume. The floor drops them all and the graph says so instead of
+  // reaching for another country's jobs.
+  const unrelated = makeJobs(8).map((j, i) => ({
+    ...j,
+    jobId: `india:${i}`,
+    id: `i${i}`,
+    title: 'Music Producer - Hindi Expert',
+    location: 'India',
+    keywordTerms: ['music-production', 'mixing', 'hindi'],
+    keywords: [],
+  }));
+  const elsewhere = makeJobs(20).map((j, i) => ({ ...j, jobId: `us:${i}`, id: `u${i}` }));
+  const pool = locationAwarePool(unrelated, elsewhere);
+
+  const result = await runRankGraph({
+    resumeProfile: PROFILE,
+    filters: { locationCountry: 'India' },
+    deps: { fetchJobs: pool.fetchJobs, callModel: scorer(GOOD_SCORE) },
+  });
+
+  assert.deepEqual(result.jobs, [], 'unrelated jobs must not stand in for matches');
+  assert.equal(result.poolSize, 8, 'the pool was read and it really did hold 8');
+  assert.equal(result.sentToScorer, 0, 'nothing unrelated should cost a model call');
+  assert.deepEqual(result.relaxedFilters, []);
+  assert.equal(pool.seen.length, 1);
+});
+
+test('options.broaden restores the ladder without a redeploy', async () => {
+  const berlin = makeJobs(2).map((j, i) => ({ ...j, jobId: `berlin:${i}`, id: `b${i}` }));
+  const elsewhere = makeJobs(10).map((j, i) => ({
+    ...j, jobId: `dallas:${i}`, id: `d${i}`, location: 'Dallas', isRemote: false,
+  }));
+
+  const off = await runRankGraph({
+    resumeProfile: PROFILE,
+    filters: { location: 'Berlin' },
+    deps: {
+      fetchJobs: locationAwarePool(berlin, elsewhere).fetchJobs,
+      callModel: scorer(GOOD_SCORE - 1),
+    },
+    options: { broaden: false },
+  });
+  const on = await runRankGraph({
+    resumeProfile: PROFILE,
+    filters: { location: 'Berlin' },
+    deps: {
+      fetchJobs: locationAwarePool(berlin, elsewhere).fetchJobs,
+      callModel: scorer(GOOD_SCORE - 1),
+    },
+    options: { broaden: true },
+  });
+
+  assert.equal(off.loops, 0);
+  assert.equal(on.loops, MAX_LOOPS, 'the ladder still runs when it is asked for');
+  assert.ok(on.reformulations.some((r) => r.step === 'drop_location'));
+  assert.ok(on.jobs.length > off.jobs.length, 'broadening is what adds the extra jobs');
 });

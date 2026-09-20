@@ -34,17 +34,6 @@ const EDUCATION_DISCOUNT = 0.7;
 /** Jobs returned when the caller does not ask for a specific number. */
 const DEFAULT_LIMIT = 30;
 
-/**
- * Candidates kept regardless of overlap, when a floor is applied.
- *
- * A floor that can empty the list is worse than no floor. Some resumes fold
- * into the lexicon poorly, and some pools genuinely hold nothing adjacent —
- * in both cases every job scores 0, and "we found nothing" is a far worse
- * answer than a short list the ranker can still sort. So the floor drops the
- * zero-overlap tail only while at least this many candidates survive it.
- */
-const MIN_KEPT_CANDIDATES = 8;
-
 /** Decimals kept on a stored weight or score. */
 const SCORE_DECIMALS = 4;
 
@@ -252,8 +241,8 @@ export function normalizeJobKeywords(job) {
  * @param {ResumeProfile} resumeProfile From {@link buildResumeProfile}.
  * @param {Array<object>} jobs Job rows; each may use either keyword shape.
  * @param {{limit?: number, minScore?: number}} [options] `limit` defaults to
- *   30. `minScore` opts into the floor described below: candidates at or
- *   under it are dropped, unless doing so would leave too few.
+ *   30. `minScore` opts into the floor described below: candidates at or under
+ *   it are dropped, and the result IS empty when none clear it.
  * @returns {Array<{job: object, prefilterScore: number, matchedTerms: string[]}>}
  *   Sorted by score descending, then `posted_at` descending, then `id`
  *   ascending. The final `id` tiebreak matters: `Array.prototype.sort` is only
@@ -308,13 +297,37 @@ export function prefilterJobs(resumeProfile, jobs, options = {}) {
   // cost model tokens to score, and are exactly what "a Python developer is
   // being shown freelance content writing" looks like from the inside.
   //
-  // Guarded by MIN_KEPT_CANDIDATES so it can thin a list but never empty one.
+  // ═══ WHY THE FLOOR IS ABSOLUTE, AND USED TO NOT BE ═══
+  //
+  // This was guarded by a MIN_KEPT_CANDIDATES of 8:
+  //
+  //   if (above.length >= Math.min(MIN_KEPT_CANDIDATES, scored.length)) …
+  //
+  // which reads like "never empty the list" and behaves like "in a small pool,
+  // never filter at all". When `scored.length` is at or under 8 the guard
+  // demands that essentially EVERY candidate clear the floor, and the moment
+  // one does not the whole floor is discarded and the zero-overlap tail is
+  // returned intact. The failure is therefore invisible at 200 rows and total
+  // at 8 — which is exactly how it was reported: "jobs are not ranked properly
+  // when there are fewer jobs in a particular country".
+  //
+  // Measured against the live pool on 2026-09-20: India held 8 listings inside
+  // the 30-day window, 1 of which shared a single term with a software resume.
+  // The old guard sent all 8 to the scorer, so 7 music-production, interpreting
+  // and BPO listings were LLM-scored and rendered as matches. The same 8 rows
+  // inside a 200-row pool lost every one of the 7.
+  //
+  // An empty return is now a real outcome, and it is the honest one: nothing in
+  // this pool shares a term with this resume. Callers must render that as "no
+  // matches" rather than widening until something appears — a short list is a
+  // fact about the market, and padding it with unrelated work only hides that
+  // fact behind jobs nobody can use. Note that foldToLexicon passes unknown
+  // terms through as raw tokens, so a résumé outside the lexicon's coverage
+  // still matches its own field on plain token overlap; "zero across the whole
+  // pool" is a statement about the pool, not about the lexicon.
   if (asObject(options).minScore !== undefined) {
     const floor = Number(asObject(options).minScore) || 0;
-    const above = scored.filter((entry) => entry.prefilterScore > floor);
-    if (above.length >= Math.min(MIN_KEPT_CANDIDATES, scored.length)) {
-      return above.slice(0, limit);
-    }
+    return scored.filter((entry) => entry.prefilterScore > floor).slice(0, limit);
   }
 
   return scored.slice(0, limit);

@@ -173,14 +173,40 @@ test('minScore drops the zero-overlap tail instead of padding to the limit', () 
   for (const entry of floored) assert.ok(entry.prefilterScore > 0);
 });
 
-test('the floor never empties a list, however poorly the resume folds', () => {
-  // Every job scores 0 here. Returning nothing would be a worse answer than an
-  // unranked short list, so MIN_KEPT_CANDIDATES wins over the floor.
+test('the floor returns nothing rather than a list of unrelated jobs', () => {
+  // Every job scores 0 here. This used to return all 20 on the argument that
+  // "we found nothing" reads worse than a short list — but the list it
+  // returned was 20 driving jobs for a resume that shares not one term with
+  // them, and that is the complaint, not the cure. Empty is the true answer
+  // and the caller renders it as "no matches".
   const resume = buildResumeProfile({ skills: ['underwater basket weaving'] });
   const jobs = Array.from({ length: 20 }, (_, i) => ({
     id: `j${i}`, title: 'Driver', keyword_terms: ['cdl-a', 'otr'],
   }));
-  const floored = prefilterJobs(resume, jobs, { limit: 30, minScore: 0 });
-  assert.ok(floored.length > 0, 'the floor emptied the candidate list');
-  assert.equal(floored.length, 20);
+  assert.deepEqual(prefilterJobs(resume, jobs, { limit: 30, minScore: 0 }), []);
+
+  // Without the floor the same call is still the "best N you have" pass.
+  assert.equal(prefilterJobs(resume, jobs, { limit: 30 }).length, 20);
+});
+
+test('the floor holds in a pool too small to reach MIN_KEPT_CANDIDATES', () => {
+  // ═══ THE REGRESSION THIS FILE EXISTS FOR ═══
+  //
+  // The floor used to be guarded by `above.length >= Math.min(8,
+  // scored.length)`, which in a pool of 8 demanded that all 8 clear it — so
+  // one relevant job among seven irrelevant ones discarded the floor entirely
+  // and sent all eight to the scorer. Measured against the live pool on
+  // 2026-09-20: India held exactly 8 listings, 1 of them relevant to a
+  // software resume, and all 8 were rendered as matches.
+  const resume = buildResumeProfile({
+    skills: ['python', 'docker', 'javascript'], titles: ['Software Engineer'],
+  });
+  const relevant = { id: 'hit', title: 'Engineer', keyword_terms: ['python', 'docker'] };
+  const irrelevant = Array.from({ length: 7 }, (_, i) => ({
+    id: `miss${i}`, title: 'Music Producer', keyword_terms: ['music-production', 'mixing'],
+  }));
+
+  const floored = prefilterJobs(resume, [...irrelevant, relevant], { limit: 30, minScore: 0 });
+  assert.equal(floored.length, 1, 'a thin pool must still be filtered');
+  assert.equal(floored[0].job.id, 'hit');
 });

@@ -123,6 +123,60 @@ function resolveLocationFilter(selection) {
 }
 
 /**
+ * The place a location selection names, for prose rather than for a query.
+ *
+ * `resolveLocationFilter` answers "what do I send the server"; this answers
+ * "what do I call this on screen". Both read the same `"<kind>:<value>"`
+ * string, and keeping them as two functions is what stops an empty-state
+ * sentence from being built out of a filter key — "no jobs in locationCountry"
+ * is the shape that mistake takes.
+ *
+ * @param {string} selection The dropdown's value.
+ * @returns {string} A human place name, or '' when no location is filtered.
+ */
+function locationDisplayName(selection) {
+  const raw = String(selection || '').trim();
+  if (!raw) return '';
+  const cut = raw.indexOf(':');
+  const value = cut > 0 ? raw.slice(cut + 1).trim() : raw;
+  return value || '';
+}
+
+/**
+ * How many listings the pool holds for a selection, straight off the facets.
+ *
+ * ═══ WHY THE EMPTY STATE NEEDS A NUMBER ═══
+ *
+ * "Nothing matched these filters" is true of both a deep pool with no relevant
+ * work and a pool holding eight listings for the whole country, and those are
+ * different problems with different next actions — the first is "your search
+ * is too narrow", the second is "we do not cover this place yet". Only the
+ * second deserves an apology, and neither deserves being handed another
+ * country's jobs, which is what this page used to do. The count is already on
+ * screen inside the dropdown; this reads the same value.
+ *
+ * @param {string} selection The dropdown's value.
+ * @param {Array<{kind: string, entries: Array<{value: string, count: number}>}>} groups
+ * @returns {number|null} null when the facets cannot say — never 0 by default.
+ */
+function locationPoolCount(selection, groups) {
+  const raw = String(selection || '').trim();
+  const cut = raw.indexOf(':');
+  if (cut <= 0) return null;
+  const kind = raw.slice(0, cut);
+  const value = raw.slice(cut + 1).trim().toLowerCase();
+  for (const group of asArray(groups)) {
+    if (group?.kind !== kind) continue;
+    for (const entry of asArray(group.entries)) {
+      if (String(entry?.value || '').trim().toLowerCase() === value) {
+        return finiteOr(entry?.count, null);
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * The filters that cost a ranking run, as one object.
  *
  * Grouped rather than left as three useStates because they now move together:
@@ -212,6 +266,17 @@ const REFETCH_DEBOUNCE_MS = 400;
  */
 const PREFILTER_LIMIT_ESTIMATE = 30;
 const RANK_BATCH_SIZE = 30;
+
+/**
+ * At or below this many listings, a location is described as thin rather than
+ * as a search that matched nothing.
+ *
+ * Not a threshold anything is filtered on — only which of two sentences the
+ * empty state prints. Twelve is roughly "fewer listings than one screen of
+ * results", which is the point where the pool, and not the résumé, is plainly
+ * the reason the page is empty. India held 8 on 2026-09-20.
+ */
+const THIN_POOL = 12;
 
 /** How often the estimated batch counter advances while a rank is in flight. */
 const PROGRESS_TICK_MS = 1600;
@@ -1613,6 +1678,20 @@ const JobMatchesPage = ({ showToast }) => {
   const locationsDegraded = locationGroups.length === 0;
 
   /**
+   * The place the CURRENT RESULT was filtered to, and how much we hold there.
+   *
+   * Read off `applied`, never `draft`: the draft is whatever the user is
+   * typing now, and naming that in a panel describing a finished run would
+   * blame the wrong filter the moment someone changes the dropdown without
+   * pressing Apply.
+   */
+  const emptyPlace = useMemo(() => locationDisplayName(applied.location), [applied.location]);
+  const emptyPlaceCount = useMemo(
+    () => locationPoolCount(applied.location, locationGroups),
+    [applied.location, locationGroups]
+  );
+
+  /**
    * ═══ A SELECTION THE DROPDOWN NO LONGER OFFERS ═══
    *
    * The facets are rebuilt when the pool metadata is refreshed, and a place
@@ -2127,10 +2206,28 @@ const JobMatchesPage = ({ showToast }) => {
                 {/* With no threshold, empty can only mean the pool held
                     nothing for these filters — never "nothing cleared your
                     bar". The old copy said the latter and sent people to
-                    lower a control that was hiding real results. */}
-                <p className={STRONG_TEXT}>Nothing matched these filters.</p>
+                    lower a control that was hiding real results.
+
+                    ═══ WHY THIS NAMES THE PLACE ═══
+
+                    The server no longer widens a thin search past the filters
+                    that produced it, so this panel is now the ONLY thing that
+                    gets shown for a location we barely cover — it used to be
+                    reached only when broadening had also failed. "Nothing
+                    matched these filters" is then too vague to act on: a
+                    country holding eight listings in total is not a search
+                    that needs narrowing, it is a place the pool does not cover
+                    yet, and saying so is the honest answer. Handing over
+                    another country's jobs instead is what this replaces. */}
+                <p className={STRONG_TEXT}>
+                  {emptyPlace
+                    ? `No matching jobs in ${emptyPlace} right now.`
+                    : 'Nothing matched these filters.'}
+                </p>
                 <p className={`mt-1 ${SUBTEXT}`}>
-                  Try widening the location, or turning off a source filter.
+                  {emptyPlace && emptyPlaceCount !== null && emptyPlaceCount <= THIN_POOL
+                    ? `We are only holding ${emptyPlaceCount} ${emptyPlaceCount === 1 ? 'listing' : 'listings'} for ${emptyPlace}, and none of them line up with your resume. Nothing was substituted from elsewhere.`
+                    : 'Nothing was substituted from another location. Try a different place, or turn off a source filter.'}
                 </p>
               </div>
             ) : (
