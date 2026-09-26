@@ -1,0 +1,409 @@
+- generic [ref=e3]:
+  - status "Loading" [ref=e4]:
+    - generic [ref=e8]:
+      - generic [ref=e14]: Loading
+      - generic [ref=e15]: 51%
+  - banner:
+    - navigation:
+      - button "Grail — back to top" [ref=e19] [cursor=pointer]:
+        - img "Grail" [ref=e20]
+      - paragraph [ref=e21]: One real-world quest a day. Four stats that go up when you do things out in the world.
+      - button "Join Waitlist" [ref=e22] [cursor=pointer]
+  - generic [ref=e23]:
+    - generic [aria-hidden]:
+      - generic: About Problem
+      - generic: Chapter 01
+    - heading "Everyone's out living. You're watching them do it on a screen." [level=2] [ref=e24]
+    - generic [ref=e25]:
+      - generic [aria-hidden] [ref=e26]:
+        - generic [ref=e27]: Everyone's out
+        - generic [ref=e28]: living. You're
+        - generic [ref=e29]: watching them do it
+        - generic [ref=e30]: on a screen.
+      - paragraph [ref=e31]: Same week, over and over, until you can't tell them apart. You keep meaning to do the thing, go to the place, become the person, and somehow it’s always next week. The loop is comfortable, which is the problem, because comfortable is how a whole year slips by with nothing in it worth remembering.
+  - generic [ref=e32]:
+    - heading "Quest accepted. Clock's running." [level=2] [ref=e33]
+    - paragraph [ref=e34]: Now there’s a clock on it. Forty-eight hours to go do the thing, because “later” is how every one of these dies.
+    - paragraph [ref=e35]: Not 24, since a day is too easy to lose to work or weather or a bad mood. Two days gives you room to fit it into a real life, and keeps it tight enough that you can’t quietly let it slide. The clock is there to turn someday into this week.
+  - generic [aria-hidden]:
+    - heading [level=2]:
+      - generic:
+        - generic: Quest
+        - generic: accepted.
+      - generic:
+        - generic: Clock’s
+        - generic: running.
+    - generic:
+      - generic:
+        - paragraph: Now there’s a clock on it. Forty-eight hours to go do the thing, because “later” is how every one of these dies.
+        - paragraph: Not 24, since a day is too easy to lose to work or weather or a bad mood. Two days gives you room to fit it into a real life, and keeps it tight enough that you can’t quietly let it slide. The clock is there to turn someday into this week.
+  - generic [ref=e36]:
+    - generic [aria-hidden]:
+      - generic: About Journey
+      - generic: Chapter 03
+    - generic [ref=e37]:
+      - heading "It starts as one quest. It rarely stays that way." [level=2] [ref=e38]:
+        - generic [ref=e39]:
+          - text: It starts as one
+          - generic [ref=e40]: quest.
+        - generic [ref=e42]: It rarely stays that way.
+      - paragraph [ref=e43]: No promises. Just what tends to happen when you show up.
+      - generic [ref=e44]:
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - generic [ref=e47]:
+              - paragraph [ref=e48]: A chance
+              - paragraph [ref=e49]: To end up at someone’s table.
+            - paragraph [ref=e50]: "01"
+          - paragraph [ref=e52]: You went out to do one small thing. Six hours later you’re somewhere you didn’t plan, with people you didn’t know this morning.
+        - generic [ref=e53]:
+          - generic [ref=e54]:
+            - generic [ref=e55]:
+              - paragraph [ref=e56]: A chance
+              - paragraph [ref=e57]: To be the only one out there.
+            - paragraph [ref=e58]: "02"
+          - paragraph [ref=e60]: No one watching, no one to tell. Just you, somewhere you’d normally never be at this hour.
+        - generic [ref=e61]:
+          - generic [ref=e62]:
+            - generic [ref=e63]:
+              - paragraph [ref=e64]: A chance
+              - paragraph [ref=e65]: To find the place you’d have walked past.
+            - paragraph [ref=e66]: "03"
+          - paragraph [ref=e68]: A street you never turn down. A door you never tried. It was there the whole time.
+        - generic [ref=e69]:
+          - generic [ref=e70]:
+            - generic [ref=e71]:
+              - paragraph [ref=e72]: A chance
+              - paragraph [ref=e73]: To find the scary thing was nothing.
+            - paragraph [ref=e74]: "04"
+          - paragraph [ref=e76]: The thing you’d been putting off for weeks took four minutes. Then it was just done.
+        - generic [ref=e77]:
+          - generic [ref=e78]:
+            - generic [ref=e79]:
+              - paragraph [ref=e80]: A chance
+              - paragraph [ref=e81]: To come home with something to tell.
+            - paragraph [ref=e82]: "05"
+          - paragraph [ref=e84]: Not a screenshot. An actual thing that happened, that you were in the middle of.
+  - generic [ref=e87]:
+    - generic [aria-hidden]:
+      - generic: About Voice Feedback
+      - generic: Chapter 04
+    - generic [ref=e88]:
+      - generic [aria-hidden] [ref=e89]:
+        - generic [ref=e90]: Tell
+        - generic [ref=e91]: future
+        - generic [ref=e92]: self
+      - generic [aria-hidden] [ref=e93]:
+        - generic [ref=e94]: And
+        - generic [ref=e95]: seekers
+        - generic [ref=e96]: after
+    - generic [ref=e97]:
+      - generic:
+        - generic:
+          - heading "What was that like?" [level=2]
+          - paragraph: Leave a voice for yourself and for others
+          - paragraph: You can make it longer, right?
+          - generic:
+            - generic: Easy
+            - generic: Medium
+            - generic: Hard
+    - generic [ref=e98]:
+      - paragraph [ref=e99]: The quest fades by tomorrow. What you felt right after doing it doesn't. Say it out loud while it's fresh, thirty seconds or three minutes, and you've got it forever. It's how a thing you did becomes a thing you remember.
+      - paragraph [ref=e100]: Before you start, hear what other people said about this one. After you're done, leave yours for whoever gets it next. Same quest, a hundred different nights. Yours will be the best one.
+  - generic [ref=e103]:
+    - generic [aria-hidden]:
+      - generic: About Totems
+      - generic: Chapter 05
+    - generic [aria-hidden]:
+      - generic: Duck
+    - heading "The Knight" [level=2]:
+      - generic:
+        - generic: The
+        - generic: Knight
+    - generic:
+      - tabpanel "Duck": Took an oath nobody asked for. Honor in full armor, waddling in anyway.
+      - generic:
+        - generic: (
+        - generic: "1"
+        - generic: )
+    - generic [ref=e105]:
+      - heading "Six totems. One's yours." [level=3] [ref=e106]:
+        - generic [ref=e107]:
+          - generic [ref=e108]: Six
+          - generic [ref=e110]: totems.
+        - generic [ref=e112]:
+          - generic [ref=e113]: One's
+          - generic [ref=e115]: yours.
+      - generic [ref=e117]:
+        - paragraph [ref=e118]: You pick one when you start. It levels up as you do, and it's the face you wear the whole way. Pick the one you're trying to become.
+        - tablist "Totems" [ref=e119]:
+          - tab "Duck" [selected] [ref=e120] [cursor=pointer]
+          - tab "Cat" [ref=e121] [cursor=pointer]
+          - tab "Bear" [ref=e122] [cursor=pointer]
+          - tab "Rat" [ref=e123] [cursor=pointer]
+          - tab "Frog" [ref=e124] [cursor=pointer]
+          - tab "Penguin" [ref=e125] [cursor=pointer]
+  - generic [ref=e129]:
+    - generic [aria-hidden]:
+      - generic: About Stats
+      - generic: Chapter 06
+    - heading "Every quest lands somewhere." [level=2]:
+      - generic: Every quest
+      - generic: lands somewhere.
+    - paragraph: Point at the part of yourself you want to build, and the quests you take pile up there. Strength, intellect, charisma, wisdom. Some land exactly where you aimed. Some surprise you. Either way, it adds up into someone you weren't last month.
+    - list [ref=e131]:
+      - listitem [ref=e132]: Charisma, from The Wind Shifters.
+      - listitem [ref=e133]: Strength, from The Temperers of Steel.
+      - listitem [ref=e134]: Wisdom, from The Keepers of Time.
+      - listitem [ref=e135]: Intellect, from The Brotherhood of Tale.
+    - generic [aria-hidden]:
+      - generic:
+        - generic: Charisma
+        - generic: "0"
+      - generic:
+        - generic: Strength
+        - generic: "0"
+      - generic:
+        - generic: Wisdom
+        - generic: "0"
+      - generic:
+        - generic: Intellect
+        - generic: "0"
+  - generic [ref=e137]:
+    - generic [ref=e138]:
+      - generic [ref=e139]: About Guilds
+      - generic [ref=e140]: Chapter 07
+    - paragraph [ref=e142]: Join a guild. Or start one.
+    - heading "P i c k y o u r g u i l d s . T h e y d e f i n e y o u r q u e s t s" [level=2] [ref=e144]:
+      - generic [ref=e145]:
+        - generic [ref=e146]: P
+        - generic [ref=e147]: i
+        - generic [ref=e148]: c
+        - generic [ref=e149]: k
+        - generic [ref=e150]: "y"
+        - generic [ref=e151]: o
+        - generic [ref=e152]: u
+        - generic [ref=e153]: r
+        - generic [ref=e154]: g
+        - generic [ref=e155]: u
+        - generic [ref=e156]: i
+        - generic [ref=e157]: l
+        - generic [ref=e158]: d
+        - generic [ref=e159]: s
+        - generic [ref=e160]: .
+      - generic [ref=e161]:
+        - generic [ref=e162]: T
+        - generic [ref=e163]: h
+        - generic [ref=e164]: e
+        - generic [ref=e165]: "y"
+        - generic [ref=e166]: d
+        - generic [ref=e167]: e
+        - generic [ref=e168]: f
+        - generic [ref=e169]: i
+        - generic [ref=e170]: "n"
+        - generic [ref=e171]: e
+      - generic [ref=e172]:
+        - generic [ref=e173]: "y"
+        - generic [ref=e174]: o
+        - generic [ref=e175]: u
+        - generic [ref=e176]: r
+        - generic [ref=e177]: q
+        - generic [ref=e178]: u
+        - generic [ref=e179]: e
+        - generic [ref=e180]: s
+        - generic [ref=e181]: t
+        - generic [ref=e182]: s
+    - generic [ref=e183]:
+      - paragraph [ref=e184]:
+        - generic [ref=e185]: A
+        - generic [ref=e187]:
+          - generic [ref=e188]: g
+          - generic [ref=e189]: u
+          - generic [ref=e190]: i
+          - generic [ref=e191]: l
+          - generic [ref=e192]: d
+        - generic [ref=e193]:
+          - generic [ref=e194]: i
+          - generic [ref=e195]: s
+        - generic [ref=e196]: a
+        - generic [ref=e198]:
+          - generic [ref=e199]: c
+          - generic [ref=e200]: o
+          - generic [ref=e201]: r
+          - generic [ref=e202]: "n"
+          - generic [ref=e203]: e
+          - generic [ref=e204]: r
+        - generic [ref=e205]:
+          - generic [ref=e206]: o
+          - generic [ref=e207]: f
+        - generic [ref=e208]:
+          - generic [ref=e209]: G
+          - generic [ref=e210]: r
+          - generic [ref=e211]: a
+          - generic [ref=e212]: i
+          - generic [ref=e213]: l
+        - generic [ref=e214]:
+          - generic [ref=e215]: b
+          - generic [ref=e216]: u
+          - generic [ref=e217]: i
+          - generic [ref=e218]: l
+          - generic [ref=e219]: t
+        - generic [ref=e220]:
+          - generic [ref=e221]: a
+          - generic [ref=e222]: r
+          - generic [ref=e223]: o
+          - generic [ref=e224]: u
+          - generic [ref=e225]: "n"
+          - generic [ref=e226]: d
+        - generic [ref=e227]:
+          - generic [ref=e228]: o
+          - generic [ref=e229]: "n"
+          - generic [ref=e230]: e
+        - generic [ref=e231]:
+          - generic [ref=e232]: t
+          - generic [ref=e233]: h
+          - generic [ref=e234]: i
+          - generic [ref=e235]: "n"
+          - generic [ref=e236]: g
+          - generic [ref=e237]: .
+      - paragraph [ref=e238]: Getting strong. Getting out more. Slowing down. Making stuff. Join the ones that fit the life you want, and that's where your daily quests start coming from. Or make your own, for your city, your crew, whatever you're into, and pull others in. Nobody's ranked. You just get to see you're not the only one out here.
+  - generic [ref=e241]:
+    - heading "Get in early" [level=2] [ref=e242]
+    - generic [ref=e243]:
+      - generic [ref=e244]:
+        - generic [ref=e245]: Get
+        - generic [ref=e246]: In
+        - generic [ref=e247]: Early
+      - generic [ref=e248]:
+        - generic [ref=e249]: Chapter
+        - generic [ref=e250]: "08"
+    - paragraph [ref=e253]:
+      - generic [ref=e254]: Stop
+      - generic [ref=e255]: meaning
+      - generic [ref=e256]: to.
+      - generic [ref=e257]: Start
+      - generic [ref=e258]: doing.
+    - paragraph [ref=e259]:
+      - generic [ref=e260]: We're
+      - generic [ref=e261]: still
+      - generic [ref=e262]: building
+      - generic [ref=e263]: Grail,
+      - generic [ref=e264]: and
+      - generic [ref=e265]: we're
+      - generic [ref=e266]: letting
+      - generic [ref=e267]: the
+      - generic [ref=e268]: first
+      - generic [ref=e269]: group
+      - generic [ref=e270]: in
+      - generic [ref=e271]: when
+      - generic [ref=e272]: it's
+      - generic [ref=e273]: ready.
+      - generic [ref=e274]: Leave
+      - generic [ref=e275]: your
+      - generic [ref=e276]: email
+      - generic [ref=e277]: and
+      - generic [ref=e278]: you'll
+      - generic [ref=e279]: be
+      - generic [ref=e280]: near
+      - generic [ref=e281]: the
+      - generic [ref=e282]: front
+      - generic [ref=e283]: of
+      - generic [ref=e284]: the
+      - generic [ref=e285]: line.
+    - generic [ref=e286]:
+      - textbox [aria-hidden] [ref=e287]
+      - generic [ref=e288]:
+        - textbox "Your email" [ref=e289]
+        - generic [aria-hidden]:
+          - generic: "Y"
+          - generic: o
+          - generic: u
+          - generic: r
+          - generic: E
+          - generic: m
+          - generic: a
+          - generic: i
+          - generic: l
+      - paragraph [ref=e290]:
+        - generic [ref=e291]: Early
+        - generic [ref=e292]: access
+        - generic [ref=e293]: ·
+        - generic [ref=e294]: "No"
+        - generic [ref=e295]: card,
+        - generic [ref=e296]: "no"
+        - generic [ref=e297]: spam
+    - generic [ref=e298]:
+      - generic [ref=e299]:
+        - link "M a d e b y D e n o r m a l i z e d" [ref=e300] [cursor=pointer]:
+          - /url: https://denormalized.co
+          - generic [ref=e301]:
+            - generic [ref=e302]: M
+            - generic [ref=e303]: a
+            - generic [ref=e304]: d
+            - generic [ref=e305]: e
+            - generic [ref=e307]: b
+            - generic [ref=e308]: "y"
+            - generic [ref=e310]: D
+            - generic [ref=e311]: e
+            - generic [ref=e312]: "n"
+            - generic [ref=e313]: o
+            - generic [ref=e314]: r
+            - generic [ref=e315]: m
+            - generic [ref=e316]: a
+            - generic [ref=e317]: l
+            - generic [ref=e318]: i
+            - generic [ref=e319]: z
+            - generic [ref=e320]: e
+            - generic [ref=e321]: d
+        - link "P r i v a c y" [ref=e322] [cursor=pointer]:
+          - /url: /privacy
+          - generic [ref=e323]:
+            - generic [ref=e324]: P
+            - generic [ref=e325]: r
+            - generic [ref=e326]: i
+            - generic [ref=e327]: v
+            - generic [ref=e328]: a
+            - generic [ref=e329]: c
+            - generic [ref=e330]: "y"
+      - generic [ref=e331]:
+        - button "Grail — back to top" [ref=e333] [cursor=pointer]:
+          - img "Grail" [ref=e334]
+        - generic [ref=e335]:
+          - generic [ref=e336]: Real
+          - generic [ref=e337]: Life
+          - generic [ref=e338]: Happens
+          - generic [ref=e339]: Offline
+      - generic [ref=e340]:
+        - link "g r a i l @ d e n o r m a l i z e d . c o" [ref=e341] [cursor=pointer]:
+          - /url: mailto:grail@denormalized.co
+          - generic [ref=e342]:
+            - generic [ref=e343]: g
+            - generic [ref=e344]: r
+            - generic [ref=e345]: a
+            - generic [ref=e346]: i
+            - generic [ref=e347]: l
+            - generic [ref=e348]: "@"
+            - generic [ref=e349]: d
+            - generic [ref=e350]: e
+            - generic [ref=e351]: "n"
+            - generic [ref=e352]: o
+            - generic [ref=e353]: r
+            - generic [ref=e354]: m
+            - generic [ref=e355]: a
+            - generic [ref=e356]: l
+            - generic [ref=e357]: i
+            - generic [ref=e358]: z
+            - generic [ref=e359]: e
+            - generic [ref=e360]: d
+            - generic [ref=e361]: .
+            - generic [ref=e362]: c
+            - generic [ref=e363]: o
+        - link "T e r m s" [ref=e364] [cursor=pointer]:
+          - /url: /terms
+          - generic [ref=e365]:
+            - generic [ref=e366]: T
+            - generic [ref=e367]: e
+            - generic [ref=e368]: r
+            - generic [ref=e369]: m
+            - generic [ref=e370]: s
+  - button "Join Waitlist"

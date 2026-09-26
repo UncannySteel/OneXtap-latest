@@ -1,0 +1,5 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - img "Onextap" [ref=e4]
+    - generic [ref=e5]: Onextap
+  - generic [ref=e7]: Loading your account...

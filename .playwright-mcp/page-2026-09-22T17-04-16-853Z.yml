@@ -1,0 +1,280 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - img "Onextap" [ref=e4]
+    - generic [ref=e5]: Onextap
+  - generic [ref=e8]:
+    - banner [ref=e9]:
+      - button "Onextap — back to top" [ref=e10] [cursor=pointer]
+      - button "Open menu" [ref=e11] [cursor=pointer]
+      - switch "Dark mode" [ref=e13] [cursor=pointer]
+    - generic:
+      - generic:
+        - button "Log in" [ref=e14] [cursor=pointer]
+        - button "Get Extension" [ref=e15] [cursor=pointer]
+    - main [ref=e16]:
+      - generic [ref=e17]:
+        - img "We're hiring. Three chairs in a row; a pendant bulb drops from the ceiling, flickers on, and spotlights the middle chair." [ref=e19]:
+          - img [aria-hidden] [ref=e20]:
+            - generic [ref=e51]: WE’RE HIRING
+        - generic [ref=e55]: Scroll
+      - region "Well. We are not. But we can get you hired." [ref=e57]:
+        - generic [ref=e58]:
+          - paragraph [aria-hidden] [ref=e59]: About the chairs
+          - paragraph [aria-hidden] [ref=e60]:
+            - text: "01"
+            - generic [ref=e61]: / 03
+          - generic [ref=e62]:
+            - paragraph [ref=e63]:
+              - generic [ref=e64]: Well…..
+            - paragraph [ref=e66]:
+              - generic [ref=e67]: we
+              - generic [ref=e69]: are
+              - generic [ref=e71]: not.
+            - paragraph [ref=e73]:
+              - generic [ref=e74]: But
+              - generic [ref=e76]: we
+              - generic [ref=e78]: CAN
+              - generic [ref=e80]: get
+              - generic [ref=e82]: YOU
+              - generic [ref=e84]: hired.
+      - group "How Onextap works, in three steps" [ref=e92]:
+        - generic [ref=e93]:
+          - generic [ref=e94]:
+            - generic [ref=e95]:
+              - paragraph [ref=e96]: How it works
+              - heading [level=2] [ref=e97]:
+                - text: Everything you needto apply
+                - emphasis [ref=e98]: faster
+            - paragraph [ref=e99]: A focused tool, not a bloated platform. We handle the friction so you can focus on finding the right role.
+          - generic [ref=e101]:
+            - 'article "Step 1 of 3: Build your profile" [ref=e102]':
+              - generic [ref=e103]:
+                - paragraph [aria-hidden] [ref=e104]: "01"
+                - heading "Build your profile" [level=3] [ref=e105]
+                - paragraph [ref=e106]: Enter your details once or upload a resume. Onextap parses and structures everything automatically.
+                - list [ref=e107]:
+                  - listitem [ref=e108]:
+                    - generic [ref=e115]:
+                      - generic [ref=e116]: Multiple Profiles
+                      - generic [ref=e117]: Different profile for design, engineering, or management roles. Switch between them effortlessly.
+                  - listitem [ref=e118]:
+                    - generic [ref=e123]:
+                      - generic [ref=e124]: Secure Storage
+                      - generic [ref=e125]: Data stored locally on your device with optional encrypted cloud backup and seamless sync.
+              - generic [ref=e127]:
+                - generic [ref=e133]:
+                  - generic [ref=e134]: Design
+                  - generic [ref=e135]: Engineering
+                  - generic [ref=e136]: Management
+                - generic [ref=e137]: Full Name
+                - generic [ref=e140]: Email
+                - generic [ref=e143]: Years of Experience
+                - generic [ref=e146]: Resume parsed — 24 fields
+                - generic [ref=e150]: Stored on this device
+            - 'article "Step 2 of 3: Open any job form" [ref=e154]':
+              - generic [ref=e155]:
+                - paragraph [aria-hidden] [ref=e156]: "02"
+                - heading "Open any job form" [level=3] [ref=e157]
+                - paragraph [ref=e158]: Navigate to any job application on any platform. The Onextap extension activates automatically.
+                - list [ref=e159]:
+                  - listitem [ref=e160]:
+                    - generic [ref=e164]:
+                      - generic [ref=e165]: One-Click Autofill
+                      - generic [ref=e166]: Scans form fields using DOM analysis and pattern matching. Fills every field in one click, every time.
+                  - listitem [ref=e167]:
+                    - generic [ref=e171]:
+                      - generic [ref=e172]: Smart Field Mapping
+                      - generic [ref=e173]: Encounter an unusual field? Map it once — Onextap remembers for every future application automatically.
+              - generic [ref=e175]:
+                - generic [ref=e176]: jobs.example.com/apply
+                - generic [ref=e181]:
+                  - generic [ref=e182]: Senior Product Designer — Application
+                  - generic [ref=e183]: Full Name
+                  - generic [ref=e187]: Email
+                  - generic [ref=e191]: Years of Experience
+                  - generic [ref=e195]: Portfolio URL
+                  - generic [ref=e199]: 4 fields detected
+            - 'article "Step 3 of 3: Tap to apply" [ref=e202]':
+              - generic [ref=e203]:
+                - paragraph [aria-hidden] [ref=e204]: "03"
+                - heading "Tap to apply" [level=3] [ref=e205]
+                - paragraph [ref=e206]: Hit autofill. Review your AI-personalized answers in seconds. Submit. Move to the next one.
+                - list [ref=e207]:
+                  - listitem [ref=e208]:
+                    - generic [ref=e213]:
+                      - generic [ref=e214]: AI Personalization
+                      - generic [ref=e215]: Our AI reads the job description and suggests improvements to your answers before you submit.
+                  - listitem [ref=e216]:
+                    - generic [ref=e221]:
+                      - generic [ref=e222]: Cover Letter Studio
+                      - generic [ref=e223]: Upload and store cover letters, personalize with AI for each application, and fill them in one click from the extension.
+              - generic [ref=e225]:
+                - generic [ref=e226]: linkedin.com/jobs/apply/...
+                - generic [ref=e231]:
+                  - generic [ref=e232]: Senior Product Designer — Application
+                  - generic [ref=e233]:
+                    - generic [ref=e234]: Full Name
+                    - generic [ref=e235]:
+                      - generic [aria-hidden] [ref=e236]: ✓
+                      - text: John Doe
+                  - generic [ref=e237]:
+                    - generic [ref=e238]: Email
+                    - generic [ref=e239]:
+                      - generic [aria-hidden] [ref=e240]: ✓
+                      - text: John@email.com
+                  - generic [ref=e241]:
+                    - generic [ref=e242]: Years of Experience
+                    - generic [ref=e243]:
+                      - generic [aria-hidden] [ref=e244]: ✓
+                      - text: 5 years
+                  - generic [ref=e245]:
+                    - generic [ref=e246]: Cover Note (AI Generated)
+                    - generic [ref=e247]:
+                      - generic [aria-hidden] [ref=e248]: ✓
+                      - text: Tailored to this role's requirements...
+                  - generic [ref=e249]: Autofill Complete — 1 tap
+          - generic [ref=e252]:
+            - generic [ref=e253]:
+              - 'button "Go to step 1: Build your profile" [ref=e254] [cursor=pointer]': "01"
+              - 'button "Go to step 2: Open any job form" [ref=e255] [cursor=pointer]': "02"
+              - 'button "Go to step 3: Tap to apply" [ref=e256] [cursor=pointer]': "03"
+            - generic [ref=e257]:
+              - button "Previous step" [disabled] [ref=e258]
+              - button "Next step" [ref=e261] [cursor=pointer]
+      - generic [ref=e265]:
+        - paragraph [ref=e266]: Pricing
+        - heading [level=2] [ref=e267]:
+          - text: Simple,
+          - emphasis [ref=e268]: transparent.
+        - paragraph [ref=e269]: Start free with fast standard AI, then upgrade for unlimited high-quality AI generation.
+        - generic [ref=e270]:
+          - generic [ref=e271]:
+            - paragraph [ref=e272]: Free
+            - generic [ref=e273]: $0
+            - paragraph [ref=e274]: Forever free
+            - list [ref=e275]:
+              - listitem [ref=e276]:
+                - generic [aria-hidden] [ref=e277]: →
+                - text: Unlimited autofill applications
+              - listitem [ref=e278]:
+                - generic [aria-hidden] [ref=e279]: →
+                - text: Local data storage
+              - listitem [ref=e280]:
+                - generic [aria-hidden] [ref=e281]: →
+                - text: Multiple profiles
+              - listitem [ref=e282]:
+                - generic [aria-hidden] [ref=e283]: →
+                - text: Smart field mapping
+              - listitem [ref=e284]:
+                - generic [aria-hidden] [ref=e285]: →
+                - text: 3 fast standard AI credits for personalized answers
+            - button "Get started free" [ref=e286] [cursor=pointer]
+          - generic [ref=e287]:
+            - generic [ref=e288]: Most Popular
+            - paragraph [ref=e289]: Premium
+            - generic [ref=e290]: $5
+            - paragraph [ref=e291]: per month
+            - list [ref=e292]:
+              - listitem [ref=e293]:
+                - generic [aria-hidden] [ref=e294]: →
+                - text: Everything in Free
+              - listitem [ref=e295]:
+                - generic [aria-hidden] [ref=e296]: →
+                - text: Unlimited high-quality AI answer generation
+              - listitem [ref=e297]:
+                - generic [aria-hidden] [ref=e298]: →
+                - text: Two-pass AI rewrites for stronger final answers
+              - listitem [ref=e299]:
+                - generic [aria-hidden] [ref=e300]: →
+                - text: Deeper profile-tailored answer personalization
+              - listitem [ref=e301]:
+                - generic [aria-hidden] [ref=e302]: →
+                - text: Encrypted cloud backup & sync
+              - listitem [ref=e303]:
+                - generic [aria-hidden] [ref=e304]: →
+                - text: Priority support
+              - listitem [ref=e305]:
+                - generic [aria-hidden] [ref=e306]: →
+                - text: Early access to new features
+            - button "Upgrade to Premium" [ref=e307] [cursor=pointer]
+      - generic [ref=e312]:
+        - generic [ref=e313]:
+          - paragraph [ref=e314]: About
+          - heading [level=2] [ref=e315]:
+            - text: Built for the part ofjob hunting
+            - emphasis [ref=e316]: nobody enjoys.
+        - generic [ref=e317]:
+          - paragraph [ref=e318]: Every application asks the same thirty questions. Onextap is a browser extension that answers them for you — one profile, filled into any job form, on any site, in a single tap.
+          - paragraph [ref=e319]: It is deliberately small. No job board to live in, no pipeline to maintain, no onboarding week. It does one job and then gets out of the way.
+          - paragraph [ref=e320]:
+            - text: Your profile is stored on your device rather than in our database. When an AI feature runs, only the text that request needs is sent to our AI providers — the
+            - link "privacy policy" [ref=e321] [cursor=pointer]:
+              - /url: /privacy-policy
+            - text: sets out exactly what goes where.
+      - generic [ref=e323]:
+        - paragraph [ref=e324]: FAQ
+        - heading [level=2] [ref=e325]:
+          - text: Questions,
+          - emphasis [ref=e326]: answered.
+        - generic [ref=e327]:
+          - button "How is my data stored and protected?" [ref=e329] [cursor=pointer]
+          - button "Do I have control over AI suggestions?" [ref=e333] [cursor=pointer]
+          - button "Which browsers are supported?" [ref=e337] [cursor=pointer]
+          - button "What happens when I run out of free AI credits?" [ref=e341] [cursor=pointer]
+          - button "Can I use different profiles for different job types?" [ref=e345] [cursor=pointer]
+          - button "Is Onextap an Applicant Tracking System (ATS)?" [ref=e349] [cursor=pointer]
+    - contentinfo [ref=e352]:
+      - generic [ref=e353]:
+        - generic [ref=e354]:
+          - heading [level=2] [ref=e355]:
+            - text: Ready to transformyour job
+            - emphasis [ref=e356]: search?
+          - paragraph [ref=e357]: Join thousands of job seekers applying faster with Onextap.
+          - button "Get the Extension" [ref=e358] [cursor=pointer]
+          - paragraph [ref=e361]:
+            - generic [ref=e362]: Available for
+            - generic [ref=e363]: Chrome
+            - generic [ref=e364]: Opera
+            - generic [ref=e365]: Safari — Soon
+        - generic [ref=e366]:
+          - generic [ref=e367]:
+            - paragraph [ref=e368]: Feedback
+            - heading [level=3] [ref=e369]:
+              - text: Tell us what to
+              - emphasis [ref=e370]: build next.
+            - paragraph [ref=e371]: Hit a form Onextap could not fill, or an answer that came out wrong? Send it over. Field matching gets better from exactly those reports.
+            - link "Send feedback" [ref=e372] [cursor=pointer]:
+              - /url: mailto:mazzah70@gmail.com?subject=Onextap%20feedback
+          - generic [ref=e375]:
+            - paragraph [ref=e376]: Contact
+            - heading [level=3] [ref=e377]:
+              - text: Questions go to
+              - emphasis [ref=e378]: a person.
+            - paragraph [ref=e379]: Support, billing, press, or a privacy request — one inbox, no ticket queue.
+            - link "mazzah70@gmail.com" [ref=e380] [cursor=pointer]:
+              - /url: mailto:mazzah70@gmail.com
+        - generic [ref=e384]:
+          - generic [ref=e385]:
+            - paragraph [ref=e386]: Onextap
+            - paragraph [ref=e387]: Your personal job application copilot. Apply faster with AI-powered autofill and personalization.
+          - navigation "Product" [ref=e388]:
+            - heading "Product" [level=4] [ref=e389]
+            - button "Features" [ref=e390] [cursor=pointer]
+            - button "How it works" [ref=e391] [cursor=pointer]
+            - button "Pricing" [ref=e392] [cursor=pointer]
+            - button "FAQ" [ref=e393] [cursor=pointer]
+          - navigation "Company" [ref=e394]:
+            - heading "Company" [level=4] [ref=e395]
+            - button "About" [ref=e396] [cursor=pointer]
+            - button "Contact" [ref=e397] [cursor=pointer]
+            - button "Feedback" [ref=e398] [cursor=pointer]
+          - navigation "Get started" [ref=e399]:
+            - heading "Get Started" [level=4] [ref=e400]
+            - button "Install Extension" [ref=e401] [cursor=pointer]
+            - button "Sign In" [ref=e402] [cursor=pointer]
+            - link "Privacy Policy" [ref=e403] [cursor=pointer]:
+              - /url: /privacy-policy
+        - paragraph [aria-hidden] [ref=e407]: ONEXTAP
+        - generic [ref=e408]:
+          - paragraph [ref=e409]: © 2026 Onextap. All rights reserved.
+          - paragraph [ref=e410]: Chrome · Opera · Safari coming soon

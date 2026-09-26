@@ -3,6 +3,7 @@ import { DASHBOARD_URL } from '../config';
 import { getIconUrl } from '../extensionClient';
 import PopupView from './popup/PopupView';
 import DashboardView from './dashboard/DashboardView';
+import CookieConsentBanner from './dashboard/CookieConsentBanner';
 
 // --- APP ROOT ---
 /**
@@ -60,6 +61,7 @@ export default function App({ initialView = 'dashboard' }) {
           />
         : <DashboardView onClose={() => window.close()} />
       }
+      {viewMode !== 'popup' && <CookieConsentBanner />}
     </>
   );
 }

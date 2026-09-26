@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "instrument serif",
+        "createdAt": "2026-09-22T11:55:43.596Z",
+        "reason": "Project brand display face: declared as fontFamily.display in tailwind.config.js and used by every heading on the landing page. DESIGN.md is an untracked SF-Pro exploration that does not describe this surface."
+      },
+      {
+        "rule": "design-system-font",
+        "value": "dm sans",
+        "createdAt": "2026-09-22T11:55:43.661Z",
+        "reason": "Project brand body face: declared as fontFamily.sans in tailwind.config.js; the flagged line is pre-existing .ot-hero-word CSS. DESIGN.md is an untracked SF-Pro exploration that does not describe this surface."
+      },
+      {
+        "rule": "overused-font",
+        "value": "instrument serif",
+        "createdAt": "2026-09-22T15:37:44.012Z",
+        "reason": "Pre-existing brand display face: fontFamily.display in tailwind.config.js, preloaded in index.html, used by every heading on the landing page before this session. The task brief required keeping the existing brand identity intact, so swapping the face is out of scope."
+      }
+    ]
+  }
+}

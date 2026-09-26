@@ -400,16 +400,18 @@
       <div class="section">
         <span class="section-number">1</span>
         <h2>Data Ownership & Local-First Philosophy</h2>
-        <p>Onextap is built on the principle of <strong>Data Sovereignty</strong>. By default, all personal information, resume data, and application history are stored locally on your device within the browser's secure storage.</p>
+        <p>Onextap is built on the principle of <strong>Data Sovereignty</strong>. By default, all personal information, resume data, and application history are stored locally on your device within the browser's storage.</p>
         <p>Stored locally is not the same as never transmitted. When you use an AI feature, the relevant text is sent out to be processed — sections 2 and 4 set out exactly what is sent, to whom, and what is kept.</p>
       </div>
 
       <div class="section">
         <span class="section-number">2</span>
         <h2>Data Collection and Usage</h2>
-        <p><strong>Personal Information:</strong> We do not sell, rent, or trade your personal data. Data is used solely to facilitate the autofill functionality of job applications.</p>
-        <p><strong>AI Processing:</strong> When you generate or improve an answer, your question, your draft answer, and the job description from the page you have open are sent to <strong>Groq</strong> for processing. When you upload a resume, the file is sent to <strong>Google</strong> (Gemini) to extract structured profile data. This data is processed in a "stateless" manner and is not used to train global AI models. When you use Job Matches, your resume text is also sent to Groq for ranking, and a copy of that request is retained by our observability provider — section 4 explains this in full.</p>
-        <p><strong>Account &amp; Billing Data:</strong> If you create an account, your email address, credit balance, and subscription status are stored in our database (Supabase), transmitted via SSL/TLS encryption. Your profile data — personal details, saved answers, and cover letters — is <strong>not</strong> uploaded and remains on your device.</p>
+        <p><strong>Personal Information:</strong> We do not sell, rent, or trade your personal data. Your profile data is used to power Onextap's core features — autofill, answer generation, and job matching — as described below.</p>
+        <p><strong>AI Processing — Answer Studio &amp; resumes:</strong> When you generate or improve an answer, we send <strong>Groq</strong> your question, your draft answer, the job description from the page you have open, a brief summary of your profile (current role, top skills, and recent experience), and any of your saved Answer Vault answers that are relevant to the question. When you upload a resume, the file itself is sent to <strong>Google</strong> (Gemini) to extract structured profile data. We do not use this data to train our own models; what Groq and Google do with data submitted through their APIs is governed by their own terms of service, not ours.</p>
+        <p><strong>AI Processing — Job Matches:</strong> When you use Job Matches, a summary of your profile — skills, job titles, seniority level, and years of experience, not your full resume text — is sent to whichever model is ranking that batch. By default that's Google (Gemini); Groq is used automatically as a fallback if Gemini is unavailable. If you select "Explain my fit" on a specific job, fuller resume text (your summary and experience) is sent to Groq for that one job's tailored analysis. Section 4 covers what's recorded about these requests, and for how long.</p>
+        <p><strong>Account &amp; Billing Data:</strong> If you create an account, your email address, display name, credit balance, subscription status, and — if you subscribe — the customer and subscription identifiers Dodo Payments uses to manage your billing are stored in our database (Supabase), transmitted via SSL/TLS encryption. Your profile data — personal details, saved answers, and cover letters — is <strong>not</strong> uploaded and remains on your device.</p>
+        <p><strong>Feedback:</strong> If you submit our feedback form, your message — and a reply-to email address, if you choose to include one — is emailed to our team via Resend. It is not stored in any database.</p>
       </div>
 
       <div class="section">
@@ -418,26 +420,57 @@
         <p>Onextap interacts with the following services:</p>
         <ul>
           <li><strong>Supabase:</strong> For encrypted authentication and billing records (credits and subscription status).</li>
-          <li><strong>Groq:</strong> For generating and improving application answers, and for ranking job listings against your resume.</li>
-          <li><strong>Google (Gemini):</strong> For parsing uploaded resumes into structured profile data.</li>
-          <li><strong>Opik (Comet):</strong> For recording AI requests so we can diagnose and improve them. These records include resume text and are retained — see section 4.</li>
+          <li><strong>Groq:</strong> For generating and improving application answers, for the deeper "Explain my fit" analysis on a specific job, and as the automatic fallback for job ranking if our primary ranking model is unavailable.</li>
+          <li><strong>Google (Gemini):</strong> For parsing uploaded resumes into structured profile data, and as our primary model for ranking job listings against your resume.</li>
+          <li><strong>Google Fonts:</strong> For the typefaces used across this site. Loading a font, like any request to a third-party server, can expose your IP address to Google, under Google's own policies.</li>
+          <li><strong>Google Sign-In:</strong> If you sign in with Google, your browser is sent to Google's own sign-in page; we receive back only your email and name through Supabase's authentication integration.</li>
+          <li><strong>Opik (Comet):</strong> For recording operational metadata about AI requests — things like counts, search filters, job IDs, and whether a request succeeded — so we can diagnose and improve reliability. As of this writing, these records do not include your resume, profile, or answer text — see section 4.</li>
           <li><strong>Dodo Payments:</strong> For secure payment processing (we never see or store your credit card details).</li>
+          <li><strong>Resend:</strong> For delivering feedback-form submissions to our team, including a reply-to email address if you choose to provide one.</li>
+          <li><strong>Job-board sources</strong> (Adzuna, Greenhouse, Lever, Ashby, Arbeitnow, Jobicy, Himalayas, Remotive, RemoteOK): We pull public job postings from these sources to build the listings you search and match against. This is a one-way, read-only feed — none of your personal data is sent to them.</li>
         </ul>
       </div>
 
       <div class="section">
         <span class="section-number">4</span>
         <h2>Job Matching &amp; AI Observability</h2>
-        <p><strong>What is sent when you match jobs:</strong> Job Matches ranks listings against your resume. To do that, the text of your active resume — your summary, work history, and skills — is sent to <strong>Groq</strong> together with the job listings being considered, so that a language model can score each one and write the short explanation you see next to it. This happens only when you use the feature. We do not store your resume text in our database.</p>
-        <p><strong>What is recorded, and for how long:</strong> To debug ranking quality and catch failures, those AI requests and their responses are recorded with <strong>Opik</strong>, an AI observability service operated by Comet. <strong>These records include the resume text that was sent, and unlike the AI requests themselves they are retained rather than discarded after the request completes.</strong> They are accessible to the Onextap team. We use them only to diagnose and improve how the product works. We do not sell them, do not use them for advertising, and do not use them to build a profile of you.</p>
-        <p><strong>When nothing is sent:</strong> Resume and profile text leaves your device only when you use an AI feature — uploading a resume for parsing, generating or improving an answer, personalizing a cover letter, or matching jobs. Autofill itself is entirely local: filling a form uses only the copy of your profile stored in your browser.</p>
-        <p><strong>Your choices:</strong> You can use Onextap's autofill and local profile features without ever invoking an AI feature. If you would like the records described above deleted, contact us at the address below and we will remove them.</p>
+        <p><strong>What is sent when you match jobs:</strong> Job Matches ranks listings against your resume. To do that, a summary of your profile — your skills, job titles, seniority level, and years of experience, not your full resume text — is sent together with the job listings being considered to whichever model is doing the ranking (Gemini by default, Groq as an automatic fallback), so it can score each one and write the short explanation you see next to it. This happens only when you use the feature. We do not store your resume text in our database.</p>
+        <p><strong>Explain my fit:</strong> Selecting "Explain my fit" on a specific job sends fuller resume text — your summary and experience — together with that job's description to Groq, so it can generate a more detailed, job-specific analysis. This is a separate action from bulk ranking, and it also happens only when you choose it.</p>
+        <p><strong>What is recorded, and for how long:</strong> To debug ranking quality and catch failures, requests to the ranking and "Explain my fit" endpoints are recorded with <strong>Opik</strong>, an AI observability service operated by Comet. As of this writing, these records contain only operational metadata — job counts, search filters, job IDs, and success/failure — <strong>never the resume, profile, or answer text those requests carry.</strong> They are accessible to the Onextap team. We use them only to diagnose and improve how the product works. We do not sell them, do not use them for advertising, and do not use them to build a profile of you. If we ever start including resume or profile text in these records, we will say so here first.</p>
+        <p><strong>When nothing is sent:</strong> Resume and profile text leaves your device only when you use an AI feature — uploading a resume for parsing, generating or improving an answer, personalizing a cover letter, or matching or explaining jobs. Autofill itself is entirely local: filling a form uses only the copy of your profile stored in your browser.</p>
+        <p><strong>Your choices:</strong> You can use Onextap's autofill and local profile features without ever invoking an AI feature. If you would like any of the records described above deleted, contact us at the address below and we will remove them.</p>
       </div>
 
       <div class="section">
         <span class="section-number">5</span>
+        <h2>What the Extension Can Access</h2>
+        <p>Onextap's browser extension asks for a small, specific set of permissions:</p>
+        <ul>
+          <li><strong>storage:</strong> to keep your profile on your device.</li>
+          <li><strong>activeTab &amp; scripting:</strong> to read a job posting or fill a form — but only on the tab you're looking at, and only after you click something in the extension. There's no standing access to your other tabs, and no script runs automatically when you open a page; the extension only acts when you tell it to.</li>
+          <li><strong>identity:</strong> to open Google's own sign-in window when you choose "Sign in with Google."</li>
+        </ul>
+        <p>The extension does not request access to every website you visit, and it doesn't run in the background on pages you haven't asked it to act on.</p>
+        <p>When you do ask Onextap to read a job posting — to fill an application, generate an answer, or run Job Matches — it reads the company name and description text visible on that page (capped at 8,000 characters) and nothing else: not your cookies, not your other open tabs, not your browsing history.</p>
+      </div>
+
+      <div class="section">
+        <span class="section-number">6</span>
+        <h2>Cookies &amp; Local Storage</h2>
+        <p>Onextap's website and extension don't use tracking cookies, and as of this writing we don't run any analytics or advertising scripts. Your signed-in session is kept in your browser's local storage — not a cookie — the same place your profile and saved answers live.</p>
+        <p>This site also loads Google Fonts (see section 3), which is a request to Google's servers for a stylesheet, not a tracking script. If we ever add analytics, the notice on this site will tell you and let you opt out, and we'll add it to the "Third-Party Services" list above first.</p>
+      </div>
+
+      <div class="section">
+        <span class="section-number">7</span>
         <h2>Security</h2>
-        <p>We employ industry-standard encryption. Your "Master Profile" is yours alone. We do not have "backdoor" access to your locally stored data.</p>
+        <p>We use HTTPS/TLS encryption for everything transmitted to our servers and to Supabase. Locally stored data — your profile, resume, and saved answers — is protected by your device's own browser and operating system; we don't add a separate layer of encryption on top of it, and we do not have "backdoor" access to it. Your "Master Profile" is yours alone.</p>
+      </div>
+
+      <div class="section">
+        <span class="section-number">8</span>
+        <h2>Data Retention &amp; Your Rights</h2>
+        <p>We keep your account data (email, display name, credit balance, and subscription status) for as long as your account exists. Your profile, resumes, and saved answers exist only on your own device, so deleting them is as simple as clearing them in Onextap or uninstalling the extension. To request deletion of your account, or a copy of your account data or the AI-observability metadata described in section 4, contact us at the address below and we'll take care of it.</p>
       </div>
 
       <div class="contact-card">

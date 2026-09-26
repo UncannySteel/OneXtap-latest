@@ -1,0 +1,393 @@
+- generic [active] [ref=f4e1]:
+  - generic: Drag
+  - banner:
+    - link [ref=f4e2] [cursor=pointer]:
+      - /url: "#top"
+      - text: Onextap
+      - superscript [ref=f4e3]: ®
+    - button "Add to Chrome" [ref=f4e4] [cursor=pointer]
+  - generic [aria-hidden]:
+    - paragraph: 00 — Now hiring
+    - generic: "00"
+  - main [ref=f4e5]:
+    - generic [ref=f4e7]:
+      - generic [ref=f4e8]:
+        - paragraph [ref=f4e9]:
+          - text: Now hiring
+          - generic [ref=f4e11]: All departments
+          - generic [ref=f4e12]: Remote friendly
+        - heading "We're hiring" [level=1] [ref=f4e13]
+        - paragraph [ref=f4e15]:
+          - generic [ref=f4e16]: Full-time
+          - generic [ref=f4e17]: Competitive
+          - generic [ref=f4e18]: Start immediately
+        - paragraph [ref=f4e19]:
+          - generic [ref=f4e20]: ↓
+          - text: Keep reading
+          - generic [ref=f4e22]: Scroll
+      - generic [ref=f4e23]:
+        - paragraph [ref=f4e24]: well… we are not.
+        - heading "But we can help you get hired ." [level=2] [ref=f4e25]:
+          - generic [ref=f4e26]: But
+          - generic [ref=f4e28]: we
+          - generic [ref=f4e30]: can
+          - generic [ref=f4e32]: help
+          - generic [ref=f4e34]: you
+          - generic [ref=f4e36]:
+            - generic [ref=f4e37]: get
+            - generic [ref=f4e39]: hired
+          - generic [ref=f4e41]: .
+        - paragraph [ref=f4e43]: Onextap is a Chrome extension that fills the application for you — every field, on every job board — and drafts the written answers in your own words. One tap, next job.
+        - generic [ref=f4e44]:
+          - link "Add to Chrome — free →" [ref=f4e45] [cursor=pointer]:
+            - /url: "#how"
+            - text: Add to Chrome — free
+            - generic [ref=f4e46]: →
+          - link "See what it fixes" [ref=f4e47] [cursor=pointer]:
+            - /url: "#form"
+    - generic [ref=f4e49]:
+      - generic [ref=f4e50]:
+        - paragraph [ref=f4e51]: 01 / The form
+        - heading "Every application asks the same eleven things." [level=2] [ref=f4e53]:
+          - generic [ref=f4e54]: Every
+          - generic [ref=f4e56]: application
+          - generic [ref=f4e58]: asks
+          - generic [ref=f4e60]: the
+          - generic [ref=f4e62]: same
+          - generic [ref=f4e64]: eleven
+          - generic [ref=f4e66]: things.
+      - paragraph [ref=f4e69]: Greenhouse names the field one way. Workday names it another. Lever buries it on page three. The answers never change — only the labels, the order and the number of clicks. Onextap learns the mapping once and reuses it everywhere.
+      - generic [ref=f4e70]:
+        - generic [ref=f4e71]:
+          - generic [ref=f4e72]: "01"
+          - generic [ref=f4e73]: first_name
+          - generic [ref=f4e74]: Mapped
+        - generic [ref=f4e75]:
+          - generic [ref=f4e76]: "02"
+          - generic [ref=f4e77]: last_name
+          - generic [ref=f4e78]: Mapped
+        - generic [ref=f4e79]:
+          - generic [ref=f4e80]: "03"
+          - generic [ref=f4e81]: email
+          - generic [ref=f4e82]: Mapped
+        - generic [ref=f4e83]:
+          - generic [ref=f4e84]: "04"
+          - generic [ref=f4e85]: phone
+          - generic [ref=f4e86]: Mapped
+        - generic [ref=f4e87]:
+          - generic [ref=f4e88]: "05"
+          - generic [ref=f4e89]: location
+          - generic [ref=f4e90]: Mapped
+        - generic [ref=f4e91]:
+          - generic [ref=f4e92]: "06"
+          - generic [ref=f4e93]: linkedin_url
+          - generic [ref=f4e94]: Mapped
+        - generic [ref=f4e95]:
+          - generic [ref=f4e96]: "07"
+          - generic [ref=f4e97]: portfolio_url
+          - generic [ref=f4e98]: Mapped
+        - generic [ref=f4e99]:
+          - generic [ref=f4e100]: "08"
+          - generic [ref=f4e101]: years_of_experience
+          - generic [ref=f4e102]: Mapped
+        - generic [ref=f4e103]:
+          - generic [ref=f4e104]: "09"
+          - generic [ref=f4e105]: work_authorization
+          - generic [ref=f4e106]: Mapped
+        - generic [ref=f4e107]:
+          - generic [ref=f4e108]: "10"
+          - generic [ref=f4e109]: notice_period
+          - generic [ref=f4e110]: Mapped
+        - generic [ref=f4e111]:
+          - generic [ref=f4e112]: "11"
+          - generic [ref=f4e113]: "\"Why do you want to work here?\""
+          - generic [ref=f4e114]: Drafted
+      - generic [ref=f4e115]:
+        - generic [ref=f4e116]: "11"
+        - paragraph [ref=f4e117]: fields recognised and filled on this page. The twelfth is the one you actually want to think about.
+    - generic [ref=f4e118]:
+      - generic [ref=f4e119]:
+        - generic [ref=f4e120]:
+          - paragraph [ref=f4e121]: 02 / How it runs
+          - heading "Three moves, then it repeats forever." [level=2] [ref=f4e123]:
+            - generic [ref=f4e124]: Three
+            - generic [ref=f4e126]: moves,
+            - generic [ref=f4e128]: then
+            - generic [ref=f4e130]: it
+            - generic [ref=f4e132]: repeats
+            - generic [ref=f4e134]: forever.
+        - paragraph [ref=f4e136]:
+          - generic [ref=f4e137]: Drag the rail
+          - generic [ref=f4e139]: Three moves, on a loop
+      - region "How Onextap runs, in three moves" [ref=f4e140]:
+        - generic [ref=f4e141]:
+          - article [ref=f4e142]:
+            - paragraph [ref=f4e143]: "01"
+            - heading "Build your profile" [level=3] [ref=f4e144]
+            - paragraph [ref=f4e145]: Enter your details once or upload a resume. Onextap parses and structures everything automatically.
+            - paragraph [ref=f4e146]:
+              - generic [aria-hidden] [ref=f4e147]: ◆
+              - text: resume.pdf → parsed once
+          - article [ref=f4e148]:
+            - paragraph [ref=f4e149]: "02"
+            - heading "Open any job form" [level=3] [ref=f4e150]
+            - paragraph [ref=f4e151]: Navigate to any job application on any platform. The Onextap extension activates automatically.
+            - paragraph [ref=f4e152]:
+              - generic [aria-hidden] [ref=f4e153]: ◆
+              - text: greenhouse · lever · workday
+          - article [ref=f4e154]:
+            - paragraph [ref=f4e155]: "03"
+            - heading "Tap to apply" [level=3] [ref=f4e156]
+            - paragraph [ref=f4e157]: Hit autofill. Review your AI-personalised answers in seconds. Submit. Move to the next one.
+            - paragraph [ref=f4e158]:
+              - generic [aria-hidden] [ref=f4e159]: ◆
+              - text: 11 fields · 1 tap
+          - article [aria-hidden] [ref=f4e160]:
+            - paragraph [ref=f4e161]: "01"
+            - heading [level=3] [ref=f4e162]: Build your profile
+            - paragraph [ref=f4e163]: Enter your details once or upload a resume. Onextap parses and structures everything automatically.
+            - paragraph [ref=f4e164]:
+              - generic [aria-hidden] [ref=f4e165]: ◆
+              - text: resume.pdf → parsed once
+          - article [aria-hidden] [ref=f4e166]:
+            - paragraph [ref=f4e167]: "02"
+            - heading [level=3] [ref=f4e168]: Open any job form
+            - paragraph [ref=f4e169]: Navigate to any job application on any platform. The Onextap extension activates automatically.
+            - paragraph [ref=f4e170]:
+              - generic [aria-hidden] [ref=f4e171]: ◆
+              - text: greenhouse · lever · workday
+          - article [aria-hidden] [ref=f4e172]:
+            - paragraph [ref=f4e173]: "03"
+            - heading [level=3] [ref=f4e174]: Tap to apply
+            - paragraph [ref=f4e175]: Hit autofill. Review your AI-personalised answers in seconds. Submit. Move to the next one.
+            - paragraph [ref=f4e176]:
+              - generic [aria-hidden] [ref=f4e177]: ◆
+              - text: 11 fields · 1 tap
+          - article [aria-hidden] [ref=f4e178]:
+            - paragraph [ref=f4e179]: "01"
+            - heading [level=3] [ref=f4e180]: Build your profile
+            - paragraph [ref=f4e181]: Enter your details once or upload a resume. Onextap parses and structures everything automatically.
+            - paragraph [ref=f4e182]:
+              - generic [aria-hidden] [ref=f4e183]: ◆
+              - text: resume.pdf → parsed once
+          - article [aria-hidden] [ref=f4e184]:
+            - paragraph [ref=f4e185]: "02"
+            - heading [level=3] [ref=f4e186]: Open any job form
+            - paragraph [ref=f4e187]: Navigate to any job application on any platform. The Onextap extension activates automatically.
+            - paragraph [ref=f4e188]:
+              - generic [aria-hidden] [ref=f4e189]: ◆
+              - text: greenhouse · lever · workday
+          - article [aria-hidden] [ref=f4e190]:
+            - paragraph [ref=f4e191]: "03"
+            - heading [level=3] [ref=f4e192]: Tap to apply
+            - paragraph [ref=f4e193]: Hit autofill. Review your AI-personalised answers in seconds. Submit. Move to the next one.
+            - paragraph [ref=f4e194]:
+              - generic [aria-hidden] [ref=f4e195]: ◆
+              - text: 11 fields · 1 tap
+      - generic [ref=f4e197]:
+        - generic [ref=f4e198]:
+          - generic [ref=f4e203]: boards.greenhouse.io / northwind-labs / product-designer / apply
+          - generic [ref=f4e204]: Onextap · filling
+        - generic [ref=f4e205]:
+          - generic [ref=f4e206]:
+            - generic [ref=f4e207]: first_name
+            - generic [ref=f4e208]: Azzah
+          - generic [ref=f4e211]:
+            - generic [ref=f4e212]: email
+            - generic [ref=f4e213]: azzah@example.com
+          - generic [ref=f4e216]:
+            - generic [ref=f4e217]: years_of_experience
+            - generic [ref=f4e218]: "4"
+          - generic [ref=f4e221]:
+            - generic [ref=f4e222]: portfolio_url
+            - generic [ref=f4e223]: azzah.design
+          - generic [ref=f4e226]:
+            - generic [ref=f4e227]: "\"Why do you want to work here?\" — AI draft"
+            - generic [ref=f4e228]: Northwind's design team ships its own research, which is rare. I've spent four years doing exactly that on a small team, and I'd rather keep owning the whole loop than hand it off.
+          - paragraph [ref=f4e231]: Every draft is yours to edit before it goes anywhere near submit.
+    - generic [ref=f4e233]:
+      - generic [ref=f4e234]:
+        - paragraph [ref=f4e235]: 03 / Capabilities
+        - heading "What it actually does." [level=2] [ref=f4e237]:
+          - generic [ref=f4e238]: What
+          - generic [ref=f4e240]: it
+          - generic [ref=f4e242]: actually
+          - generic [ref=f4e244]: does.
+      - generic [ref=f4e246]:
+        - article [ref=f4e247]:
+          - paragraph [ref=f4e248]: / 01
+          - heading "One-click autofill" [level=3] [ref=f4e249]
+          - paragraph [ref=f4e250]: Scans form fields using DOM analysis and pattern matching. Fills every field in one click, every time.
+        - article [ref=f4e251]:
+          - paragraph [ref=f4e252]: / 02
+          - heading "Smart field mapping" [level=3] [ref=f4e253]
+          - paragraph [ref=f4e254]: Encounter an unusual field? Map it once — Onextap remembers for every future application automatically.
+        - article [ref=f4e255]:
+          - paragraph [ref=f4e256]: / 03
+          - heading "AI personalisation" [level=3] [ref=f4e257]
+          - paragraph [ref=f4e258]: The AI reads the job description and suggests improvements to your answers before you submit.
+        - article [ref=f4e259]:
+          - paragraph [ref=f4e260]: / 04
+          - heading "Multiple profiles" [level=3] [ref=f4e261]
+          - paragraph [ref=f4e262]: A different profile for design, engineering or management roles. Switch between them effortlessly.
+        - article [ref=f4e263]:
+          - paragraph [ref=f4e264]: / 05
+          - heading "Local-first storage" [level=3] [ref=f4e265]
+          - paragraph [ref=f4e266]: Your profile lives in your browser's storage, with optional encrypted cloud backup and sync.
+        - article [ref=f4e267]:
+          - paragraph [ref=f4e268]: / 06
+          - heading "Cover letter studio" [level=3] [ref=f4e269]
+          - paragraph [ref=f4e270]: Store cover letters, personalise them with AI per application, and fill them from the extension.
+    - generic [ref=f4e271]:
+      - generic [ref=f4e273]:
+        - paragraph [ref=f4e274]: 04 / Everywhere
+        - heading "Same eleven questions. Different logo." [level=2] [ref=f4e276]:
+          - generic [ref=f4e277]: Same
+          - generic [ref=f4e279]: eleven
+          - generic [ref=f4e281]: questions.
+          - generic [ref=f4e283]: Different
+          - generic [ref=f4e285]: logo.
+      - generic "Job boards Onextap runs on" [ref=f4e287]:
+        - generic [ref=f4e288]:
+          - generic [ref=f4e289]:
+            - generic [ref=f4e290]: Greenhouse
+            - generic [ref=f4e291]: ◆
+            - generic [ref=f4e292]: Lever
+            - generic [ref=f4e293]: ◆
+            - generic [ref=f4e294]: Workday
+            - generic [ref=f4e295]: ◆
+            - generic [ref=f4e296]: Ashby
+            - generic [ref=f4e297]: ◆
+            - generic [ref=f4e298]: iCIMS
+            - generic [ref=f4e299]: ◆
+            - generic [ref=f4e300]: Workable
+            - generic [ref=f4e301]: ◆
+            - generic [ref=f4e302]: SmartRecruiters
+            - generic [ref=f4e303]: ◆
+            - generic [ref=f4e304]: Taleo
+            - generic [ref=f4e305]: ◆
+          - generic [aria-hidden] [ref=f4e306]:
+            - generic [ref=f4e307]: Greenhouse
+            - generic [ref=f4e308]: ◆
+            - generic [ref=f4e309]: Lever
+            - generic [ref=f4e310]: ◆
+            - generic [ref=f4e311]: Workday
+            - generic [ref=f4e312]: ◆
+            - generic [ref=f4e313]: Ashby
+            - generic [ref=f4e314]: ◆
+            - generic [ref=f4e315]: iCIMS
+            - generic [ref=f4e316]: ◆
+            - generic [ref=f4e317]: Workable
+            - generic [ref=f4e318]: ◆
+            - generic [ref=f4e319]: SmartRecruiters
+            - generic [ref=f4e320]: ◆
+            - generic [ref=f4e321]: Taleo
+            - generic [ref=f4e322]: ◆
+    - generic [ref=f4e324]:
+      - generic [ref=f4e325]:
+        - paragraph [ref=f4e326]: 05 / Pricing
+        - heading "Two prices. One of them is nothing." [level=2] [ref=f4e328]:
+          - generic [ref=f4e329]: Two
+          - generic [ref=f4e331]: prices.
+          - generic [ref=f4e333]: One
+          - generic [ref=f4e335]: of
+          - generic [ref=f4e337]: them
+          - generic [ref=f4e339]: is
+          - generic [ref=f4e341]: nothing.
+      - generic [ref=f4e343]:
+        - article [ref=f4e344]:
+          - paragraph [ref=f4e346]: Free
+          - paragraph [ref=f4e347]: $0
+          - paragraph [ref=f4e348]: Forever
+          - list [ref=f4e349]:
+            - listitem [ref=f4e350]:
+              - generic [ref=f4e351]: ◆
+              - text: Unlimited autofill applications
+            - listitem [ref=f4e352]:
+              - generic [ref=f4e353]: ◆
+              - text: Local data storage
+            - listitem [ref=f4e354]:
+              - generic [ref=f4e355]: ◆
+              - text: Multiple profiles
+            - listitem [ref=f4e356]:
+              - generic [ref=f4e357]: ◆
+              - text: Smart field mapping
+            - listitem [ref=f4e358]:
+              - generic [ref=f4e359]: ◆
+              - text: 3 standard AI credits for written answers
+          - link "Get started free" [ref=f4e360] [cursor=pointer]:
+            - /url: "#top"
+        - article [ref=f4e361]:
+          - generic [ref=f4e362]:
+            - paragraph [ref=f4e363]: Premium
+            - generic [ref=f4e364]: Most popular
+          - paragraph [ref=f4e365]: $5
+          - paragraph [ref=f4e366]: per month
+          - list [ref=f4e367]:
+            - listitem [ref=f4e368]:
+              - generic [ref=f4e369]: ◆
+              - text: Everything in Free
+            - listitem [ref=f4e370]:
+              - generic [ref=f4e371]: ◆
+              - text: Unlimited high-quality AI answers
+            - listitem [ref=f4e372]:
+              - generic [ref=f4e373]: ◆
+              - text: Two-pass rewrites for stronger drafts
+            - listitem [ref=f4e374]:
+              - generic [ref=f4e375]: ◆
+              - text: Deeper profile-tailored personalisation
+            - listitem [ref=f4e376]:
+              - generic [ref=f4e377]: ◆
+              - text: Encrypted cloud backup & sync
+            - listitem [ref=f4e378]:
+              - generic [ref=f4e379]: ◆
+              - text: Priority support and early access
+          - link "Upgrade to Premium →" [ref=f4e380] [cursor=pointer]:
+            - /url: "#top"
+            - text: Upgrade to Premium
+            - generic [ref=f4e381]: →
+    - generic [ref=f4e383]:
+      - paragraph [ref=f4e384]: The offer
+      - heading "Get hired." [level=2] [ref=f4e385]:
+        - generic [ref=f4e386]: Get
+        - generic [ref=f4e388]: hired.
+      - generic [ref=f4e390]:
+        - link "Add to Chrome — free →" [ref=f4e391] [cursor=pointer]:
+          - /url: "#top"
+          - text: Add to Chrome — free
+          - generic [ref=f4e392]: →
+        - paragraph [ref=f4e393]: Free forever, no card. Three AI credits to start, then $5/month if you want unlimited drafts. Chrome, Edge, Brave and Opera.
+  - contentinfo [ref=f4e394]:
+    - generic [ref=f4e395]:
+      - generic [ref=f4e396]:
+        - generic [ref=f4e397]:
+          - heading "Onextap" [level=4] [ref=f4e398]
+          - paragraph [ref=f4e399]: An application copilot, not an applicant tracking system. Your profile stays in your browser's storage; generating a written answer sends the relevant text to our AI providers to draft it.
+        - generic [ref=f4e400]:
+          - heading "Product" [level=4] [ref=f4e401]
+          - list [ref=f4e402]:
+            - listitem [ref=f4e403]:
+              - link "Capabilities" [ref=f4e404] [cursor=pointer]:
+                - /url: "#does"
+            - listitem [ref=f4e405]:
+              - link "How it runs" [ref=f4e406] [cursor=pointer]:
+                - /url: "#how"
+            - listitem [ref=f4e407]:
+              - link "Pricing" [ref=f4e408] [cursor=pointer]:
+                - /url: "#price"
+        - generic [ref=f4e409]:
+          - heading "Company" [level=4] [ref=f4e410]
+          - list [ref=f4e411]:
+            - listitem [ref=f4e412]:
+              - link "About" [ref=f4e413] [cursor=pointer]:
+                - /url: "#top"
+            - listitem [ref=f4e414]:
+              - link "Contact" [ref=f4e415] [cursor=pointer]:
+                - /url: "#top"
+            - listitem [ref=f4e416]:
+              - link "Privacy" [ref=f4e417] [cursor=pointer]:
+                - /url: "#top"
+        - generic [ref=f4e418]:
+          - heading "Still hiring?" [level=4] [ref=f4e419]
+          - paragraph [ref=f4e420]: No. But the form on the other side of that link takes about four seconds now.
+      - paragraph [aria-hidden] [ref=f4e421]: Onextap

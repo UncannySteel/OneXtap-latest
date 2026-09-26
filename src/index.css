@@ -346,6 +346,64 @@ html.dark .splash-text {
   animation: navItemSlide 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* ===== LANDING NAV HAMBURGER =====
+   Three vertical bars that converge on the icon's centre and then swing out
+   into an X. The paths rotate about the viewBox centre, so `transform-box`
+   has to be pinned — the per-element bounding box would rotate each line
+   around itself and nothing would meet. */
+
+.ot-burger path {
+  transform-box: view-box;
+  transform-origin: center;
+}
+
+.ot-burger.is-open .ot-burger-mid { animation: otBurgerMidOpen 200ms ease both; }
+.ot-burger.is-open .ot-burger-right { animation: otBurgerRightOpen 200ms ease both; }
+.ot-burger.is-open .ot-burger-left { animation: otBurgerLeftOpen 200ms ease both; }
+
+.ot-burger.is-closed .ot-burger-mid { animation: otBurgerMidClose 200ms ease both; }
+.ot-burger.is-closed .ot-burger-right { animation: otBurgerRightClose 200ms ease both; }
+.ot-burger.is-closed .ot-burger-left { animation: otBurgerLeftClose 200ms ease both; }
+
+@keyframes otBurgerMidOpen {
+  to { opacity: 0; }
+}
+
+@keyframes otBurgerRightOpen {
+  50%  { transform: translateX(-8px); }
+  100% { transform: rotate(-45deg) translateX(-8px); }
+}
+
+@keyframes otBurgerLeftOpen {
+  50%  { transform: translateX(8px); }
+  100% { transform: rotate(45deg) translateX(8px); }
+}
+
+@keyframes otBurgerMidClose {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes otBurgerRightClose {
+  0%   { transform: rotate(-45deg) translateX(-8px); }
+  50%  { transform: translateX(-8px); }
+  100% { transform: none; }
+}
+
+@keyframes otBurgerLeftClose {
+  0%   { transform: rotate(45deg) translateX(8px); }
+  50%  { transform: translateX(8px); }
+  100% { transform: none; }
+}
+
+/* ===== THEME SWITCH KNOB ===== */
+
+.ot-switch-knob {
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.3s ease,
+              color 0.3s ease;
+}
+
 /* ===== REDUCED MOTION ===== */
 
 @media (prefers-reduced-motion: reduce) {
@@ -355,6 +413,10 @@ html.dark .splash-text {
   .splash-bar, .splash-bar-fill { animation: none; }
   .reveal, .reveal-scale, .reveal-left { opacity: 1; transform: none; transition: none; }
   .sidebar-enter, .main-content-enter, .nav-item-enter { animation: none; opacity: 1; }
+  /* The burger still has to reach its end state — only the travel is dropped. */
+  .ot-burger path { animation-duration: 1ms !important; }
+  .ot-menu-item { transition: none !important; transition-delay: 0ms !important; }
+  .ot-switch-knob { transition: none !important; }
 }
 
 /* Scrollbar Polishing */
@@ -382,4 +444,1744 @@ html.dark .splash-text {
 
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #C8D8A8;
+}
+
+/* ===== LANDING HERO — SPOTLIGHT SCENE =====
+   Three chairs under a pendant lamp that drops in on its cord, swings,
+   stutters alight and spotlights the middle one. Markup in
+   `HeroSpotlight.jsx`; the reference is the pendant-bulb clip, where the bulb
+   descends from above the frame and the light catches on the third try.
+
+   Three rules hold the whole thing together:
+
+   1. Every element's ordinary CSS is its FINAL, fully-lit state. Keyframes
+      only declare where it comes FROM; the implicit 100% keyframe falls back
+      to the element's own value. That is why one `otHeroFlicker` can drive a
+      full-strength glow, a 0.28-opacity haze and a dimmed dark-mode layer at
+      once, and why dark mode can restyle the scene without touching a cue.
+   2. `animation-fill-mode: both` is mandatory on anything with a delay, or
+      the element flashes its lit state before its cue.
+   3. Everything the lamp lights blinks off ONE shared animation, applied to
+      `.ot-hero-flick` wrappers rather than to the lit elements themselves.
+      Group opacity multiplies with the child's own, so a single keyframe
+      keeps the glow, the cone, the floor pool, the glass and the middle
+      chair's brighter copy in exact sync without one keyframe per element and
+      per theme. It is also what lets a hover re-light the lamp on its own:
+      those four wrappers are the only thing that has to restart, and
+      HeroSpotlight remounts exactly them.
+
+   The lamp swings about the ceiling anchor, so every rotating group needs
+   `transform-box: view-box` — the default `fill-box` would spin each piece
+   around its own centre and the cone would part company with the bulb. The
+   one-shot swing and the endless idle sway are nested groups because they
+   both animate `transform` and one element cannot run two.
+
+   THE TIMELINE — keep it in step with RUN_MS in HeroSpotlight.jsx:
+
+     0.00-0.50  cord draws down and the bulb rides down with it
+     0.00-0.40  paper grain fades up
+     0.06-0.67  the three chairs, staggered
+     0.45-2.15  pendulum swing, damped to rest
+     0.70-1.75  the light stutters on: glow, glass, cone, pool, middle chair
+     1.50-2.25  wordmark fades up and its tracking settles
+     2.15-      idle sway, endlessly
+
+   A hover-triggered re-flicker runs only that 1.05s cue, with its 0.7s delay
+   overridden to zero inline — the lead-in has already happened.
+
+   The cord and the bulb share a duration and an easing on purpose: the bulb
+   hangs off the cord's tip, so if either is retimed alone they visibly come
+   apart on the way down.
+
+   There is deliberately NO `prefers-reduced-motion` branch here. A second,
+   calmer sequence meant the hero behaved differently from machine to machine
+   and the drop and flicker simply never appeared for anyone with the OS
+   setting on. One sequence, same everywhere. */
+
+/* Sampled off the reference clip: the middle chair is #D36248 there, the
+   wordmark is effectively black, and the glass burns a saturated #FBDA5E
+   rather than the near-white this used to have — on a #F5F2EC page a pale
+   ivory light simply does not register as light.
+   `seat` is the chair's own colour and `seat-lit` the brighter copy the lamp
+   lays over it, so the chair reads red whether or not the bulb is on. */
+.ot-hero-stage {
+  --ot-hero-light: #FBE59B;
+  --ot-hero-bulb: #FBD84F;
+  --ot-hero-chair: #12120E;
+  --ot-hero-seat: #B0392A;
+  --ot-hero-seat-lit: #CE4E38;
+  --ot-hero-ink: #12120E;
+  --ot-hero-dot: rgba(42, 60, 28, 0.13);
+  --ot-hero-cast: rgba(42, 60, 28, 0.15);
+  --ot-hero-word: #0D0D0B;
+}
+
+/* The outer chairs have to sit ABOVE the night background, not below it — a
+   silhouette darker than #1A2414 is a silhouette nobody can see. */
+html.dark .ot-hero-stage {
+  --ot-hero-light: #FBE08A;
+  --ot-hero-bulb: #FBD84F;
+  --ot-hero-chair: #303C26;
+  --ot-hero-seat: #A63426;
+  --ot-hero-seat-lit: #C74A34;
+  --ot-hero-ink: #7E9A5E;
+  --ot-hero-dot: rgba(200, 216, 168, 0.13);
+  --ot-hero-cast: rgba(0, 0, 0, 0.32);
+  --ot-hero-word: #E8EFD8;
+}
+
+/* Frame zero until HeroSpotlight arms the run. `animation-play-state` freezes
+   the delay too, so every cue keeps its offset from the real start. */
+.ot-hero-hold * {
+  animation-play-state: paused !important;
+}
+
+.ot-hero-lit-stop { stop-color: var(--ot-hero-light); }
+.ot-hero-bulb-stop { stop-color: var(--ot-hero-bulb); }
+
+/* The same opacities that read as "a lamp" on cream read as a floodlight on
+   the night background, so dark mode dims every lit layer. These are the
+   elements' own values, which the flicker wrapper multiplies into and the
+   implicit 100% keyframe resolves to — no cue is touched. */
+html.dark .ot-hero-glow { opacity: 0.45; }
+html.dark .ot-hero-glow--core { opacity: 0.4; }
+html.dark .ot-hero-cone { opacity: 0.6; }
+html.dark .ot-hero-cone--haze { opacity: 0.12; }
+html.dark .ot-hero-pool { opacity: 0.5; }
+
+.ot-hero-dot { fill: var(--ot-hero-dot); }
+
+.ot-hero-dots {
+  opacity: 0.9;
+  animation: otHeroFadeIn 0.4s ease-out both;
+}
+
+.ot-hero-chair { fill: var(--ot-hero-chair); }
+.ot-hero-chair--center { fill: var(--ot-hero-seat); }
+.ot-hero-seat-lit { fill: var(--ot-hero-seat-lit); }
+.ot-hero-shadow { fill: var(--ot-hero-cast); }
+
+.ot-hero-chair--left {
+  animation: otHeroChairIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
+}
+.ot-hero-chair--right {
+  animation: otHeroChairIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.14s both;
+}
+.ot-hero-chair--center {
+  animation: otHeroChairIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.22s both;
+}
+
+.ot-hero-cord {
+  fill: none;
+  stroke: var(--ot-hero-ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 200;
+  stroke-dashoffset: 0;
+  animation: otHeroCordDraw 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ot-hero-bulb {
+  animation: otHeroBulbDrop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ot-hero-socket { fill: var(--ot-hero-ink); }
+
+/* Two copies of the same outline: the glass itself is only a stroke, and the
+   warm fill behind it lives in a flicker wrapper so it blinks with the glow. */
+.ot-hero-glass {
+  fill: none;
+  stroke: var(--ot-hero-ink);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.ot-hero-glass-lit { fill: var(--ot-hero-bulb); }
+
+.ot-hero-filament {
+  fill: none;
+  stroke: var(--ot-hero-ink);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ot-hero-glow { opacity: 1; }
+.ot-hero-glow--core { opacity: 0.85; }
+.ot-hero-cone { opacity: 1; }
+/* The same cone again over the chairs, so the light reads as being in the air
+   between the viewer and the scene rather than painted on the floor. */
+.ot-hero-cone--haze { opacity: 0.28; }
+.ot-hero-pool { opacity: 1; }
+
+/* Everything the lamp lights, blinking together off one animation. */
+.ot-hero-flick {
+  animation: otHeroFlicker 1.05s linear 0.7s both;
+}
+
+/* Transparent, but it still has to receive the pointer. */
+.ot-hero-hit {
+  pointer-events: all;
+}
+
+.ot-hero-word {
+  fill: var(--ot-hero-word);
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-anchor: middle;
+  animation: otHeroWordIn 0.75s cubic-bezier(0.16, 1, 0.3, 1) 1.5s both;
+}
+
+.ot-hero-lamp {
+  transform-box: view-box;
+  transform-origin: 250px 0;
+  animation: otHeroSwing 1.7s cubic-bezier(0.4, 0, 0.2, 1) 0.45s both;
+}
+
+.ot-hero-sway {
+  transform-box: view-box;
+  transform-origin: 250px 0;
+  animation: otHeroIdle 6s ease-in-out 2.15s infinite;
+  will-change: transform;
+}
+
+/* No 100% keyframe anywhere below: the implicit one resolves to the element's
+   own declared value, which is the lit end state. */
+
+@keyframes otHeroFadeIn {
+  from { opacity: 0; }
+}
+
+@keyframes otHeroChairIn {
+  from { opacity: 0; transform: translateY(20px); }
+}
+
+@keyframes otHeroCordDraw {
+  from { stroke-dashoffset: 200; }
+}
+
+/* Straight down by exactly the cord's own length (196 units, from y=-70 to
+   y=126), so the bulb sits on the tip of the line being drawn for every frame
+   of the descent. Retime or relength either one alone and they come apart.
+   Both start above the viewBox, which clips them, so the pair enters the
+   frame rather than fading up inside it. */
+@keyframes otHeroBulbDrop {
+  from { transform: translateY(-196px); }
+}
+
+/* Paired percentages give each state a flat hold and a hard edge — a bulb
+   catching does not ease. Three attempts before it holds, which is about
+   three flashes per second over a small area; do not add a fourth. */
+@keyframes otHeroFlicker {
+  0%, 12%  { opacity: 0; }
+  13%, 21% { opacity: 0.9; }
+  22%, 44% { opacity: 0.04; }
+  45%, 53% { opacity: 1; }
+  54%, 73% { opacity: 0.08; }
+  74%      { opacity: 1; }
+}
+
+@keyframes otHeroWordIn {
+  from { opacity: 0; letter-spacing: 0.34em; }
+}
+
+@keyframes otHeroSwing {
+  0%  { transform: rotate(0deg); }
+  12% { transform: rotate(3.6deg); }
+  30% { transform: rotate(-2.6deg); }
+  48% { transform: rotate(1.7deg); }
+  64% { transform: rotate(-1deg); }
+  80% { transform: rotate(0.55deg); }
+  91% { transform: rotate(-0.25deg); }
+}
+
+@keyframes otHeroIdle {
+  0%, 100% { transform: rotate(0deg); }
+  25%  { transform: rotate(0.75deg); }
+  75%  { transform: rotate(-0.75deg); }
+}
+
+/* ===== LANDING — SCROLL MANIFESTO =====
+   The three statements between the hero and the walkthrough. Markup in
+   `ManifestoSection.jsx`.
+
+   One idea carries the whole section: every word sits inside its own
+   overflow-hidden box, and a statement's *state* only decides where its words
+   sit inside those boxes — below (`is-future`), home (`is-on`), or above
+   (`is-past`). Nothing is ever hidden with `opacity` or `display`, so the
+   three statements read as one sentence rolling past a window rather than
+   three slides being swapped. It also means the reduced-motion markup gets the
+   right picture for free by rendering every line `is-on`.
+
+   All three lines share one grid cell (`grid-area: 1/1`, set inline), so the
+   tallest statement fixes the stage height and advancing cannot move the page.
+
+   The reveal reference is Boon Global's masked display type; the face, colour
+   and grain are Onextap's own — Instrument Serif on cream, the same dotted
+   paper as the hero. */
+
+/* `soft` and `label` are deliberately two tokens rather than one. "Well….."
+   is meant to read as a mumble, so it only has to clear the 3:1 large-text
+   bar (measured ~3.3:1); the 11px eyebrow, counter and rail are body-sized and
+   have to clear 4.5:1 (measured ~4.8:1). Sharing one value meant either the
+   labels failed AA or the mumble stopped being a mumble. */
+.ot-mf {
+  --ot-mf-ink: #12120E;
+  --ot-mf-soft: rgba(42, 60, 28, 0.58);
+  --ot-mf-label: rgba(42, 60, 28, 0.72);
+  --ot-mf-accent: #4A6B2E;
+  --ot-mf-dot: rgba(42, 60, 28, 0.11);
+  position: relative;
+  background: var(--ot-mf-ground, #F5F2EC);
+}
+
+html.dark .ot-mf {
+  --ot-mf-ink: #E8EFD8;
+  --ot-mf-soft: rgba(200, 216, 168, 0.52);
+  --ot-mf-label: rgba(200, 216, 168, 0.7);
+  --ot-mf-accent: #C8D8A8;
+  --ot-mf-dot: rgba(200, 216, 168, 0.09);
+  --ot-mf-ground: #1A2414;
+}
+
+/* Same dotted paper as the hero scene, faded out at the edges so it reads as
+   grain on the page rather than a panel laid over it.
+   It has to live on a pseudo-element: a `mask-image` on the stage itself masks
+   every descendant too, which fades the statements out at exactly the edges
+   where the grain is supposed to disappear. */
+.ot-mf-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(var(--ot-mf-dot) 1.1px, transparent 1.1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 62% at 50% 50%, #000 42%, transparent 100%);
+  mask-image: radial-gradient(ellipse 70% 62% at 50% 50%, #000 42%, transparent 100%);
+}
+
+/* Above the grain. Absolutely-positioned furniture re-declares its own
+   `position` below, so this only affects the statement column. */
+.ot-mf-stage > * {
+  position: relative;
+  z-index: 1;
+}
+
+.ot-mf-line {
+  font-family: "Instrument Serif", Georgia, ui-serif, serif;
+  font-weight: 400;
+  line-height: 0.98;
+  letter-spacing: -0.022em;
+  color: var(--ot-mf-ink);
+  margin: 0;
+}
+
+/* A mumble: smaller, italic, and the only line that is not full-contrast. */
+.ot-mf-line--soft {
+  font-style: italic;
+  font-size: clamp(2.4rem, 8vw, 5.5rem);
+  color: var(--ot-mf-soft);
+}
+
+.ot-mf-line--plain {
+  font-size: clamp(3rem, 10vw, 7rem);
+}
+
+.ot-mf-line--punch {
+  font-size: clamp(3rem, 9.4vw, 7.6rem);
+  max-width: 14ch;
+}
+
+.ot-mf-em {
+  color: var(--ot-mf-accent);
+  font-style: italic;
+}
+
+/* All three lines share one grid cell, so without this each `<p>` stretches to
+   the tallest statement's height and its text sits at the top of that box —
+   the active line would then sit at a different height depending on which one
+   it is. Centred, every statement holds the same optical position. */
+.ot-mf-line {
+  align-self: center;
+  justify-self: start;
+}
+
+/* The mask. `padding-bottom` + an equal negative margin keeps descenders off
+   the clip edge without the box growing the line. */
+/* No `margin-right` for word gaps: the markup carries real space characters so
+   the sentence survives copy-paste and screen readers, and those spaces do the
+   spacing. A margin on top of them would double every gap. */
+.ot-mf-word {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  padding-bottom: 0.16em;
+  margin-bottom: -0.16em;
+}
+
+/* Travel is `100% + 0.25em`, not a bare percentage. A percentage resolves
+   against the span's own line box, which `line-height: 0.98` makes SHORTER
+   than the glyphs and shorter than the wrapper's padded clip area — at 104%
+   the tops of every hidden word stayed visible as slivers above the mask. */
+.ot-mf-word > span {
+  display: inline-block;
+  transform: translateY(calc(100% + 0.25em));
+  transition: transform 0.82s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Words leave in the order they arrived, so the line reads as a wave in
+     both directions rather than snapping. */
+  transition-delay: calc(var(--wi, 0) * 55ms);
+}
+
+.ot-mf-line.is-on > .ot-mf-word > span {
+  transform: translateY(0);
+}
+
+.ot-mf-line.is-past > .ot-mf-word > span {
+  transform: translateY(calc(-100% - 0.25em));
+}
+
+/* Corner furniture: the chapter label and counter that make the three
+   statements read as one numbered passage. */
+.ot-mf-eyebrow,
+.ot-mf-count {
+  position: absolute;
+  /* The stage pins at viewport top 0 so its grain fills the screen, which puts
+     this row behind the 68px fixed nav (the same 68px the page reserves with
+     `pt-[68px]`). Clear it explicitly. */
+  top: calc(68px + clamp(0.75rem, 3vh, 1.75rem));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ot-mf-label);
+  margin: 0;
+}
+
+.ot-mf-eyebrow { left: clamp(1.5rem, 4vw, 3rem); }
+.ot-mf-count   { right: clamp(1.5rem, 4vw, 3rem); font-variant-numeric: tabular-nums; }
+.ot-mf-count span { opacity: 0.55; }
+
+.ot-mf-rail {
+  position: absolute;
+  bottom: clamp(1.75rem, 6vh, 3.5rem);
+  left: clamp(1.5rem, 4vw, 3rem);
+  display: flex;
+  gap: 7px;
+}
+
+.ot-mf-rail span {
+  display: block;
+  width: 26px;
+  height: 2px;
+  background: var(--ot-mf-label);
+  opacity: 0.4;
+  transform: scaleX(0.999);
+  transform-origin: left center;
+  transition: opacity 0.45s ease, background-color 0.45s ease;
+}
+
+.ot-mf-rail span.is-done {
+  background: var(--ot-mf-accent);
+  opacity: 1;
+}
+
+/* Reduced motion renders every line `is-on` in a short stacked section, so the
+   words are already home and nothing below this point runs. */
+.ot-mf--static .ot-mf-line--punch { max-width: none; }
+
+/* ===== LANDING — HERO → MANIFESTO SCROLL CUE =====
+   A quiet hand-off. The hero animation ends and stops; without this the page
+   gives no sign that the sentence continues below. */
+
+/* The rules are decorative and stay faint; the word is text and does not.
+   Keeping one colour for both meant the label inherited a hairline's value —
+   and the old keyframe then multiplied it by another 0.55 at the bottom of
+   every cycle, landing at ~2.1:1. The drift is the cue now; the opacity dip
+   is gone and the colour is fixed at an AA value. */
+.ot-scroll-cue {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: rgba(42, 60, 28, 0.32);
+}
+
+html.dark .ot-scroll-cue { color: rgba(200, 216, 168, 0.28); }
+
+.ot-scroll-cue-rule {
+  display: block;
+  width: clamp(28px, 8vw, 72px);
+  height: 1px;
+  background: currentColor;
+}
+
+.ot-scroll-cue-text {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(42, 60, 28, 0.72);
+  animation: otScrollCue 2.6s ease-in-out 2.4s infinite;
+}
+
+html.dark .ot-scroll-cue-text { color: rgba(200, 216, 168, 0.7); }
+
+/* Barely there on purpose — a nudge, not a bouncing arrow. */
+@keyframes otScrollCue {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ot-scroll-cue-text { animation: none; }
+}
+
+/* ===== LANDING — FEATURES, AS A RAIL YOU DRAG =====
+   Markup in `FeatureCarousel.jsx`.
+
+   The section this replaced was 345vh of pinned track that took the page
+   scroll hostage for three screens to show three panels. This one is an
+   ordinary block: the rail inside it is a native horizontal scroller, so
+   touch gets platform momentum, a trackpad gets two-finger swipes, a keyboard
+   gets scroll-into-view on focus, and a vertical wheel still scrolls the page.
+   Only the mouse needs JavaScript, because a mouse has no sideways gesture —
+   hence `cursor: grab` and the drag handler in `useDragCarousel.js`.
+
+   The per-card `transform` is written from that hook every frame, so nothing
+   here declares one; what is here is everything the cards look like when the
+   warp is not running, which is also exactly what reduced motion gets. */
+
+.otf {
+  position: relative;
+  padding-block: clamp(56px, 8vw, 104px);
+  scroll-margin-top: 80px;
+  background: #FFFFFF;
+  /* Written per frame by the scroll handler: 0 at the first card, 1 at the
+     last. Declared here so the progress rail has a position before any JS. */
+  --otf-prog: 0;
+  --otf-pad: clamp(20px, 5vw, 48px);
+  --otf-max: 1100px;
+  --otf-line: rgba(42, 60, 28, 0.12);
+  --otf-ink: #1A1A14;
+  --otf-soft: #4A4A38;
+  /* #7A7A64 measures 4.38:1 on white — under AA for the 11-13px labels that
+     use it. This clears 4.5 on both the white and the cream card. */
+  --otf-muted: #6E6E5A;
+  --otf-accent: #2D4A2D;
+  --otf-accent-soft: #E8EFD8;
+  --otf-surface: #FFFFFF;
+  --otf-sunk: #F5F2EC;
+  --otf-deep: #2D4A2D;
+  --otf-on-deep: #F2F6E8;
+  --otf-on-deep-soft: #C8D8A8;
+}
+
+html.dark .otf {
+  background: #1E2A18;
+  --otf-line: rgba(200, 216, 168, 0.15);
+  --otf-ink: #E8EFD8;
+  --otf-soft: #9AB07A;
+  --otf-muted: #9AB07A;
+  --otf-accent: #C8D8A8;
+  --otf-accent-soft: rgba(90, 122, 58, 0.22);
+  --otf-surface: #243020;
+  --otf-sunk: #1A2414;
+  --otf-deep: #3D5C3D;
+  --otf-on-deep: #EDF3DF;
+  --otf-on-deep-soft: #C8D8A8;
+}
+
+.otf-inner {
+  width: 100%;
+  max-width: var(--otf-max);
+  margin-inline: auto;
+  padding-inline: var(--otf-pad);
+}
+
+/* ---- header ---- */
+
+.otf-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.otf-h2 {
+  margin: 0;
+  font-family: "Instrument Serif", Georgia, ui-serif, serif;
+  font-weight: 400;
+  font-size: clamp(34px, 5.4vw, 56px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  color: var(--otf-ink);
+}
+
+.otf-lede-lead {
+  margin: 0;
+  font-size: clamp(16px, 2.2vw, 20px);
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--otf-ink);
+}
+
+.otf-lede-lead em {
+  font-style: normal;
+  color: var(--otf-accent);
+}
+
+.otf-lede {
+  margin: 8px 0 0;
+  max-width: 460px;
+  font-size: 14.5px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: var(--otf-soft);
+}
+
+@media (min-width: 820px) {
+  .otf-head {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr);
+    align-items: end;
+    gap: clamp(32px, 5vw, 72px);
+  }
+}
+
+/* ---- the rail ----
+   Full bleed on purpose: the cards run off both edges of the section so the
+   rail reads as continuing past the screen rather than as a boxed widget. The
+   track's own padding is what keeps the first and last card in line with the
+   header — a percentage there resolves against the viewport's content box,
+   which is the section width, so it tracks `--otf-max` at every size. */
+
+.otf-viewport {
+  margin-top: clamp(28px, 4.5vw, 52px);
+  padding-block: 14px 26px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* `html` sets `scroll-behavior: smooth`, which would animate every single
+     `scrollLeft` write the drag makes — the rail would lag a whole beat behind
+     the pointer. The arrows opt back in per call with `scrollTo`. */
+  scroll-behavior: auto;
+  /* A throw that reaches the end must not become a browser back-swipe. */
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  cursor: grab;
+}
+
+.otf-viewport::-webkit-scrollbar { display: none; }
+
+/* Both routes to the same state: `:active` covers the frame before React has
+   re-rendered, `.is-dragging` covers the pointer-capture case where the
+   pointer has left the element but the drag is still running. */
+.otf-viewport:active,
+.otf-viewport.is-dragging { cursor: grabbing; }
+
+/* Only while dragging: the feature copy is real text and should stay
+   selectable when the rail is at rest. */
+.otf-viewport.is-dragging { user-select: none; }
+
+.otf-viewport:focus-visible {
+  outline: 2px solid var(--otf-accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.otf-track {
+  display: flex;
+  width: max-content;
+  align-items: stretch;
+  gap: clamp(12px, 1.6vw, 20px);
+  padding-inline: max(var(--otf-pad), calc((100% - var(--otf-max)) / 2 + var(--otf-pad)));
+}
+
+/* ---- one feature ---- */
+
+.otf-card {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: clamp(250px, 74vw, 376px);
+  min-height: clamp(306px, 36vw, 392px);
+  padding: clamp(20px, 2.4vw, 30px);
+  border: 1px solid var(--otf-line);
+  border-radius: 16px;
+  background: var(--otf-surface);
+  color: var(--otf-ink);
+  /* `transform` is deliberately absent from this list. The hook writes it
+     every frame from the scroll position; a transition on it would fight the
+     drag and put the card where the pointer no longer is. */
+  transition: box-shadow 0.5s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.5s ease;
+  will-change: transform;
+  -webkit-user-drag: none;
+}
+
+.otf-card--sunk { background: var(--otf-sunk); }
+
+.otf-card--deep {
+  border-color: transparent;
+  background: var(--otf-deep);
+  color: var(--otf-on-deep);
+}
+
+.otf-card.is-active {
+  border-color: rgba(45, 74, 45, 0.3);
+  box-shadow: 0 20px 48px rgba(42, 60, 28, 0.14);
+}
+
+.otf-card--deep.is-active { border-color: transparent; }
+
+html.dark .otf-card.is-active {
+  border-color: rgba(200, 216, 168, 0.3);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.42);
+}
+
+.otf-card-top {
+  display: flex;
+  align-items: center;
+  margin-bottom: clamp(16px, 2.4vw, 26px);
+}
+
+.otf-card-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--otf-accent-soft);
+  color: var(--otf-accent);
+}
+
+.otf-card--deep .otf-card-icon {
+  background: rgba(242, 246, 232, 0.14);
+  color: var(--otf-on-deep);
+}
+
+.otf-card-title {
+  margin: 0 0 10px;
+  font-family: "Instrument Serif", Georgia, ui-serif, serif;
+  font-weight: 400;
+  font-size: clamp(25px, 3.4vw, 33px);
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+  color: inherit;
+}
+
+.otf-card-desc {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: var(--otf-soft);
+}
+
+.otf-card--deep .otf-card-desc { color: var(--otf-on-deep-soft); }
+
+/* ---- "which step is this" — the pointer back to How it works ---- */
+
+.otf-card-steps {
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.otf-card-steps-label {
+  margin: 0 0 9px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--otf-muted);
+}
+
+.otf-card--deep .otf-card-steps-label { color: var(--otf-on-deep-soft); }
+
+.otf-card-steps ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.otf-step-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px 5px 8px;
+  border: 1px solid var(--otf-line);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--otf-ink);
+  cursor: pointer;
+  transition: border-color 0.3s ease, background-color 0.3s ease;
+}
+
+.otf-step-chip-n {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--otf-accent);
+}
+
+.otf-step-chip:hover,
+.otf-step-chip:focus-visible {
+  border-color: var(--otf-accent);
+  background: var(--otf-accent-soft);
+}
+
+.otf-card--deep .otf-step-chip {
+  border-color: rgba(242, 246, 232, 0.28);
+  color: var(--otf-on-deep);
+}
+
+.otf-card--deep .otf-step-chip-n { color: var(--otf-on-deep-soft); }
+
+.otf-card--deep .otf-step-chip:hover,
+.otf-card--deep .otf-step-chip:focus-visible {
+  border-color: var(--otf-on-deep);
+  background: rgba(242, 246, 232, 0.14);
+}
+
+/* ---- counter, progress, controls ---- */
+
+.otf-bar {
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 2vw, 24px);
+  margin-top: clamp(12px, 2vw, 20px);
+}
+
+.otf-count {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--otf-muted);
+  white-space: nowrap;
+}
+
+.otf-count-now {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--otf-accent);
+}
+
+.otf-count-name {
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--otf-ink);
+}
+
+.otf-rail {
+  position: relative;
+  flex: 1 1 90px;
+  min-width: 56px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--otf-line);
+  overflow: hidden;
+}
+
+/* Thumb is a quarter of the rail, so it travels the other three quarters —
+   300% of its own width. */
+.otf-rail-thumb {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 25%;
+  border-radius: 2px;
+  background: var(--otf-accent);
+  transform: translateX(calc(var(--otf-prog, 0) * 300%));
+}
+
+.otf-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.otf-hint {
+  margin-right: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--otf-muted);
+}
+
+/* Nothing to grab with a finger — a touch screen just swipes. */
+@media (hover: none) {
+  .otf-hint { display: none; }
+}
+
+.otf-controls button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--otf-line);
+  border-radius: 999px;
+  background: var(--otf-surface);
+  color: var(--otf-ink);
+  cursor: pointer;
+  transition: border-color 0.25s ease, transform 0.25s ease;
+}
+
+.otf-controls button:hover:not(:disabled) {
+  border-color: var(--otf-accent);
+  transform: translateY(-1px);
+}
+
+.otf-controls button:disabled { opacity: 0.32; cursor: default; }
+
+/* ---- the three steps: the key to the chips, and where "How it works" lands ---- */
+
+.otf-steps {
+  margin-top: clamp(30px, 4.5vw, 54px);
+  padding-top: clamp(18px, 2.4vw, 26px);
+  border-top: 1px solid var(--otf-line);
+  scroll-margin-top: 92px;
+}
+
+.otf-steps-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #5A7A3A;
+}
+
+html.dark .otf-steps-eyebrow { color: #C8D8A8; }
+
+.otf-steps ol {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.otf-steps li button {
+  display: block;
+  width: 100%;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 2px solid var(--otf-line);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.35s ease;
+}
+
+.otf-steps li.is-lit button { border-top-color: var(--otf-accent); }
+
+.otf-steps li button:hover { border-top-color: var(--otf-accent); }
+
+.otf-steps-n {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--otf-muted);
+  transition: color 0.35s ease;
+}
+
+.otf-steps li.is-lit .otf-steps-n { color: var(--otf-accent); }
+
+.otf-steps-title {
+  display: block;
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--otf-ink);
+}
+
+.otf-steps-desc {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.55;
+  color: var(--otf-muted);
+}
+
+@media (min-width: 720px) {
+  .otf-steps ol {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(16px, 2.6vw, 34px);
+  }
+}
+
+/* ---- narrow ---- */
+
+@media (max-width: 560px) {
+  /* The counter's feature name and the bar's progress rail are the two things
+     a 360px-wide bar cannot hold alongside the arrows. The name is already the
+     card title one line above, and the rail is decoration. */
+  .otf-count-name { display: none; }
+  .otf-rail { flex-basis: 40px; }
+  .otf-controls { margin-left: auto; }
+}
+
+/* ---- reduced motion ----
+   The hook already skips the warp and scrolls without animation. All that is
+   left here is to stop the card's own hover-weight transitions. The layout is
+   deliberately identical: a horizontal scroller is not vestibular motion, and
+   collapsing it into a stack would hide the section's whole point. */
+
+@media (prefers-reduced-motion: reduce) {
+  .otf-card,
+  .otf-steps li button,
+  .otf-steps-n,
+  .otf-step-chip,
+  .otf-controls button { transition: none; }
+}
+
+/* ===== LANDING — PRICING HOVER, WITH A TOUCH EQUIVALENT =====
+   The card treatment is a hover effect, and a touch screen has no hover to
+   give. Rather than leaving phones with a dead card, the same treatment is
+   driven there by `.is-near`, which PublicLandingPage puts on whichever card
+   is crossing the middle third of the screen. Two routes to one visual state,
+   split by `(hover: hover)` / `(hover: none)` so neither device runs the
+   other's rules. `:focus-within` is on both routes — a keyboard reaching the
+   card's button should light it up the same way.
+
+   Pricing content is untouched; this is presentation only. */
+
+/* `opacity` is in this list because it has to be. These cards also carry
+   `.reveal-scale`, whose own `transition` declares the entry fade — and this
+   rule, being later and equally specific, replaces it wholesale. Leave opacity
+   out and the cards pop in instead of fading. */
+.ot-price-card {
+  position: relative;
+  isolation: isolate;
+  transition:
+    opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.45s ease;
+}
+
+/* The wash that comes up under the card contents. A pseudo-element rather
+   than a background transition so the card's own light/dark background stays
+   exactly as it was. */
+.ot-price-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  opacity: 0;
+  background: radial-gradient(120% 80% at 50% 0%, rgba(90, 122, 58, 0.13), transparent 70%);
+  transition: opacity 0.45s ease;
+}
+
+.ot-price-card--featured::before {
+  background: radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.17), transparent 70%);
+}
+
+/* The row arrows lean in, one after the next. `--r` is set per row below. */
+.ot-price-card li > span[aria-hidden] {
+  display: inline-block;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--r, 0) * 28ms);
+}
+
+.ot-price-card li:nth-child(1) { --r: 0; }
+.ot-price-card li:nth-child(2) { --r: 1; }
+.ot-price-card li:nth-child(3) { --r: 2; }
+.ot-price-card li:nth-child(4) { --r: 3; }
+.ot-price-card li:nth-child(5) { --r: 4; }
+.ot-price-card li:nth-child(6) { --r: 5; }
+.ot-price-card li:nth-child(7) { --r: 6; }
+
+/* One block of visual truth, reached by two different selectors. */
+@media (hover: hover) {
+  .ot-price-card:hover,
+  .ot-price-card:focus-within {
+    transform: translateY(-6px);
+    border-color: rgba(45, 74, 45, 0.55);
+    box-shadow: 0 22px 50px rgba(42, 60, 28, 0.16);
+  }
+
+  .ot-price-card:hover::before,
+  .ot-price-card:focus-within::before { opacity: 1; }
+
+  .ot-price-card:hover li > span[aria-hidden] { transform: translateX(4px); }
+
+  html.dark .ot-price-card:hover,
+  html.dark .ot-price-card:focus-within {
+    border-color: rgba(200, 216, 168, 0.45);
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.45);
+  }
+}
+
+@media (hover: none) {
+  /* Scrolled-to, or tapped. The lift is smaller than the hover one: on a phone
+     the card fills the screen and a big shift reads as a glitch. */
+  .ot-price-card.is-near,
+  .ot-price-card:focus-within {
+    transform: translateY(-3px);
+    border-color: rgba(45, 74, 45, 0.5);
+    box-shadow: 0 16px 36px rgba(42, 60, 28, 0.14);
+  }
+
+  .ot-price-card.is-near::before,
+  .ot-price-card:focus-within::before { opacity: 1; }
+
+  .ot-price-card.is-near li > span[aria-hidden] { transform: translateX(3px); }
+
+  html.dark .ot-price-card.is-near,
+  html.dark .ot-price-card:focus-within {
+    border-color: rgba(200, 216, 168, 0.4);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.42);
+  }
+
+  /* Tap feedback, so a press on the card is acknowledged immediately. */
+  .ot-price-card:active { transform: translateY(-1px) scale(0.995); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ot-price-card,
+  .ot-price-card::before,
+  .ot-price-card li > span[aria-hidden] { transition: none; }
+  .ot-price-card.is-near,
+  .ot-price-card:hover { transform: none; }
+}
+
+/* ===== LANDING — FAQ =====
+   Deliberately the quietest section on the page: the answer opens on a
+   height transition, the row tints on hover and the plus turns. Nothing else.
+
+   `grid-template-rows: 0fr -> 1fr` is what animates an element of unknown
+   height without measuring it. The answer stays mounted so it has something to
+   animate from, and `visibility: hidden` — not just `overflow` — is what keeps
+   a closed answer out of the accessibility tree; delaying it by the transition
+   duration lets the close finish before the panel goes away.
+
+   Safari 15 and older do not interpolate `grid-template-rows`, so the answer
+   opens instantly there. It opens, which is the part that matters. */
+
+.ot-faq-item {
+  border-bottom: 1px solid rgba(42, 60, 28, 0.12);
+  transition: border-color 0.3s ease;
+}
+
+html.dark .ot-faq-item { border-bottom-color: rgba(200, 216, 168, 0.15); }
+
+.ot-faq-q {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  color: #1A1A14;
+  cursor: pointer;
+  transition: color 0.25s ease;
+}
+
+html.dark .ot-faq-q { color: #E8EFD8; }
+
+.ot-faq-q > span {
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (hover: hover) {
+  .ot-faq-q:hover { color: #2D4A2D; }
+  .ot-faq-q:hover > span { transform: translateX(3px); }
+  html.dark .ot-faq-q:hover { color: #C8D8A8; }
+}
+
+.ot-faq-q:focus-visible {
+  outline: 2px solid #2D4A2D;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.ot-faq-icon {
+  flex: 0 0 auto;
+  color: #7A7A64;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), color 0.25s ease;
+}
+
+html.dark .ot-faq-icon { color: #9AB07A; }
+
+.ot-faq-item.is-open .ot-faq-icon { transform: rotate(45deg); color: #2D4A2D; }
+html.dark .ot-faq-item.is-open .ot-faq-icon { color: #C8D8A8; }
+
+.ot-faq-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 0.38s;
+}
+
+.ot-faq-item.is-open .ot-faq-panel {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s;
+}
+
+/* The row that actually collapses. `min-height: 0` is required or the grid
+   item refuses to shrink below its content. */
+.ot-faq-panel > div {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.ot-faq-panel p {
+  margin: 0;
+  padding-bottom: 20px;
+  max-width: 62ch;
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.68;
+  color: #4A4A38;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+html.dark .ot-faq-panel p { color: #9AB07A; }
+
+.ot-faq-item.is-open .ot-faq-panel p {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 0.1s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ot-faq-panel,
+  .ot-faq-panel p,
+  .ot-faq-q > span,
+  .ot-faq-icon { transition: none; }
+}
+
+/* ===== LANDING — ABOUT, ON PAPER THAT CRUMPLES =====
+   Markup in `AboutSection.jsx`. The section is a two-viewport track with a
+   pinned stage; `--ot-c` is crumple progress, 0 for the whole reading hold and
+   then 0→1, written from the scene hook's onProgress.
+
+   Everything here except the warp is driven from `--ot-c` in CSS, so the
+   common case is compositor work. The warp filter is attached and detached
+   from JS precisely because it is the one layer that is NOT cheap.
+
+   Layer order inside the sheet: warped content, then creases on top with
+   `mix-blend-mode: multiply` so the lit turbulence darkens the folds instead
+   of washing the page out.
+
+   Readability: nothing moves until `--ot-c` leaves 0, which is 45% of the
+   track. The content is in the DOM and in the accessibility tree the whole
+   time, and scrolling back up runs the same numbers backwards — there is no
+   terminal state to get stuck in. */
+
+.ot-ab {
+  position: relative;
+  background: #F5F2EC;
+}
+
+html.dark .ot-ab { background: #1A2414; }
+
+/* Supplies `url(#…)` targets only. `display: none` would stop some engines
+   resolving them, so it is collapsed to nothing instead. */
+.ot-ab-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.ot-ab-stage {
+  position: sticky;
+  top: 0;
+  display: flex;
+  height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 88px 24px 32px;
+  /* The sheet rotates and lifts out of frame; without this it would widen the
+     page as it goes. `clip` rather than `hidden` — see the page wrapper. */
+  overflow-x: clip;
+}
+
+.ot-ab-sheet {
+  width: 100%;
+  max-width: 1040px;
+  padding: clamp(28px, 5vw, 64px);
+  border: 1px solid rgba(42, 60, 28, 0.1);
+  border-radius: 6px;
+  background: #FFFFFF;
+  transform-origin: 50% 58%;
+  /* The sheet balls up and falls away: smaller, tilted, lifted, fading. */
+  transform:
+    translateY(calc(var(--ot-c, 0) * -5vh))
+    scale(calc(1 - var(--ot-c, 0) * 0.2))
+    rotate(calc(var(--ot-c, 0) * -3.6deg));
+  opacity: calc(1 - var(--ot-c, 0) * 0.88);
+  box-shadow: 0 calc(18px + var(--ot-c, 0) * 26px) calc(46px + var(--ot-c, 0) * 40px) rgba(42, 60, 28, 0.12);
+}
+
+html.dark .ot-ab-sheet {
+  border-color: rgba(200, 216, 168, 0.14);
+  background: #1E2A18;
+  box-shadow: 0 calc(18px + var(--ot-c, 0) * 26px) calc(46px + var(--ot-c, 0) * 40px) rgba(0, 0, 0, 0.38);
+}
+
+.ot-ab-sheet { position: relative; }
+
+.ot-ab-warp { position: relative; z-index: 0; }
+
+.ot-ab-creases {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  /* Capped well below 1: at full strength the lit turbulence swamps the text
+     long before the sheet has finished leaving. */
+  opacity: calc(var(--ot-c, 0) * 0.62);
+}
+
+/* Multiply darkens; on the night surface the same overlay has to lighten or
+   the creases read as holes. */
+html.dark .ot-ab-creases { mix-blend-mode: screen; opacity: calc(var(--ot-c, 0) * 0.3); }
+
+/* ---- sheet contents ---- */
+
+.ot-ab-grid {
+  display: grid;
+  gap: 28px;
+}
+
+@media (min-width: 768px) {
+  .ot-ab-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; }
+}
+
+.ot-ab-eyebrow {
+  margin: 0 0 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #5A7A3A;
+}
+
+html.dark .ot-ab-eyebrow { color: #C8D8A8; }
+
+.ot-ab-h2 {
+  margin: 0;
+  font-family: "Instrument Serif", Georgia, ui-serif, serif;
+  font-weight: 400;
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: #1A1A14;
+}
+
+html.dark .ot-ab-h2 { color: #E8EFD8; }
+
+.ot-ab-h2 em { font-style: normal; color: #2D4A2D; }
+html.dark .ot-ab-h2 em { color: #C8D8A8; }
+
+.ot-ab-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.66;
+  color: #4A4A38;
+}
+
+html.dark .ot-ab-copy { color: #9AB07A; }
+
+.ot-ab-copy p { margin: 0; }
+
+.ot-ab-copy a {
+  font-weight: 400;
+  color: #2D4A2D;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  transition: color 0.25s ease;
+}
+
+.ot-ab-copy a:hover { color: #3D5C3D; }
+html.dark .ot-ab-copy a { color: #C8D8A8; }
+
+/* ---- reduced motion: a plain section, no track, no filters ---- */
+
+.ot-ab--static { padding: 64px 24px; }
+
+.ot-ab--static .ot-ab-sheet {
+  margin: 0 auto;
+  transform: none;
+  opacity: 1;
+}
+
+/* ===== LANDING — SITE FOOTER =====
+   Markup in `SiteFooter.jsx`. One dark band that closes the page, in the
+   big-closing-footer shape the brief points at: an oversized statement, the
+   two ways to reach a person, the link columns, then a full-width wordmark
+   over the legal line.
+
+   It replaced four separate full-width bands (call to action, Feedback,
+   Contact, link columns). The copy is all still here; only the framing
+   changed. The ground is the brand's own `onextap-bark`, and unlike the rest
+   of the page this band does not restyle for dark mode — it is already dark,
+   and a second dark treatment only made it muddier. */
+
+/* The three text tones are set by contrast, not by taste. Measured against
+   this band's own #3A2E1C: ink ~13:1, dim ~6.9:1, faint ~4.8:1 — all clear of
+   WCAG AA for body text. `faint` started at 0.32 and measured 2.59:1, which
+   put the column headings, the "Available for" label and the copyright below
+   AA; raising it flattened it against `dim`, so `dim` moved up too and the
+   separation between the two is carried by size and weight as well as value.
+   `rule` is borders only and is not held to a text ratio. */
+.ot-ft {
+  --ot-ft-ink: #F5F2EC;
+  --ot-ft-dim: rgba(245, 242, 236, 0.72);
+  --ot-ft-faint: rgba(245, 242, 236, 0.56);
+  --ot-ft-rule: rgba(245, 242, 236, 0.12);
+  --ot-ft-accent: #C8D8A8;
+  position: relative;
+  overflow: hidden;
+  padding: clamp(64px, 9vw, 120px) 24px clamp(24px, 3vw, 36px);
+  background: #3A2E1C;
+  color: var(--ot-ft-ink);
+}
+
+.ot-ft-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ---- 1. the statement ---- */
+
+.ot-ft-cta {
+  padding-bottom: clamp(48px, 7vw, 88px);
+  border-bottom: 1px solid var(--ot-ft-rule);
+  text-align: center;
+}
+
+.ot-ft-cta-h {
+  margin: 0 auto;
+  max-width: 14ch;
+  font-family: "Instrument Serif", Georgia, ui-serif, serif;
+  font-weight: 400;
+  font-size: clamp(34px, 6vw, 68px);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+}
+
+.ot-ft-cta-h em { font-style: normal; color: var(--ot-ft-accent); }
+
+.ot-ft-cta-p {
+  margin: 18px auto 0;
+  max-width: 44ch;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: var(--ot-ft-dim);
+}
+
+.ot-ft-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: clamp(26px, 3.5vw, 40px);
+  padding: 15px 30px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ot-ft-ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #2D4A2D;
+  cursor: pointer;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease;
+}
+
+.ot-ft-cta-btn svg { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+@media (hover: hover) {
+  .ot-ft-cta-btn:hover { transform: translateY(-2px); background: #FFFFFF; }
+  .ot-ft-cta-btn:hover svg { transform: translateX(3px); }
+}
+
+.ot-ft-cta-btn:active { transform: translateY(0); }
+
+.ot-ft-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 26px 0 0;
+  font-size: 13px;
+  color: var(--ot-ft-faint);
+}
+
+.ot-ft-chip {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(245, 242, 236, 0.1);
+  font-size: 12px;
+  color: rgba(245, 242, 236, 0.8);
+}
+
+/* Reads as the muted one of the three chips without dropping under AA. */
+.ot-ft-chip--soon { color: rgba(245, 242, 236, 0.62); }
+
+/* ---- 2. feedback and contact ---- */
+
+.ot-ft-talk {
+  display: grid;
+  gap: 20px;
+  padding: clamp(40px, 5.5vw, 68px) 0;
+  border-bottom: 1px solid var(--ot-ft-rule);
+}
+
+@media (min-width: 760px) {
+  .ot-ft-talk { grid-template-columns: 1fr 1fr; gap: 24px; }
+}
+
+.ot-ft-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: clamp(24px, 3vw, 34px);
+  border: 1px solid var(--ot-ft-rule);
+  border-radius: 14px;
+  background: rgba(245, 242, 236, 0.035);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.4s ease, background-color 0.4s ease;
+}
+
+@media (hover: hover) {
+  .ot-ft-card:hover,
+  .ot-ft-card:focus-within {
+    transform: translateY(-4px);
+    border-color: rgba(200, 216, 168, 0.4);
+    background: rgba(245, 242, 236, 0.06);
+  }
+}
+
+/* Touch keeps the focus route only: a lift with no pointer to explain it
+   reads as the layout shifting by itself. */
+@media (hover: none) {
+  .ot-ft-card:focus-within { border-color: rgba(200, 216, 168, 0.4); }
+}
+
+.ot-ft-eyebrow {
+  margin: 0 0 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ot-ft-accent);
+}
+
+.ot-ft-card-h {
+  margin: 0 0 12px;
+  font-family: "Instrument Serif", Georgia, ui-serif, serif;
+  font-weight: 400;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+.ot-ft-card-h em { font-style: normal; color: var(--ot-ft-accent); }
+
+.ot-ft-card-p {
+  margin: 0 0 24px;
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: var(--ot-ft-dim);
+}
+
+.ot-ft-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: auto;
+  padding: 12px 22px;
+  border: 1px solid var(--ot-ft-rule);
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--ot-ft-ink);
+  text-decoration: none;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease, background-color 0.3s ease, color 0.3s ease;
+}
+
+.ot-ft-btn--solid {
+  border-color: transparent;
+  background: var(--ot-ft-accent);
+  color: #2A3A1C;
+}
+
+@media (hover: hover) {
+  .ot-ft-btn:hover { transform: translateY(-2px); border-color: var(--ot-ft-accent); }
+  .ot-ft-btn--solid:hover { border-color: transparent; background: #DCE8C2; }
+}
+
+/* ---- 3. columns ---- */
+
+.ot-ft-cols {
+  display: grid;
+  gap: 36px;
+  padding: clamp(40px, 5.5vw, 68px) 0 clamp(32px, 4vw, 52px);
+}
+
+@media (min-width: 560px) {
+  .ot-ft-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 900px) {
+  .ot-ft-cols { grid-template-columns: 2fr 1fr 1fr 1fr; gap: 44px; }
+}
+
+.ot-ft-brand p:last-child {
+  margin: 14px 0 0;
+  max-width: 34ch;
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.62;
+  color: var(--ot-ft-dim);
+}
+
+.ot-ft-wordmark-sm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.ot-ft-wordmark-sm img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px rgba(245, 242, 236, 0.25);
+}
+
+.ot-ft-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.ot-ft-col h4 {
+  margin: 0 0 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ot-ft-faint);
+}
+
+.ot-ft-col button,
+.ot-ft-col a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--ot-ft-dim);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (hover: hover) {
+  .ot-ft-col button:hover,
+  .ot-ft-col a:hover { color: var(--ot-ft-ink); transform: translateX(3px); }
+}
+
+.ot-ft-col button:focus-visible,
+.ot-ft-col a:focus-visible,
+.ot-ft-btn:focus-visible,
+.ot-ft-cta-btn:focus-visible {
+  outline: 2px solid var(--ot-ft-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ---- 4. wordmark and legal ---- */
+
+/* Sized in vw so it spans the band at any width, and clipped by the footer's
+   own `overflow: hidden` rather than being allowed to widen the page. */
+.ot-ft-wordmark {
+  margin: 0;
+  font-family: "Instrument Serif", Georgia, ui-serif, serif;
+  font-weight: 400;
+  font-size: clamp(56px, 15.5vw, 186px);
+  line-height: 0.82;
+  letter-spacing: 0.01em;
+  text-align: center;
+  color: rgba(245, 242, 236, 0.07);
+  user-select: none;
+}
+
+.ot-ft-legal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: clamp(20px, 3vw, 34px);
+  padding-top: 20px;
+  border-top: 1px solid var(--ot-ft-rule);
+  font-size: 13px;
+  color: var(--ot-ft-faint);
+}
+
+.ot-ft-legal p { margin: 0; }
+
+@media (min-width: 640px) {
+  .ot-ft-legal { flex-direction: row; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ot-ft-card,
+  .ot-ft-btn,
+  .ot-ft-cta-btn,
+  .ot-ft-cta-btn svg,
+  .ot-ft-col button,
+  .ot-ft-col a { transition: none; }
+  .ot-ft-card:hover,
+  .ot-ft-btn:hover,
+  .ot-ft-cta-btn:hover { transform: none; }
 }

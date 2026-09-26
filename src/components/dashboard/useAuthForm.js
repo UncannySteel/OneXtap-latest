@@ -36,11 +36,11 @@ const getPasswordStrength = (password) => {
  * Email/password + Google sign-in form state and handlers.
  *
  * Extracted from DashboardView, which was carrying eight pieces of state and
- * two handlers purely to feed PublicLandingPage. The returned object is
- * exactly PublicLandingPage's auth prop interface, so callers spread it:
+ * two handlers purely to feed the sign-in form. The returned object is exactly
+ * AuthModal's prop interface, so callers spread it:
  *
  *   const authForm = useAuthForm({ onAuthenticated });
- *   <PublicLandingPage {...authForm} ... />
+ *   <AuthModal {...authForm} isOpen={...} onClose={...} />
  *
  * The hook owns no session — it reports success through `onAuthenticated` and
  * lets the caller remain the auth boundary. Google sign-in redirects, so it
@@ -118,6 +118,10 @@ export function useAuthForm({ onAuthenticated }) {
     }
   };
 
+  // The dialog outlives a failed attempt: without this, reopening it would
+  // still show the error from the previous try.
+  const clearAuthError = () => setAuthError('');
+
   return {
     authMode, setAuthMode,
     authName, setAuthName,
@@ -126,6 +130,7 @@ export function useAuthForm({ onAuthenticated }) {
     showPassword, setShowPassword,
     passwordStrength, setPasswordStrength,
     authError,
+    clearAuthError,
     isSigningIn,
     handleSignIn,
     handleGoogleSignIn,

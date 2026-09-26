@@ -12,6 +12,7 @@ import PremiumModal from './PremiumModal';
 import OverviewPage from './OverviewPage';
 import AccountSettingsModal from './AccountSettingsModal';
 import PublicLandingPage from './PublicLandingPage';
+import AuthModal from './AuthModal';
 import { useAuthForm } from './useAuthForm';
 import TourOverlay, { TOUR_STEPS } from './TourOverlay';
 import ProfilesPage from './ProfilesPage';
@@ -204,6 +205,7 @@ const DashboardView = ({ onClose }) => {
 
   const [toast, setToast] = useState({ message: '', type: 'success', visible: false });
   const [isPremiumModalOpen, setIsPremiumModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Lazy premium check — fires once after login, non-blocking, doesn't delay the UI
   useEffect(() => {
@@ -281,14 +283,32 @@ const DashboardView = ({ onClose }) => {
     );
   }
 
+  // Cleared at both ends on purpose: dismissing mid-request lands the failure
+  // in state *after* the close, so only the reopen can clear that one.
+  const openAuthModal = (mode) => {
+    authForm.setAuthMode(mode);
+    authForm.clearAuthError();
+    setIsAuthModalOpen(true);
+  };
+  const closeAuthModal = () => {
+    setIsAuthModalOpen(false);
+    authForm.clearAuthError();
+  };
+
   // Landing page when not signed in (same style as popup)
   if (!user) {
     return (
       <>
         <PublicLandingPage
-          {...authForm}
+          onOpenAuth={openAuthModal}
           onOpenPremiumModal={() => setIsPremiumModalOpen(true)}
+          showToast={showToast}
           user={user}
+        />
+        <AuthModal
+          {...authForm}
+          isOpen={isAuthModalOpen}
+          onClose={closeAuthModal}
         />
         <Toast message={toast.message} type={toast.type} isVisible={toast.visible} onDismiss={hideToast} />
         <PremiumModal isOpen={isPremiumModalOpen} onClose={() => setIsPremiumModalOpen(false)} user={user} />

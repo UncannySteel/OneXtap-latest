@@ -1,0 +1,168 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e3]:
+    - generic [ref=f1e4]: Prototype
+    - group "Route" [ref=f1e5]:
+      - button "Landing" [ref=f1e6] [cursor=pointer]
+      - button "Features" [ref=f1e7] [cursor=pointer]
+      - button "Pricing" [ref=f1e8] [cursor=pointer]
+      - button "FAQ" [ref=f1e9] [cursor=pointer]
+      - button "Dashboard" [ref=f1e10] [cursor=pointer]
+      - button "Matches" [ref=f1e11] [cursor=pointer]
+    - group "Viewport" [ref=f1e12]:
+      - button "Desktop" [pressed] [ref=f1e13] [cursor=pointer]
+      - button "Mobile" [ref=f1e14] [cursor=pointer]
+    - button "Replay loading" [ref=f1e15] [cursor=pointer]
+    - generic [ref=f1e16]: Scroll down, then flick up — or hover the top edge
+  - generic [ref=f1e18]:
+    - banner [ref=f1e19]:
+      - button "Onextap" [ref=f1e20] [cursor=pointer]
+      - generic [ref=f1e25]:
+        - switch "Dark mode" [checked] [ref=f1e26] [cursor=pointer]
+        - button "Get Extension" [ref=f1e30] [cursor=pointer]
+    - main [ref=f1e31]:
+      - generic [ref=f1e33]:
+        - generic [ref=f1e34]:
+          - generic [ref=f1e35]: Now on Chrome & Opera
+          - heading [level=1] [ref=f1e37]:
+            - text: Apply to jobs
+            - emphasis [ref=f1e38]: in one tap.
+          - paragraph [ref=f1e39]: Enter your profile once. Onextap fills every application form in the tab you already have open — and writes answers against the posting on screen, not a template.
+          - generic [ref=f1e40]:
+            - button "Get the Extension" [ref=f1e41] [cursor=pointer]
+            - button "See how it works" [ref=f1e44] [cursor=pointer]
+          - generic [ref=f1e45]:
+            - generic [ref=f1e46]:
+              - generic [ref=f1e47]: "1"
+              - generic [ref=f1e48]: Tap to apply
+            - generic [ref=f1e49]:
+              - generic [ref=f1e50]: ∞
+              - generic [ref=f1e51]: Applications
+            - generic [ref=f1e52]:
+              - generic [ref=f1e53]: Free
+              - generic [ref=f1e54]: To start
+        - generic [ref=f1e55]:
+          - generic [ref=f1e56]:
+            - generic [ref=f1e57]:
+              - generic [ref=f1e58]:
+                - button "Reset the demo" [ref=f1e59] [cursor=pointer]
+                - button "Minimise the window" [ref=f1e62] [cursor=pointer]
+                - button "Zoom the window" [ref=f1e64] [cursor=pointer]
+              - generic [ref=f1e67]: linkedin.com/jobs/view/4127993/apply
+            - generic [ref=f1e68]:
+              - generic [ref=f1e69]: Senior Product Designer — Application
+              - generic [ref=f1e70]:
+                - generic [ref=f1e71]: Full name
+                - generic [ref=f1e72]: Asha Ramanathan
+              - generic [ref=f1e77]:
+                - generic [ref=f1e78]: Email
+                - generic [ref=f1e79]: asha.r@fastmail.com
+              - generic [ref=f1e84]:
+                - generic [ref=f1e85]: Years of experience
+                - generic [ref=f1e86]: 6 years
+              - generic [ref=f1e91]:
+                - generic [ref=f1e92]: Why this role? — drafted from the posting
+                - generic [ref=f1e93]: Your design-systems brief maps onto the token library I ran at Mapfold…
+              - generic [ref=f1e98]: Autofill complete — 1 tap
+          - button "Application — restore"
+          - paragraph [ref=f1e101]:
+            - generic [ref=f1e102]: Minimise
+            - text: the window, then bring it back
+      - generic [ref=f1e104]:
+        - generic [ref=f1e105]:
+          - heading [level=2] [ref=f1e106]:
+            - text: Everything you need to apply
+            - emphasis [ref=f1e107]: faster.
+          - paragraph [ref=f1e108]: A focused tool, not a platform. Onextap handles the retyping so the judgement calls stay yours.
+        - generic [ref=f1e109]:
+          - article [ref=f1e110]:
+            - heading "One-click autofill" [level=3] [ref=f1e114]
+            - paragraph [ref=f1e115]: Reads the form in the tab you have open, matches each field against your active profile, and fills the lot. Unusual field? Map it once and it is remembered.
+          - article [ref=f1e116]:
+            - heading "Answers from the posting" [level=3] [ref=f1e120]
+            - paragraph [ref=f1e121]: The AI reads the job description on screen and rewrites your saved answers against it — checked against your own corpus so it cannot invent experience.
+          - article [ref=f1e122]:
+            - heading "Multiple profiles" [level=3] [ref=f1e126]
+            - paragraph [ref=f1e127]: Apply as a designer and a PM from the same account. Separate details, separate answers, one switch.
+          - article [ref=f1e128]:
+            - heading "Cover letter studio" [level=3] [ref=f1e132]
+            - paragraph [ref=f1e133]: Store templates, personalise per application, fill from the extension without leaving the form.
+          - article [ref=f1e134]:
+            - heading "Ranked job matches" [level=3] [ref=f1e138]
+            - paragraph [ref=f1e139]: A daily pool from seven job boards, scored against your profile with the gaps spelled out — not a keyword dump.
+          - article [ref=f1e140]:
+            - heading "Stays on your device" [level=3] [ref=f1e144]
+            - paragraph [ref=f1e145]: Profile data lives in local storage and never reaches our database. Enforced in code, not in a policy page.
+      - generic [ref=f1e147]:
+        - heading [level=2] [ref=f1e149]:
+          - text: Three steps.
+          - emphasis [ref=f1e150]: Done.
+        - generic [ref=f1e151]:
+          - article [ref=f1e152]:
+            - heading "Build your profile" [level=3] [ref=f1e153]
+            - paragraph [ref=f1e154]: Type your details once, or drop in a resume and let Onextap parse it into structured fields.
+          - article [ref=f1e155]:
+            - heading "Open any job form" [level=3] [ref=f1e156]
+            - paragraph [ref=f1e157]: Navigate to an application on any platform. The extension picks up the form automatically.
+          - article [ref=f1e158]:
+            - heading "Tap to apply" [level=3] [ref=f1e159]
+            - paragraph [ref=f1e160]: Fill, skim the drafted answers, submit. Then do the next one.
+      - generic [ref=f1e162]:
+        - generic [ref=f1e163]:
+          - heading [level=2] [ref=f1e164]:
+            - text: Simple,
+            - emphasis [ref=f1e165]: transparent.
+          - paragraph [ref=f1e166]: Start free with standard AI. Upgrade when you want unlimited high-quality generation.
+        - generic [ref=f1e167]:
+          - generic [ref=f1e168]:
+            - generic [ref=f1e169]: Free
+            - generic [ref=f1e170]: $0
+            - paragraph [ref=f1e171]: Forever
+            - list [ref=f1e172]:
+              - listitem [ref=f1e173]: Unlimited autofill
+              - listitem [ref=f1e176]: Local-only data storage
+              - listitem [ref=f1e179]: Multiple profiles
+              - listitem [ref=f1e182]: 3 AI generation credits
+            - button "Get started free" [ref=f1e185] [cursor=pointer]
+          - generic [ref=f1e186]:
+            - generic [ref=f1e187]: Most popular
+            - generic [ref=f1e188]: Premium
+            - generic [ref=f1e189]: $5
+            - paragraph [ref=f1e190]: per month
+            - list [ref=f1e191]:
+              - listitem [ref=f1e192]: Everything in Free
+              - listitem [ref=f1e195]: Unlimited AI generation
+              - listitem [ref=f1e198]: Ranked matches refreshed daily
+              - listitem [ref=f1e201]: Priority support
+            - button "Upgrade" [ref=f1e204] [cursor=pointer]
+      - generic [ref=f1e206]:
+        - heading [level=2] [ref=f1e208]:
+          - text: Questions,
+          - emphasis [ref=f1e209]: answered.
+        - generic [ref=f1e210]:
+          - generic [ref=f1e211]:
+            - button "Where does my profile data live?" [ref=f1e212] [cursor=pointer]
+            - paragraph [ref=f1e215]:
+              - text: On your device —
+              - code [ref=f1e216]: chrome.storage.local
+              - text: in the extension,
+              - code [ref=f1e217]: localStorage
+              - text: on the web. It syncs between the two by direct messaging and is never written to our database. Resume text does pass through Gemini and Groq while a request runs.
+          - generic [ref=f1e218]:
+            - button "Does Onextap submit applications for me?" [ref=f1e219] [cursor=pointer]
+            - paragraph [ref=f1e222]: No. It fills the form you are looking at and stops. You read the answers and press submit yourself.
+          - generic [ref=f1e223]:
+            - button "What is a credit?" [ref=f1e224] [cursor=pointer]
+            - paragraph [ref=f1e227]: One credit buys one AI generation plus three follow-up improvements on it. Free accounts start with three; Premium is unlimited.
+          - generic [ref=f1e228]:
+            - button "Which browsers work?" [ref=f1e229] [cursor=pointer]
+            - paragraph [ref=f1e232]:
+              - text: Chromium only today — Chrome, Edge, Opera, Brave. The extension is built on Manifest V3 and the
+              - code [ref=f1e233]: chrome.*
+              - text: APIs, so Firefox and Safari are not supported.
+      - generic [ref=f1e235]:
+        - generic [ref=f1e236]:
+          - button "Features" [ref=f1e237] [cursor=pointer]
+          - button "Pricing" [ref=f1e238] [cursor=pointer]
+          - button "FAQ" [ref=f1e239] [cursor=pointer]
+          - button "Dashboard" [ref=f1e240] [cursor=pointer]
+        - generic [ref=f1e241]: Prototype — visual direction only. No product behaviour is wired up.
