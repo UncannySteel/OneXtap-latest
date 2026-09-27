@@ -1,8 +1,10 @@
 // End-to-end checks for the two windows added to the landing page: the FAQ,
 // opened from CH 05 ("Get hired"), and sign-in, opened from the header's
 // Log in on every page. Both are pop-ups in the site's own palette and type,
-// hold the page while open, and give focus back when they close.
+// hold the page while open, and give focus back when they close. Signing in
+// goes to Supabase through src/app/backend.js; tests/stubs.js answers for it.
 import { test, expect } from '@playwright/test';
+import { stubAuth, stubDashboard } from './stubs.js';
 
 function watchErrors(page) {
   const errors = [];
@@ -32,6 +34,14 @@ async function toClose(page) {
 
 const press = (page, isMobile, sel) => isMobile ? page.tap(sel) : page.click(sel);
 const isOpen = (page, id) => page.evaluate(id => document.getElementById(id).classList.contains('is-open'), id);
+
+// After a Tab, focus is inside the window. Polled, not read once: Safari's Tab
+// skips links, so when a window's last stop is one (the FAQ's is), Tab leaves
+// it and shared/lib/dialog.js brings focus back round on the next tick.
+const focusStaysIn = (page, id) => expect.poll(
+  () => page.evaluate(id => document.getElementById(id).contains(document.activeElement), id),
+  { timeout: 1000 }
+).toBe(true);
 
 // Everything but the window is inert, and the page is held.
 const holding = (page, id) => page.evaluate(id => ({
@@ -121,7 +131,7 @@ test.describe('the FAQ window', () => {
     for (const key of ['Tab', 'Shift+Tab']) {
       for (let k = 0; k < 14; k++) {
         await page.keyboard.press(key);
-        expect(await page.evaluate(() => document.getElementById('faq').contains(document.activeElement))).toBe(true);
+        await focusStaysIn(page, 'faq');
       }
     }
   });
@@ -257,8 +267,8 @@ test.describe('the sign-in window', () => {
   });
 
   test('checks the form, then signs in', async ({ page, isMobile }) => {
+    const auth = await stubAuth(page);
     await bootLanding(page);
-    await page.evaluate(() => { window.__logins = []; document.addEventListener('onextap:login', e => window.__logins.push(e.detail)); });
     await press(page, isMobile, '.hud [data-login]');
 
     await press(page, isMobile, '#loginSubmit');
@@ -279,11 +289,14 @@ test.describe('the sign-in window', () => {
     await expect(page.locator('#loginView')).toBeHidden();
     await expect(page.locator('#loginDoneText')).toHaveText('Signed in as reader@example.com.');
     await expect(page.locator('#loginDoneTitle')).toBeFocused();
-    const logins = await page.evaluate(() => window.__logins);
-    expect(logins).toEqual([{ method: 'email', mode: 'in', email: 'reader@example.com' }]);   // never the password
+    // One password sign-in, with what was typed, and nothing before it: the
+    // checks above never reached the account.
+    expect(auth.map(c => [c.path, c.grant])).toEqual([['/token', 'password']]);
+    expect(auth[0].body).toMatchObject({ email: 'reader@example.com', password: 'hunter22' });
 
-    // Closed and opened again, it starts fresh.
-    await press(page, isMobile, '#loginDone [data-dlg-close]');
+    // Closed (its ×; Continue goes on to the dashboard) and opened again, it
+    // starts fresh.
+    await press(page, isMobile, '#login .dlg__x');
     await expect.poll(() => isOpen(page, 'login')).toBe(false);
     await press(page, isMobile, '.hud [data-login]');
     await expect(page.locator('#loginView')).toBeVisible();
@@ -291,7 +304,43 @@ test.describe('the sign-in window', () => {
     await expect(page.locator('#loginPassword')).toHaveValue('');
   });
 
+  test('signed in, Continue goes to the dashboard, and so does the header from then on', async ({ page, isMobile }) => {
+    await stubAuth(page);
+    await stubDashboard(page);
+    await bootLanding(page);
+    await press(page, isMobile, '.hud [data-login]');
+    await page.fill('#loginEmail', 'reader@example.com');
+    await page.fill('#loginPassword', 'hunter22');
+    await press(page, isMobile, '#loginSubmit');
+    await expect(page.locator('#loginDoneText')).toHaveText('Signed in as reader@example.com.');
+    await press(page, isMobile, '#loginDone [data-dlg-close]');
+    await expect(page).toHaveURL(/\/dashboard\/$/);
+
+    // Back on the landing page, the stored session turns Log in into Dashboard.
+    await bootLanding(page);
+    const header = page.locator('.hud__login');
+    await expect(header).toHaveText('Dashboard');
+    await expect(header).not.toHaveAttribute('aria-haspopup', 'dialog');
+    await press(page, isMobile, '.hud__login');
+    await expect(page).toHaveURL(/\/dashboard\/$/);
+  });
+
+  test('a refused sign-in says why, and keeps the form', async ({ page, isMobile }) => {
+    await stubAuth(page, { password: 'wrong' });
+    await bootLanding(page);
+    await press(page, isMobile, '.hud [data-login]');
+    await page.fill('#loginEmail', 'reader@example.com');
+    await page.fill('#loginPassword', 'not-it');
+    await press(page, isMobile, '#loginSubmit');
+    await expect(page.locator('#loginSendErr')).toHaveText('That email and password don’t match an account.');
+    await expect(page.locator('#loginView')).toBeVisible();
+    await expect(page.locator('#loginEmail')).toHaveValue('reader@example.com');
+    await expect(page.locator('#loginSubmit')).toBeEnabled();
+    await expect(page.locator('#loginSubmit')).toHaveText('Sign In');
+  });
+
   test('Sign up turns it into the sign-up form, and back', async ({ page, isMobile }) => {
+    const auth = await stubAuth(page);
     await bootLanding(page);
     await press(page, isMobile, '.hud [data-login]');
     await press(page, isMobile, '#loginSwitch');
@@ -303,20 +352,46 @@ test.describe('the sign-in window', () => {
     await page.fill('#loginPassword', 'short');
     await press(page, isMobile, '#loginSubmit');
     await expect(page.locator('#loginPasswordErr')).toContainText('8 characters');
+    // Long enough is not enough: the account's rule wants both cases and a number.
     await page.fill('#loginPassword', 'long-enough');
+    await expect(page.locator('#loginPasswordErr')).toHaveText('Mix in an uppercase letter, a lowercase letter and a number.');
+    await page.fill('#loginPassword', 'Long-enough1');
+    await expect(page.locator('#loginPasswordErr')).toBeEmpty();
     await press(page, isMobile, '#loginSubmit');
     await expect(page.locator('#loginDoneText')).toHaveText('Account created for new@example.com.');
+    expect(auth.map(c => c.path)).toEqual(['/signup']);
+    expect(auth[0].body).toMatchObject({ email: 'new@example.com', password: 'Long-enough1' });
 
-    await press(page, isMobile, '#loginDone [data-dlg-close]');
+    await press(page, isMobile, '#login .dlg__x');
     await press(page, isMobile, '.hud [data-login]');
     await expect(page.locator('#loginTitle')).toHaveText('Welcome back');   // back to signing in
   });
 
-  test('Continue with Google signs in', async ({ page, isMobile }) => {
+  test('a sign-up the project wants confirmed says to check your email', async ({ page, isMobile }) => {
+    await stubAuth(page, { signup: 'confirm' });
+    await bootLanding(page);
+    await press(page, isMobile, '.hud [data-login]');
+    await press(page, isMobile, '#loginSwitch');
+    await page.fill('#loginEmail', 'new@example.com');
+    await page.fill('#loginPassword', 'Long-enough1');
+    await press(page, isMobile, '#loginSubmit');
+    await expect(page.locator('#loginDoneTitle')).toHaveText('Check your email.');
+    await expect(page.locator('#loginDoneText')).toHaveText('We sent a confirmation link to new@example.com. Open it to finish creating your account.');
+    // Nothing to go on to yet: Continue just closes.
+    await press(page, isMobile, '#loginDone [data-dlg-close]');
+    await expect.poll(() => isOpen(page, 'login')).toBe(false);
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test('Continue with Google hands over to Google, to come back to the dashboard', async ({ page, isMobile, baseURL }) => {
+    await stubAuth(page);
     await bootLanding(page);
     await press(page, isMobile, '.hud [data-login]');
     await press(page, isMobile, '#loginGoogle');
-    await expect(page.locator('#loginDoneText')).toHaveText('Signed in with Google.');
+    await expect(page).toHaveURL(/\/auth\/v1\/authorize\?/);
+    const handover = new URL(page.url()).searchParams;
+    expect(handover.get('provider')).toBe('google');
+    expect(handover.get('redirect_to')).toBe(new URL('/dashboard/', baseURL).href);
   });
 
   test('closes from the ×, Escape and the scrim, and hands focus back', async ({ page, isMobile }) => {
@@ -340,7 +415,7 @@ test.describe('the sign-in window', () => {
     for (const key of ['Tab', 'Shift+Tab']) {
       for (let k = 0; k < 12; k++) {
         await page.keyboard.press(key);
-        expect(await page.evaluate(() => document.getElementById('login').contains(document.activeElement))).toBe(true);
+        await focusStaysIn(page, 'login');
       }
     }
   });

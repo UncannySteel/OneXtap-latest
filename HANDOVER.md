@@ -2,12 +2,58 @@
 
 **State on 2026-09-27:** built, and exercised in a browser against a local mock
 of the API and of Supabase auth. **Not yet run against real keys** (no `.env`
-or `server/.env` was provided). **Nothing is committed**: every change is in
-the working tree on top of `main` (HEAD `bae4abc`) of
-`github.com/Aiko002/Onextap`, so `git status` / `git diff` show all of it.
+or `server/.env` was provided). **Committed locally, not pushed**, on the
+branch `merge/web-dashboard`, off `main` (`bae4abc`) of
+`github.com/Aiko002/Onextap`: the first session's work is `81e1c01`, and each
+checkpoint since (§0) is its own commit.
 
 Section 7 lists every problem found that is still open. Read it before
-deploying.
+deploying. Section 0 is the log of the sessions since, newest last: start
+there if you are picking this up.
+
+---
+
+## 0. Progress log
+
+Work since this handover was first written, one entry per checkpoint. Each
+checkpoint ends with questions for the owner; their answers are recorded in
+the next entry.
+
+### Checkpoint 1 (2026-09-27, session 2): test safety net
+
+Done:
+
+- **`npm test` out of the box: 541 pass, 3 fail, 2 skipped** (was 505 / 39).
+  - `src/storage.js`: web storage is detected by `localStorage.getItem` being
+    a function, not just by the global existing. Node 25 defines an empty
+    `localStorage` object, which sent every store test to it. Checked in a
+    browser that the dashboard still writes to real `localStorage`.
+  - `test/server/logger.test.js`: splits on `/\r?\n/`, so a CRLF checkout no
+    longer flags the comment that documents the convention.
+  - The 3 left all need `server/data/cached_jobs.json` (§7, item 11): a
+    question for the owner.
+- **Landing e2e suite fixed** (§7, item 3): see §5 for the numbers.
+  - `web/tests/stubs.js` (new) answers for Supabase auth and
+    `/api/feedback`. The patterns match any host.
+  - `web/playwright.config.js`: `cwd` is the repo root, and the dev server
+    gets `VITE_SUPABASE_URL=https://e2e.invalid` (never resolves) and an
+    empty `VITE_API_URL`, which win over `.env`.
+  - The four broken tests now assert the real requests. New: wrong
+    password, "Check your email" sign-up, Continue → dashboard plus the
+    header reading "Dashboard", a failed feedback send.
+  - Two WebKit flakes, both pre-existing (the original DEMO_WEB has the same
+    code): the focus-trap tests read focus once, before `dialog.js`'s Safari
+    fallback puts it back (now polled), and a colour check could land
+    mid-transition (now `toHaveCSS`, which retries).
+  - `.gitignore`: `test-results/`, `playwright-report/`.
+- `web/src/features/feedback/feedback.js`: header comment no longer says no
+  endpoint is wired.
+- `dist/` rebuilt (`npm run build`), **but with no `.env`**, so that build has
+  no Supabase address and will not work. Rebuild once keys are in place.
+
+Open questions put to the owner at this checkpoint: the extension sync fix
+(§7, item 1), dev keys (item 2), the fixture file (item 11), and whether to
+commit.
 
 ---
 
@@ -53,7 +99,7 @@ web/                    the website (Vite root; vite.dashboard.config.js builds 
     js/ui/*.js              shared UI: dom builder, controls, switchers, file drop, fabrication notice
     css/workspaces.css      the workspaces' styles (dashboard tokens only)
     site/                   the dashboard's variants of the landing's company pages
-  tests/, playwright.config.js   landing e2e tests (NOT updated, see §7)
+  tests/, playwright.config.js   landing e2e tests (tests/stubs.js stands in for Supabase and the API)
 src/                    shared client modules (auth, credits, profile/resume stores, matching…) + the popup
 server/                 Express API (four routes added, see §4)
 extension/, public/     Chrome extension (unchanged)
@@ -76,8 +122,8 @@ npm run dev                 # whole site on :5173 (landing /, dashboard /dashboa
 
 - Keep the site on **port 5173** in development: it is the only local origin
   `extension/manifest.json` lets talk to the extension (`externally_connectable`).
-- `npm run build` builds the extension into `dist/`. **`dist/` has not been
-  rebuilt** in this session (see §7).
+- `npm run build` builds the extension into `dist/`. It needs `.env` in place
+  first: a build without one has no Supabase address (§7, item 13).
 - `npm run build:dashboard` builds the whole website into `dist-dashboard/`,
   which is what Vercel runs. The script name is kept so the Vercel project
   needs no change.
@@ -210,13 +256,20 @@ Behaviour only; the design is untouched.
   - real account deletion.
 - **Extension messaging with the extension actually loaded** (profile sync from the dashboard).
 - Safari and Firefox.
-- The landing's Playwright suite, which is known to be broken (§7, item 3).
 
 **Unit tests (`npm test`) on this machine** (Node 25, Windows):
 
-- **Out of the box:** 505 pass, 39 fail, 2 skipped.
-- **With `node --no-experimental-webstorage --test "test/**/*.test.js"`:** 540 pass, 4 fail.
-- **The 4 remaining fail the same way on the untouched original clone;** they are environmental (§7, item 11). None involve files changed here.
+- At the first handover: 505 pass, 39 fail, 2 skipped out of the box; the 4
+  that survived `--no-experimental-webstorage` fail the same way on the
+  untouched original clone (§7, item 11).
+- **Since checkpoint 1: 541 pass, 3 fail, 2 skipped, out of the box.** The 3
+  need the missing fixture file (§7, item 11).
+
+**Landing e2e (`npm run test:e2e`)**, since checkpoint 1: 155 pass, 10
+skipped (keyboard and wheel tests on the phone profile), 0 fail, across
+desktop Chromium, phone Chromium and WebKit. WebKit on Windows is slow
+enough to catch the page mid-transition; two such flakes were fixed (§0).
+Covers the landing and its company pages only: nothing drives the dashboard.
 
 ---
 
@@ -234,7 +287,7 @@ Behaviour only; the design is untouched.
    - a new extension build with the `/dashboard/` link is optional (the landing forwards the old link);
    - point the listing's privacy URL at `/privacy/` (the old URL redirects).
 6. **Update the docs** (§7, item 4).
-7. **Commit.** Nothing is committed yet.
+7. **Merge and push.** Everything is committed on the local branch `merge/web-dashboard` only.
 
 ---
 
@@ -267,17 +320,7 @@ before this work.
 - delete account (check the Supabase user, `profiles` row and Dodo subscription are gone);
 - profile sync with the extension loaded (keep item 1 in mind).
 
-**3. The landing's Playwright suite is broken by the wiring, and not updated.**
-- `web/tests/windows.spec.js` expects the old stubs, where every sign-in "succeeded" and was announced as an `onextap:login` event:
-  - "checks the form, then signs in";
-  - "Sign up turns it into the sign-up form" (`long-enough` now fails the password rule);
-  - "Continue with Google signs in".
-- `web/tests/pages.spec.js`, "checks the form, then says thanks", expects an `onextap:feedback` event.
-- **Fix:** stub the network in those tests (`page.route('**/auth/v1/**')`, `page.route('**/api/feedback')`), and assert the request bodies (feedback `category` should be `job-board`).
-- **Config:**
-  - `web/playwright.config.js` runs `npm run dev` from `web/`, which has no `package.json`: set `cwd: '..'`;
-  - pass a placeholder `VITE_SUPABASE_URL` (a local address the tests intercept) through `webServer.env`, so a test run can never reach a real project.
-- Playwright 1.63 and its browsers are installed on this machine.
+**3. ~~The landing's Playwright suite is broken by the wiring.~~ Fixed at checkpoint 1** (§0). The four tests that expected the old `onextap:login` / `onextap:feedback` stubs now stub the network (`web/tests/stubs.js`) and assert the request bodies. Playwright 1.63 and its browsers are installed on this machine.
 
 **4. Docs describe the old architecture.**
 - `CLAUDE.md` still says one React tree ships the popup and the dashboard, and its rule 8 points at `privacy-policy.html`, which no longer exists. The privacy policy is now `web/src/pages/privacy/privacy.html`.
@@ -301,14 +344,14 @@ before this work.
 
 **10. "Delete account" clears only this browser.** The extension's `chrome.storage` copy and other devices keep their local data. The dialog now says so.
 
-**11. `npm test` fails on this machine for three environmental reasons.** All pre-existing, and all reproduce on the untouched original:
-- **Node 25 exposes a global `localStorage`,** so `src/storage.js` uses it instead of the in-memory test backend. 35 resume and storage tests fail. Workaround: `--no-experimental-webstorage`. Fix: make the memory backend selectable in tests.
-- **`server/data/cached_jobs.json` is gitignored** (`.gitignore`: `server/data/`), so 3 fixture tests fail on any fresh clone.
-- **Windows line endings** (`core.autocrlf=true`) break `test/server/logger.test.js`: its `/\/\/.*$/` doesn't match before `\r`. Fix: split on `/\r?\n/`.
+**11. `npm test` failed on this machine for three environmental reasons.** All pre-existing, and all reproduce on the untouched original:
+- ~~**Node 25 exposes a global `localStorage`**~~ — fixed at checkpoint 1 (`src/storage.js` checks for `getItem`).
+- **`server/data/cached_jobs.json` does not exist.** It was never committed (`.gitignore` has `server/data/`, and git history has no such file), though `server/jobs/adapters/cache.js` and 3 tests expect ~40 synthetic listings there. Those 3 tests fail on any fresh clone. Writing one means changing `.gitignore` to `server/data/*` + `!server/data/cached_jobs.json` (a negation cannot re-include a file inside an ignored directory). Mind the hazard in `cache.js`'s header: once the file exists, a local ingest against a real project seeds fake listings unless `ALLOW_CACHE_SOURCE=false` (which `server/.env.example` already sets).
+- ~~**Windows line endings** break `test/server/logger.test.js`~~ — fixed at checkpoint 1 (splits on `/\r?\n/`).
 
 **12. The published extension (v1.0.3) still opens `onextap.com/?extensionId=…`.** The landing forwards it to the dashboard (tested). A new release links straight to `/dashboard/`. Publishing is the owner's call.
 
-**13. `dist/` has not been rebuilt.** Run `npm run build` before loading the unpacked extension.
+**13. `dist/` was rebuilt at checkpoint 1, but without a `.env`.** That build has no Supabase address, so its Supabase client cannot start (the dev dashboard without a `.env` stops on `supabaseUrl is required`; the popup uses the same `src/supabaseClient.js`). Run `npm run build` again once `.env` is in place, before loading the unpacked extension.
 
 ### Low
 
@@ -351,4 +394,4 @@ before this work.
 ## 8. Housekeeping
 
 - The mock servers and scratch builds lived outside the repo, and their `.claude/launch.json` entries were removed. `.claude/launch.json` now has `web` (the site on 5173), `api` (the server on 3001) and `web-preview`.
-- Nothing has been committed or pushed, and nothing has been deployed.
+- Committed on the local branch `merge/web-dashboard` (from checkpoint 1 on). Nothing has been pushed, and nothing has been deployed.

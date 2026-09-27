@@ -9,10 +9,10 @@ export { markup };
    as every window does (shared/lib/dialog.js). The form checks itself before
    it goes; `send` is where it goes.
 
-   No feedback endpoint is wired up yet. Until one is, a note is announced on
-   the document as an 'onextap:feedback' event (detail: the note) and counts
-   as sent. Pass initFeedback({ send }) a function that posts the note and
-   returns a promise to send it somewhere real. */
+   initFeedback({ send }) takes a function that posts the note and returns a
+   promise; the Contact pages pass sendFeedback (src/app/backend.js, POST
+   /api/feedback). Without one, a note is announced on the document as an
+   'onextap:feedback' event (detail: the note) and counts as sent. */
 var MIN_LENGTH = 10;
 
 function announce(note) {

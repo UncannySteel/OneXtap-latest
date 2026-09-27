@@ -7,6 +7,10 @@ dist-dashboard/
 *.crx
 *.pem
 
+# Playwright output (npm run test:e2e)
+test-results/
+playwright-report/
+
 # Environment variables
 .env
 .env.local

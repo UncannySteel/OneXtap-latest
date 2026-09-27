@@ -1,8 +1,10 @@
 // End-to-end checks for the company pages (About, Contact, Privacy): the
 // footer leads to them, they keep the landing page's nav and header row and
 // its type and colour, the way back works, and Contact's feedback window
-// behaves as a window should.
+// behaves as a window should. It posts to /api/feedback, which tests/stubs.js
+// answers for.
 import { test, expect } from '@playwright/test';
+import { stubFeedback } from './stubs.js';
 
 const PAGES = [
   { path: '/about/', title: 'About — Onextap', label: 'Company — About', h1: 'Not an ATS.' },
@@ -93,15 +95,18 @@ test.describe('company pages', () => {
           ground: getComputedStyle(document.body).backgroundColor,
           hero: cs('.sub-hero').backgroundColor,
           body: cs('.sub-body').backgroundColor,
-          cta: cs('.hud__cta').backgroundColor,
           display: cs('h1').fontFamily,
           ui: getComputedStyle(document.body).fontFamily,
           voice: cs('.sub-hero__aside').fontFamily
         };
       });
       expect(look).toMatchObject({
-        ground: 'rgb(12, 23, 16)', hero: 'rgb(12, 23, 16)', body: 'rgb(233, 228, 212)', cta: 'rgb(198, 218, 67)'
+        ground: 'rgb(12, 23, 16)', hero: 'rgb(12, 23, 16)', body: 'rgb(233, 228, 212)'
       });
+      // Retried, not read once: the header row eases into its colours, and
+      // WebKit on Windows, a few frames a second, can be caught mid-way
+      // (rgb(198, 218, 68)).
+      await expect(page.locator('.hud__cta')).toHaveCSS('background-color', 'rgb(198, 218, 67)');
       expect(look.display).toMatch(/^Archivo/);
       expect(look.ui).toMatch(/^"?Instrument Sans/);
       expect(look.voice).toMatch(/^"?Instrument Serif/);
@@ -231,8 +236,8 @@ test.describe('the feedback window', () => {
   });
 
   test('checks the form, then says thanks', async ({ page, isMobile }) => {
+    const sent = await stubFeedback(page);
     await openPage(page, '/contact/');
-    await page.evaluate(() => { window.__notes = []; document.addEventListener('onextap:feedback', e => window.__notes.push(e.detail)); });
     await press(page, isMobile, '.fb-card [data-feedback]');
     await expect(fb(page)).toHaveClass(/is-open/);
 
@@ -262,9 +267,8 @@ test.describe('the feedback window', () => {
     await expect(page.locator('#fbDone')).toBeVisible();
     await expect(page.locator('#fbForm')).toBeHidden();
     await expect(page.locator('#fbDoneTitle')).toBeFocused();
-    const notes = await page.evaluate(() => window.__notes);
-    expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatchObject({ kind: 'board', email: 'reader@example.com', page: '/contact/' });
+    // One request, in the server's words: the "A job board" chip is `job-board`.
+    expect(sent).toEqual([{ category: 'job-board', message: note, email: 'reader@example.com' }]);
 
     // Closed and opened again, it starts fresh.
     await press(page, isMobile, '#fbDone [data-dlg-close]');
@@ -272,6 +276,20 @@ test.describe('the feedback window', () => {
     await press(page, isMobile, '.sub-hero [data-feedback]');
     await expect(page.locator('#fbForm')).toBeVisible();
     await expect(page.locator('#fbMessage')).toHaveValue('');
+  });
+
+  test('a send that fails says so, and keeps the note', async ({ page, isMobile }) => {
+    const sent = await stubFeedback(page, 'fail');
+    await openPage(page, '/contact/');
+    await press(page, isMobile, '.fb-card [data-feedback]');
+    const note = 'Workday asked for my notice period twice on one page.';
+    await page.fill('#fbMessage', note);
+    await press(page, isMobile, '#fbSubmit');
+    await expect(page.locator('#fbSendErr')).toHaveText('That didn’t go through. Try again in a moment.');
+    await expect(page.locator('#fbForm')).toBeVisible();
+    await expect(page.locator('#fbMessage')).toHaveValue(note);
+    await expect(page.locator('#fbSubmit')).toBeEnabled();
+    expect(sent).toHaveLength(1);
   });
 
   test('holds the page still while it is open', async ({ page, isMobile }) => {

@@ -57,7 +57,10 @@ test('backend call sites use errName, never a bare name, for error classes', () 
   ]) {
     const source = readFileSync(repoFile(rel), 'utf8');
     const offenders = source
-      .split('\n')
+      // \r?\n, not \n: with core.autocrlf a Windows checkout ends every line in
+      // \r, and `.` stops before it, so the comment-stripping regex below
+      // would miss every comment and flag the ones that describe this trap.
+      .split(/\r?\n/)
       // Strip comments before matching. A comment that documents this
       // convention — or warns about this very trap — is not a call site, and
       // flagging it would push people toward deleting the explanation.

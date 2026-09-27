@@ -29,8 +29,16 @@
 /** True inside the extension, where chrome.storage.local is the backend. */
 const isExtension = typeof chrome !== 'undefined' && chrome.storage;
 
-/** True on the web dashboard, where localStorage is the backend. */
-const hasWebStorage = !isExtension && typeof localStorage !== 'undefined' && localStorage !== null;
+/**
+ * True on the web dashboard, where localStorage is the backend.
+ *
+ * `getItem` is checked, not just the global: Node 25 defines a `localStorage`
+ * global even without `--localstorage-file`, as an empty object with no
+ * methods, and treating that as web storage broke every store test under
+ * `node --test`.
+ */
+const hasWebStorage = !isExtension && typeof localStorage !== 'undefined' && localStorage !== null
+  && typeof localStorage.getItem === 'function';
 
 /** The public key/value API. See the module header for backend selection. */
 export const storage = {
@@ -98,8 +106,8 @@ export const STORAGE_WRITE_ERROR = 'StorageWriteError';
 // ------------------------------------------------------------------
 // In-memory backend
 // ------------------------------------------------------------------
-// Used ONLY when neither chrome.storage nor localStorage exists — that is,
-// bare Node under `node --test`. Extension and dashboard behaviour is
+// Used ONLY when neither chrome.storage nor a working localStorage exists —
+// that is, bare Node under `node --test`. Extension and dashboard behaviour is
 // completely unchanged: chrome.storage.local still wins in the extension and
 // localStorage still wins on the web, both picked at module load above.
 //
