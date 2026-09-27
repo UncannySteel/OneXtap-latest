@@ -213,11 +213,12 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches
             {/*
               ═══ APPLICATION TYPE PICKER — HIDDEN, NOT REMOVED ═══
 
-              The popup half of the pair; the dashboard's copy is commented out
-              in src/components/dashboard/DashboardView.jsx and the two belong
-              back on screen together, along with the non-job entries commented
-              out in src/applicationTypes.js — Job is the only type that array
-              still lists, so this dropdown would offer exactly one choice.
+              The popup half of the pair; the old React dashboard carried the
+              other copy, and the website dashboard (web/dashboard/) has none
+              yet — bringing types back means adding one there too, along with
+              the non-job entries commented out in src/applicationTypes.js. Job
+              is the only type that array still lists, so this dropdown would
+              offer exactly one choice.
 
               Still wired underneath: `applicationType` state, the stored value
               read in the mount effect, and `popupAppConfig`, which is what

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>We're Hiring (We're Not)</title>
+<script>
+  /* Links meant for the dashboard, from before it moved to /dashboard/: the
+     published extension opens the site with ?extensionId= (and ?view=), a
+     checkout started before the move returns with ?payment=, and a Google
+     sign-in or email confirmation that Supabase sends to the site's root
+     arrives carrying the session (#access_token=, or ?code=). All of it
+     belongs to the dashboard, so it goes there before this page paints. */
+  (function () {
+    var q = location.search, h = location.hash;
+    if (/[?&](extensionId|view|payment|code)=/.test(q) || /[#&]access_token=/.test(h)) {
+      location.replace('/dashboard/' + q + h);
+    }
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+</head>
+<body>
+
+<!-- Page skeleton. Each [data-mount] placeholder is replaced by that feature's
+     markup (src/features/<name>/<name>.html) — see src/app/mount.js. -->
+<div data-mount="cursor"></div>
+<div data-mount="nav"></div>
+<div data-mount="hud"></div>
+
+<!-- The stage. With motion, every chapter inside it becomes a full-screen
+     layer and scrolling the track plays the page as one timeline
+     (src/app/stage.js). Without motion it is ordinary document flow. -->
+<div class="stage-track" id="stageTrack" data-page>
+  <div class="stage" id="stage">
+    <main id="top">
+      <div data-mount="hero"></div>
+      <div data-mount="form-fields"></div>
+      <div data-mount="feature-showcase"></div>
+      <div data-mount="job-boards"></div>
+      <div data-mount="pricing"></div>
+      <div data-mount="closing"></div>
+    </main>
+    <div data-mount="footer"></div>
+  </div>
+</div>
+
+<!-- The windows: outside the stage, so each can hold the rest inert. -->
+<div data-mount="faq"></div>
+<div data-mount="login"></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

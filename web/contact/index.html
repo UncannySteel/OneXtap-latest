@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contact — Onextap</title>
+<meta name="description" content="Talk to the people building Onextap: send feedback, report a job board that fights back, or ask a question.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+</head>
+<body>
+
+<!-- A company page: the landing page's cursor, nav spine, menu and header
+     row, over an ordinary scrolling page (src/pages/sub-page.js). Each
+     [data-mount] placeholder is replaced by that feature's markup. -->
+<div data-mount="cursor"></div>
+<div data-mount="nav"></div>
+<div data-mount="hud"></div>
+<div class="sub-bar" data-header-row aria-hidden="true"></div>
+
+<!-- What the open menu covers (and holds inert). -->
+<div class="sub" data-page>
+  <main id="top" data-chapter="Company — Contact">
+    <div data-mount="contact"></div>
+  </main>
+  <div data-mount="page-foot"></div>
+</div>
+
+<div data-mount="feedback"></div>
+
+<div data-mount="login"></div>
+
+<script type="module" src="/src/pages/contact/contact.js"></script>
+</body>
+</html>

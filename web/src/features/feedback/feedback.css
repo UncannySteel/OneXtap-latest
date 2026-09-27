@@ -1,0 +1,58 @@
+/* ===========================================================================
+   The feedback window (Contact)
+   The window itself, its bar and its fade are shared (shared/styles/
+   dialog.css); this is the form inside it: mono field names, white inputs.
+   =========================================================================== */
+.fb__eyebrow{color:var(--citrine-deep)}
+.fb__title{font-size:clamp(2.6rem,min(10vw,9vh),4.2rem);margin-top:-8px}
+.fb__intro{margin:-6px 0 0;font-size:14.5px;line-height:1.55;color:var(--ash-deep);max-width:44ch}
+.fb__aside{
+  margin:0;font-family:var(--voice);font-style:italic;
+  font-size:clamp(1.7rem,5vw,2.4rem);line-height:1;color:var(--ash-deep);
+}
+
+.fb__field{display:grid;gap:7px;min-width:0;margin:0;padding:0;border:0}
+.fb__krow{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.fb__k{font-family:var(--mono);font-size:10.5px;letter-spacing:0.02em;color:var(--ash-deep);padding:0}
+.fb__opt{opacity:.75}
+.fb__count{font-family:var(--mono);font-size:10.5px;color:var(--ash-deep);font-variant-numeric:tabular-nums}
+
+.fb__inp{
+  width:100%;font:inherit;font-size:14px;line-height:1.45;color:var(--ink);
+  background:#fff;border:var(--rule) solid var(--bone-line);border-radius:4px;
+  padding:11px 13px;
+  transition:border-color .2s,box-shadow .2s;
+}
+.fb__inp::placeholder{color:var(--ash-deep);opacity:.6}
+.fb__inp:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(198,218,67,.5)}   /* --citrine */
+textarea.fb__inp{min-height:124px;resize:vertical}
+
+/* The kinds: the pricing badge's pill, ink with a citrine word once picked.
+   The radio itself stays, invisible, over its pill: it is what the
+   keyboard and a screen reader use. */
+.fb__chips{display:flex;flex-wrap:wrap;gap:8px}
+.fb__chip{position:relative;display:inline-flex}
+.fb__chip input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.fb__chip span{
+  font-size:12px;font-weight:600;letter-spacing:0.03em;
+  padding:8px 14px;border-radius:999px;
+  background:#fff;color:var(--ink);border:var(--rule) solid var(--bone-line);
+  transition:background .25s,color .25s,border-color .25s;
+}
+@media(hover:hover){.fb__chip:hover span{border-color:var(--ink)}}
+.fb__chip input:checked + span{background:var(--ink);color:var(--citrine);border-color:var(--ink)}
+.fb__chip input:focus-visible + span{outline:2px solid var(--citrine-deep);outline-offset:2px}
+
+/* Errors take the clay tint from the palette: noticeable, not an alarm. */
+.fb__err{margin:0;font-size:12.5px;color:var(--i2)}
+.fb__err:empty{display:none}
+.fb__field.is-bad .fb__inp{border-color:var(--i2)}
+.fb__field.is-bad .fb__inp:focus{box-shadow:0 0 0 3px var(--i2bg)}
+
+.fb__actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;margin-top:4px}
+.fb__actions .btn{justify-content:center;white-space:nowrap}
+.fb__actions .btn[disabled]{opacity:.6;cursor:progress;transform:none}
+@media(max-width:420px){.fb__actions .btn{flex:1 1 auto}}
+
+.fb__done{padding-top:clamp(30px,6vw,46px)}
+.fb__done .fb__title:focus{outline:none}

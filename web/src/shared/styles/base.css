@@ -1,0 +1,53 @@
+*,*::before,*::after{box-sizing:border-box}
+
+html{scroll-behavior:auto}
+body{
+  margin:0;
+  background:var(--ink);
+  color:var(--bone);
+  font-family:var(--ui);
+  font-size:16px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+
+/* --- shared type roles ---------------------------------------------------- */
+.display{
+  font-family:var(--display);
+  font-weight:650;
+  font-stretch:62%;
+  text-transform:uppercase;
+  letter-spacing:-0.035em;
+  line-height:0.84;
+  margin:0;
+  text-wrap:balance;
+}
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:0.01em}
+.label{
+  font-family:var(--ui);
+  font-size:10px;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.22em;
+  margin:0;
+}
+.lede{
+  font-size:clamp(16px,1.35vw,19px);
+  line-height:1.55;
+  max-width:54ch;
+  color:var(--ash);
+  margin:0;
+}
+
+a{color:inherit}
+:focus-visible{outline:2px solid var(--citrine);outline-offset:3px;border-radius:2px}
+
+/* --- word-mask reveal ----------------------------------------------------- */
+.w{display:inline-block;overflow:hidden;vertical-align:bottom;padding-bottom:0.06em}
+.wi{display:inline-block;will-change:transform}
+
+html.no-motion .wi{transform:none!important}
+@media (prefers-reduced-motion:reduce){
+  .wi{transform:none!important}
+}

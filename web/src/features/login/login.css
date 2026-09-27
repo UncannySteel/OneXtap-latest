@@ -1,0 +1,93 @@
+/* ===========================================================================
+   The sign-in window
+   The window and its fade are shared (shared/styles/dialog.css). This one
+   is dressed as the stage rather than as paper: forest-black, a serif
+   welcome, and the form on a raised moss card. Fields and buttons are
+   rounded rectangles, bone ink on a faint bone wash.
+   =========================================================================== */
+.login .dlg__win{
+  width:min(540px,100%);
+  background:var(--ink-2);color:var(--bone);
+  border-color:var(--moss-line);border-radius:16px;
+}
+.login__x{position:absolute;top:12px;right:12px;z-index:1}
+
+.login__body{
+  display:grid;text-align:center;
+  padding:clamp(40px,7vw,56px) clamp(16px,5vw,40px) clamp(20px,5vw,40px);
+}
+.login__body[hidden]{display:none}
+.login__title{
+  margin:0;font-family:var(--voice);font-weight:400;
+  font-size:clamp(2.5rem,8vw,3.2rem);line-height:1;letter-spacing:-0.01em;color:var(--bone);
+}
+.login__title:focus{outline:none}
+.login__intro{margin:14px 0 0;font-size:15px;line-height:1.5;color:var(--citrine-deep)}
+
+.login__card{
+  display:grid;gap:16px;margin-top:clamp(24px,4vh,34px);text-align:left;
+  padding:clamp(20px,5vw,38px);
+  background:var(--moss);border:var(--rule) solid var(--moss-line);border-radius:16px;
+}
+.login__form{display:grid;gap:16px}
+.login__field{display:grid;gap:6px;min-width:0}
+
+/* --- fields, and the Google button that shares their look ---------------- */
+.login__google,.login__inp{
+  width:100%;min-height:56px;border-radius:12px;
+  background:rgba(233,228,212,.07);border:var(--rule) solid rgba(233,228,212,.14);   /* --bone */
+  color:var(--bone);font:inherit;font-size:15.5px;
+  transition:border-color .2s,background .2s,box-shadow .2s;
+}
+.login__google{
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  font-weight:600;cursor:pointer;
+}
+.login__google svg{width:20px;height:20px;flex:none}
+@media(hover:hover){.login__google:hover{background:rgba(233,228,212,.12);border-color:rgba(233,228,212,.28)}}
+.login__google[disabled]{opacity:.6;cursor:progress}
+
+.login__inp{padding:0 18px}
+.login__inp::placeholder{color:var(--ash);opacity:1}
+.login__inp:focus{outline:none;border-color:var(--citrine);box-shadow:0 0 0 3px rgba(198,218,67,.22)}   /* --citrine */
+
+.login__pw{position:relative}
+.login__pw .login__inp{padding-right:78px}
+.login__show{
+  position:absolute;top:50%;right:8px;transform:translateY(-50%);
+  font:inherit;font-size:13px;font-weight:600;color:var(--ash);
+  background:none;border:0;border-radius:8px;padding:8px 10px;cursor:pointer;
+  transition:color .2s;
+}
+@media(hover:hover){.login__show:hover{color:var(--bone)}}
+
+/* --- "or" between two hairlines ------------------------------------------- */
+.login__or{display:flex;align-items:center;gap:14px;margin:0;font-size:13px;color:var(--ash)}
+.login__or::before,.login__or::after{content:"";flex:1;height:var(--rule);background:var(--moss-line)}
+
+/* --- sign in -------------------------------------------------------------- */
+.login__submit{
+  width:100%;min-height:58px;border:0;border-radius:12px;cursor:pointer;
+  background:var(--bone);color:var(--ink);font:inherit;font-size:16px;font-weight:600;
+  transition:background .3s,transform .3s cubic-bezier(.2,.8,.3,1);
+}
+@media(hover:hover){.login__submit:hover{background:var(--citrine);transform:translateY(-2px)}}
+.login__submit[disabled]{opacity:.6;cursor:progress;transform:none}
+
+.login__switch{margin:4px 0 0;text-align:center;font-size:14px;color:var(--ash)}
+.login__link{
+  font:inherit;font-weight:600;color:var(--citrine);
+  background:none;border:0;padding:0;cursor:pointer;
+  text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;
+  transition:text-decoration-color .2s;
+}
+@media(hover:hover){.login__link:hover{text-decoration-color:currentColor}}
+
+/* Errors take the clay tint from the palette, lifted toward bone so it
+   reads on the dark card: noticeable, not an alarm. */
+.login__err{margin:0;font-size:12.5px;color:color-mix(in srgb,var(--i2) 55%,var(--bone))}
+.login__err:empty{display:none}
+.login__field.is-bad .login__inp{border-color:color-mix(in srgb,var(--i2) 55%,var(--bone))}
+
+/* --- signed in ------------------------------------------------------------ */
+.login__done .login__submit{margin-top:clamp(24px,4vh,34px)}

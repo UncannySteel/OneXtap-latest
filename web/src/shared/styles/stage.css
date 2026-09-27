@@ -1,0 +1,76 @@
+/* ===========================================================================
+   The stage — the page as a stack of full-screen sheets.
+
+   Scripted (src/app/stage.js adds .stage--live), every chapter becomes a
+   layer in one sticky, viewport-sized stage, and one scroll track plays the
+   page as a timeline: sheets are dealt over each other, torn, crumpled and
+   thrown away, peeled back and soaked in ink. Unscripted — reduced motion,
+   or no JavaScript — nothing here applies, and the same sheets simply sit
+   in normal flow, one full screen each.
+   =========================================================================== */
+.stage--live{
+  position:sticky;top:0;
+  height:100vh;height:100lvh;
+  overflow:hidden;
+  background:var(--ink);
+}
+/* Layers start switched off; the timeline switches them on and off, and
+   sets their stacking, as their transitions need. */
+.stage--live .layer{
+  position:absolute;inset:0;overflow:hidden;
+  z-index:1;opacity:0;pointer-events:none;
+  /* Only ever seen while a sheet moves over another — at rest it falls
+     outside the stage. It gives the stack its depth, and softens the
+     stair-stepped edge of a sheet that arrives tilted. */
+  box-shadow:0 0 90px rgba(4,8,6,.42);
+}
+
+/* The shade a sheet falls into as the next one is laid over it. */
+.layer__veil{
+  position:absolute;inset:0;z-index:30;pointer-events:none;
+  background:#040806;opacity:0;
+}
+
+/* A sheet torn off a pad: its top edge is ragged. The layer reaches up past
+   the stage by the depth of the tear, so once it has landed the ragged edge
+   is out of sight above the screen and only shows while the sheet moves. */
+.stage--live .layer--torn{
+  top:calc(var(--tear) * -1);
+  --torn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='24' viewBox='0 0 560 24' preserveAspectRatio='none'%3E%3Cpath fill='%23000' d='M0 24V10L3 9.7L6.4 11.9L13.5 11.3L18.8 9.3L22.9 8.8L32.5 2.9L40.2 4.8L45.1 4.8L48.2 4.1L56.9 2.5L67 10.6L72.6 18.5L83.2 15.4L92.6 16.9L103.6 17.2L108.6 18.5L114.4 18.5L121.8 17.7L131.6 15.6L142.6 13.9L149.7 5.6L153.6 5.7L159.6 3.3L167.1 5.1L170.9 9L180.1 9.6L190 10.6L195.5 10.7L206.2 10.9L210.3 8.7L218.9 7.7L224.8 10.5L231.9 14.8L237 15.3L246.8 11.1L254.3 9.6L259.8 10.5L266.8 12L275 11.5L280.1 11.1L286.8 9.7L293.9 7.5L303.4 8L308.1 10.1L312 10.5L316.5 10.5L322.7 8.3L332.4 10.1L337.6 8.5L348 10L354.3 10L363.3 7.1L372.5 4.9L379.4 13.1L389.6 10.9L395.6 10.6L404.6 10.2L412.1 10.8L417.6 8.1L428.3 15.9L438.1 14.6L442.6 16.1L446.7 15.1L454.8 18.5L464.3 12.8L473.5 9.7L483.3 9.1L490.3 13.1L501.2 12.6L511.2 11.3L518 12L527.7 9.4L530.9 8.5L539.4 11.4L542.4 8.2L545.4 8.6L552.5 8.9L560 10V24Z'/%3E%3C/svg%3E");
+  -webkit-mask:
+    var(--torn) 0 0/560px var(--tear) repeat-x,
+    linear-gradient(#000,#000) 0 calc(var(--tear) - 1px)/100% 100% no-repeat;
+  mask:
+    var(--torn) 0 0/560px var(--tear) repeat-x,
+    linear-gradient(#000,#000) 0 calc(var(--tear) - 1px)/100% 100% no-repeat;
+}
+.stage--live .layer--torn > .ch__body{
+  min-height:calc(100svh + var(--tear));
+  padding-top:calc(var(--sheet-top) + var(--tear));
+}
+
+/* The CSS crumple's creases (used only when WebGL is unavailable): a sheet
+   of grey facets multiplied over the page, fading in as it is screwed up.
+   The texture itself is generated on demand by transitions/paper.js. */
+.paper{--crease:0;backface-visibility:hidden}
+.paper::after{
+  content:"";position:absolute;inset:0;z-index:31;pointer-events:none;
+  background:var(--crease-img,none) center/100% 100%;
+  mix-blend-mode:multiply;opacity:var(--crease);
+}
+
+/* The iris (transitions/sheets.js): a soft circular vignette that closes in
+   on a sheet as it sinks away. At --iris 0 the mask is opaque out past every
+   corner, so a sheet at rest is untouched. */
+.stage--live .layer--iris{
+  --iris:0;
+  -webkit-mask-image:radial-gradient(circle at 50% 45%,#000 calc((1 - var(--iris)) * 130%),transparent calc((1 - var(--iris)) * 200%));
+  mask-image:radial-gradient(circle at 50% 45%,#000 calc((1 - var(--iris)) * 130%),transparent calc((1 - var(--iris)) * 200%));
+}
+
+/* The one WebGL canvas every paper effect draws into. Above the layers,
+   below the fixed header and nav (z 60–62) and the cursor. */
+.fx{
+  position:absolute;inset:0;width:100%;height:100%;
+  z-index:40;pointer-events:none;visibility:hidden;
+}

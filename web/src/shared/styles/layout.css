@@ -1,0 +1,25 @@
+/* --- chapter scaffolding -------------------------------------------------- */
+.ch{position:relative}
+.ch--ink{background:var(--ink);color:var(--bone)}
+.ch--ink-2{background:var(--ink-2);color:var(--bone)}
+.ch--bone{background:var(--bone);color:var(--ink)}
+
+/* Every chapter fills at least one screen, with or without motion. Content
+   is centred in the *small* viewport, so none of it sits under a phone's
+   toolbars; a chapter with more than a screen of content just grows. */
+.ch__body{
+  position:relative;
+  min-height:100vh;min-height:100svh;
+  display:flex;flex-direction:column;justify-content:center;
+  padding:var(--sheet-top) var(--pad) var(--sheet-bottom);
+}
+.wrap{max-width:1280px;margin:0 auto;width:100%}
+
+.ch__head{
+  display:grid;gap:8px 40px;align-items:baseline;
+  grid-template-columns:1fr;margin-bottom:clamp(22px,min(5vw,5vh),64px);
+  border-top:var(--rule) solid var(--bone-line);padding-top:16px;
+}
+.ch--ink .ch__head,.ch--ink-2 .ch__head{border-color:var(--moss-line)}
+@media(min-width:820px){.ch__head{grid-template-columns:150px 1fr}}
+.ch__head .label{opacity:.6}

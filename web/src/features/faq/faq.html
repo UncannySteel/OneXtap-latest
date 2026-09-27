@@ -1,0 +1,93 @@
+<!-- The FAQ window (CH 05). Any [data-faq] button opens it; it wears the
+     feedback window's clothes (shared/styles/dialog.css). Each question is a
+     <details> row that opens on its answer. -->
+<div class="dlg faq-win" id="faq" data-lenis-prevent inert>
+  <div class="dlg__scrim" data-dlg-close></div>
+
+  <div class="dlg__win" role="dialog" aria-modal="true" aria-labelledby="faqTitle" aria-describedby="faqIntro">
+    <div class="dlg__bar">
+      <span class="dlg__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="dlg__url" aria-hidden="true">onextap / help / faq</span>
+      <button class="dlg__x" type="button" data-dlg-close aria-label="Close FAQ">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="dlg__body">
+      <p class="label faq-win__eyebrow">FAQ</p>
+      <h2 class="display faq-win__title" id="faqTitle">Fair questions.</h2>
+      <p class="faq-win__intro" id="faqIntro">The ones we hear most, before anyone adds it to Chrome.</p>
+
+      <div class="acc">
+        <details class="acc__item">
+          <summary class="acc__q">What does Onextap actually do?<span class="acc__icon" aria-hidden="true"></span></summary>
+          <div class="acc__a">
+            <p>It fills job applications for you — every field, on every job board — and drafts the
+            written answers from the posting in front of you and the answers you've already given.
+            A field it hasn't met before is flagged, never guessed.</p>
+          </div>
+        </details>
+
+        <details class="acc__item">
+          <summary class="acc__q">Is it really free?<span class="acc__icon" aria-hidden="true"></span></summary>
+          <div class="acc__a">
+            <p>Yes. Autofill is free forever, no card: unlimited applications, multiple profiles, and
+            three AI credits for written answers. Premium is $5 a month if you want unlimited drafts.</p>
+          </div>
+        </details>
+
+        <details class="acc__item">
+          <summary class="acc__q">What does Premium add?<span class="acc__icon" aria-hidden="true"></span></summary>
+          <div class="acc__a">
+            <p>No limits on the AI: unlimited written answers, and unlimited fit explanations on your
+            job matches. It's the same AI as Free, without the credit count. Cancel anytime; Premium
+            runs to the end of the month you've paid for. Priority support and early access come with it.</p>
+          </div>
+        </details>
+
+        <details class="acc__item">
+          <summary class="acc__q">Which job boards does it work on?<span class="acc__icon" aria-hidden="true"></span></summary>
+          <div class="acc__a">
+            <p>Greenhouse, Lever, Workday, Ashby, iCIMS, Workable, SmartRecruiters and Taleo. Another
+            one giving you trouble? <a href="/contact/">Tell us which</a>.</p>
+          </div>
+        </details>
+
+        <details class="acc__item">
+          <summary class="acc__q">Which browsers?<span class="acc__icon" aria-hidden="true"></span></summary>
+          <div class="acc__a">
+            <p>Chrome, Edge, Brave and Opera.</p>
+          </div>
+        </details>
+
+        <details class="acc__item">
+          <summary class="acc__q">Where does my data go?<span class="acc__icon" aria-hidden="true"></span></summary>
+          <div class="acc__a">
+            <p>Your profile, answers and cover letters stay in your browser's own storage. What leaves
+            it goes only when you ask: a resume you upload is read by Google's Gemini, a draft is written
+            by Groq from the posting and your profile, and job matching sends a summary of your skills.
+            Your account and billing are kept by Supabase and Dodo Payments. <a href="/privacy/">The details</a>.</p>
+          </div>
+        </details>
+
+        <details class="acc__item">
+          <summary class="acc__q">Will it send anything without me seeing it?<span class="acc__icon" aria-hidden="true"></span></summary>
+          <div class="acc__a">
+            <p>No. Every drafted answer stays editable before it's saved or submitted. Onextap fills
+            the form; you decide what gets sent.</p>
+          </div>
+        </details>
+
+        <details class="acc__item">
+          <summary class="acc__q">Do I need an account?<span class="acc__icon" aria-hidden="true"></span></summary>
+          <div class="acc__a">
+            <p>A free one. It holds your credits and plan, and the dashboard it opens is where you set up
+            the profile Onextap fills from. The profile itself stays in your browser.</p>
+          </div>
+        </details>
+      </div>
+
+      <p class="faq-win__more">Still stuck? <a href="/contact/">Ask the people building it</a>.</p>
+    </div>
+  </div>
+</div>

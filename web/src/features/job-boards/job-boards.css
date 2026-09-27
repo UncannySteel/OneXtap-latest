@@ -1,0 +1,39 @@
+/* ===========================================================================
+   CH 03 — marquee
+   =========================================================================== */
+.boards__title{font-size:clamp(1.9rem,min(4.6vw,8vh),3.6rem);max-width:20ch}
+.boards__title-line2{display:inline-block;padding-left:3ch}
+
+.marquee{
+  overflow:hidden;border-top:var(--rule) solid var(--moss-line);
+  border-bottom:var(--rule) solid var(--moss-line);padding:clamp(16px,min(2.6vw,3vh),30px) 0;
+  margin-top:clamp(24px,min(4vw,4.5vh),46px);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);
+}
+/* The second row runs the other way and shares the first row's rule. */
+.marquee--reverse{margin-top:-1px}
+.marquee--reverse .marquee__track{animation-direction:reverse;animation-duration:41s}
+.marquee__track{display:flex;width:max-content;animation:slide 34s linear infinite}
+.marquee:hover .marquee__track{animation-play-state:paused}
+.marquee__group{display:flex;align-items:center;flex:none}
+.marquee__item{
+  font-family:var(--display);font-stretch:62%;font-weight:650;text-transform:uppercase;
+  font-size:clamp(2.2rem,min(6.4vw,11vh),5.4rem);letter-spacing:-0.03em;line-height:1;
+  padding:0 clamp(18px,2.6vw,38px);color:var(--bone);opacity:.42;white-space:nowrap;
+  transition:opacity .3s,color .3s;
+}
+.marquee__item:nth-child(4n+3){opacity:.9}
+.marquee--reverse .marquee__item{opacity:.22}
+.marquee--reverse .marquee__item:nth-child(4n+1){opacity:.7}
+.marquee:hover .marquee__item{opacity:.8}
+.marquee__sep{color:var(--citrine);font-size:clamp(1rem,2vw,1.6rem);opacity:.8}
+@keyframes slide{to{transform:translateX(-50%)}}
+
+/* On the stage the rows only run while their chapter is on screen. */
+.stage--live .layer:not(.is-playing) .marquee__track{animation-play-state:paused}
+
+html.no-motion .marquee__track{animation:none;transform:translateX(0)}
+@media (prefers-reduced-motion:reduce){
+  .marquee__track{animation:none}
+}

@@ -1,0 +1,54 @@
+/* ===========================================================================
+   CH 02 — features: a pill bar, a rail per feature, and the form demo
+   =========================================================================== */
+/* The bar carries the features; the rail below shows how the chosen one
+   works. The thumb is one element moved to the active button rather than a
+   background toggled on each, so the selection slides between them. */
+.feat__title{font-size:clamp(2.2rem,min(6.2vw,10vh),5.6rem)}
+
+.fbar{display:flex;justify-content:center;margin:clamp(14px,min(3.4vw,3.4vh),42px) 0 clamp(12px,min(2vw,2vh),24px)}
+.fbar__inner{
+  position:relative;display:flex;gap:2px;padding:5px;
+  border-radius:999px;border:var(--rule) solid var(--bone-line);background:#fff;
+  max-width:100%;overflow-x:auto;scrollbar-width:none;
+}
+.fbar__inner::-webkit-scrollbar{display:none}
+.fbar__thumb{
+  position:absolute;top:5px;bottom:5px;left:0;width:0;
+  border-radius:999px;background:var(--ink);pointer-events:none;
+}
+.fbar.is-ready .fbar__thumb{
+  transition:transform .44s cubic-bezier(.2,.9,.3,1.1),width .44s cubic-bezier(.2,.9,.3,1.1);
+}
+.fbar__btn{
+  position:relative;z-index:1;flex:none;
+  font:inherit;font-size:10px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.14em;
+  color:var(--ash-deep);background:none;border:0;border-radius:999px;
+  padding:10px clamp(12px,1.2vw,17px);cursor:pointer;white-space:nowrap;
+  transition:color .3s;
+}
+.fbar__btn:hover{color:var(--ink)}
+.fbar__btn[aria-selected="true"]{color:var(--bone)}
+
+.feat-line{
+  display:flex;align-items:baseline;justify-content:space-between;
+  gap:14px 28px;flex-wrap:wrap;margin-bottom:clamp(14px,1.8vw,22px);
+}
+.feat-desc{
+  font-size:15px;line-height:1.55;color:var(--ash-deep);margin:0;max-width:56ch;
+  transition:opacity .3s ease;
+}
+.feat-desc.is-swapping{opacity:0}
+.feat-hint{display:flex;align-items:center;gap:10px;flex:none;color:var(--ash-deep)}
+.feat-hint .rule{width:clamp(28px,4vw,64px);height:var(--rule);background:var(--bone-line)}
+.hint-static{display:none}
+
+html.no-motion .feat-desc{transition:none}
+html.no-motion .fbar.is-ready .fbar__thumb{transition:none}
+html.no-motion .hint-live{display:none}
+html.no-motion .hint-static{display:inline}
+@media (prefers-reduced-motion:reduce){
+  .hint-live{display:none}
+  .hint-static{display:inline}
+}

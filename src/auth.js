@@ -49,9 +49,14 @@ export async function signIn(email, password) {
  * Any provider enabled on the Supabase project works; only 'google' is
  * wired into the UI today.
  * @param {string} provider Supabase OAuth provider id, e.g. 'google'.
+ * @param {{ redirectTo?: string }} [options] Web only: where the provider
+ *   sends the browser back to. Defaults to the current page. The landing page
+ *   passes the dashboard, so signing in there lands in the dashboard. It must
+ *   be on the Supabase project's redirect allowlist, or Supabase falls back
+ *   to the project's site URL.
  * @returns {Promise<{error: object|null}>}
  */
-export async function signInWithOAuth(provider) {
+export async function signInWithOAuth(provider, { redirectTo } = {}) {
   const isExtension =
     typeof chrome !== 'undefined' && !!chrome?.identity?.launchWebAuthFlow;
 
@@ -62,7 +67,7 @@ export async function signInWithOAuth(provider) {
   const { error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: window.location.origin + window.location.pathname,
+      redirectTo: redirectTo || window.location.origin + window.location.pathname,
     },
   });
   return { error };

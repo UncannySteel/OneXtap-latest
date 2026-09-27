@@ -1,0 +1,201 @@
+/* The rail itself. Its card set is swapped per feature; the loop is the same
+   loop either way — no start, no end, and the set is cloned at runtime until
+   the track can wrap seamlessly.
+   Base state is an ordinary horizontal scroller: with no JS the cards are
+   still all reachable. `.is-live` is what hands control to the script. */
+/* No perspective any more: the deck is a 2D fan, which is both closer to a
+   spread hand of cards and the only way the glass behaves — backdrop-filter
+   and transform-style: preserve-3d fight each other. */
+.rail{
+  position:relative;margin-inline:calc(var(--pad) * -1);
+  padding-block:clamp(18px,min(4vw,4vh),56px);
+  overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(12,23,16,.25) rgba(12,23,16,.07);
+}
+/* Glass needs something behind it to bend. Flat oat blurs to flat oat, so the
+   rail lays down a soft field in the same six tints the card icons use. */
+.rail::before{
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(40% 58% at 12% 44%, rgba(127,154,30,.17), transparent 72%),
+    radial-gradient(36% 54% at 37% 70%, rgba(180,100,60,.13), transparent 72%),
+    radial-gradient(38% 58% at 63% 32%, rgba(74,107,138,.15), transparent 72%),
+    radial-gradient(34% 52% at 86% 64%, rgba(125,78,119,.13), transparent 72%),
+    radial-gradient(32% 50% at 98% 36%, rgba(47,122,107,.12), transparent 72%);
+  filter:blur(8px);
+}
+.rail::-webkit-scrollbar{height:9px}
+.rail::-webkit-scrollbar-track{background:rgba(12,23,16,.07);border-radius:99px}
+.rail::-webkit-scrollbar-thumb{background:rgba(12,23,16,.25);border-radius:99px}
+.rail::-webkit-scrollbar-thumb:hover{background:rgba(12,23,16,.38)}
+.rail.is-live{
+  overflow:hidden;scrollbar-width:none;touch-action:pan-y;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);
+}
+.rail.is-live::-webkit-scrollbar{display:none}
+.rail.is-live{cursor:grab}
+.rail.is-live.is-dragging{cursor:grabbing}
+html.has-fine-cursor .rail.is-live{cursor:none}
+
+/* Padding here is for the no-JS native scroller only. The live loop must NOT
+   have it: a leading pad is a permanent hole at the start of the loop — the
+   strip left of the first card is empty whenever the wrap position is inside
+   it, which is exactly where every feature comes to rest. The live rail
+   produces the same gutter from the transform instead, with a whole clone set
+   parked to the left so that strip is always occupied. */
+.rail__track{
+  position:relative;z-index:1;
+  display:flex;align-items:stretch;width:max-content;
+  padding-inline:var(--pad);
+  will-change:transform;
+}
+.rail.is-live .rail__track{padding-inline:0}
+.rail.is-live .rail__track{user-select:none;-webkit-user-select:none}
+
+.rcard{
+  flex:none;width:clamp(236px,72vw,384px);
+  margin-inline:clamp(6px,0.85vw,13px);
+  /* Glass. The deck overlaps, so each panel refracts the ones stacked behind
+     it as well as the colour field — which is what makes the blur read as
+     glass rather than as a tint. */
+  /* Deliberately NOT backdrop-filter: one backdrop readback per card, times
+     seven overlapping cards, put frame cost past 40ms. The cards behind are
+     already blurred by the depth-of-field pass, so translucency over the
+     blurred colour field gives the same read for none of the price. */
+  background:rgba(255,255,255,.62);
+  border:1px solid rgba(255,255,255,.7);
+  border-radius:18px;
+  box-shadow:0 20px 44px -26px rgba(12,23,16,.42),
+             inset 0 1px 0 rgba(255,255,255,.62);
+  padding:clamp(22px,2.4vw,32px);
+  display:flex;flex-direction:column;
+  /* Fixed per breakpoint so every feature's rail is exactly the same height
+     and a swap never reflows the page beneath it. The taller desktop value
+     is what leaves room for the mini window. */
+  min-height:clamp(252px,26vw,296px);
+  transform-origin:50% 50%;will-change:transform;
+}
+.rail.is-live.is-dragging .rcard{
+  box-shadow:0 26px 60px -28px rgba(12,23,16,.55),
+             inset 0 1px 0 rgba(255,255,255,.62);
+}
+.rcard img,.rcard a{-webkit-user-drag:none}
+@media(min-width:560px){.rcard{min-height:372px}}
+
+/* Icon tile. `--ic` / `--ic-bg` are set per card, and everything inside the
+   card that needs the accent (a filled chip, a caret, a tick) reads `--ic`,
+   so one assignment colours the whole card. */
+.rcard__ic{
+  width:clamp(44px,3.6vw,52px);height:clamp(44px,3.6vw,52px);
+  border-radius:14px;display:grid;place-items:center;flex:none;
+  background:var(--ic-bg,var(--bone-2));color:var(--ic,var(--citrine-deep));
+}
+.rcard__ic svg{
+  width:24px;height:24px;fill:none;stroke:currentColor;
+  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;
+}
+.rcard__t{
+  font-family:var(--display);font-stretch:70%;font-weight:650;text-transform:uppercase;
+  font-size:clamp(17px,1.5vw,21px);letter-spacing:-0.01em;line-height:1.05;
+  margin:18px 0 9px;
+}
+.rcard__b{
+  font-size:14.5px;line-height:1.6;color:var(--ash-deep);margin:0 0 20px;
+  min-height:4.8em;   /* three lines at the desktop card width */
+}
+/* Narrow cards wrap the same sentence onto a fourth line, and only for some
+   features — which made one rail taller than the rest. Reserving four lines
+   below the breakpoint keeps every card the same height at every width. */
+@media(max-width:559px){.rcard__b{min-height:6.4em}}
+/* Cards without a mock window carry two short spec lines instead, so the
+   space the tallest card forces on them holds something. */
+.rcard__notes{list-style:none;margin:0 0 18px;padding:0;display:grid;gap:8px}
+/* Where the mock is shown, the notes step aside; below that breakpoint the
+   mock is hidden and the notes carry the card instead. */
+@media(min-width:560px){.rcard--mock .rcard__notes{display:none}}
+.rcard__notes li{
+  display:flex;gap:9px;align-items:flex-start;
+  font-family:var(--mono);font-size:10.5px;line-height:1.5;color:var(--ash-deep);
+}
+.rcard__notes li::before{
+  content:"";flex:none;width:5px;height:5px;margin-top:5px;border-radius:1px;
+  background:var(--ic,var(--citrine-deep));opacity:.6;transform:rotate(45deg);
+}
+
+.rcard__meta{
+  margin-top:auto;padding-top:14px;border-top:var(--rule) solid var(--bone-line);
+  font-family:var(--mono);font-size:11px;color:var(--ic,var(--citrine-deep));
+  display:flex;align-items:center;gap:8px;
+}
+
+/* A small mock of the thing the card is describing. Only some cards carry
+   one — a window on every card would read as a pattern rather than a point.
+   Hidden on narrow screens, where a 280px card cannot show a UI legibly and
+   the text has to take the width instead. */
+.mini{
+  display:none;margin:0 0 18px;border:1px solid rgba(255,255,255,.62);
+  border-radius:9px;overflow:hidden;background:rgba(255,255,255,.55);
+}
+/* Fixed height, not auto: a 3-row mock and a 2-row mock must leave the card
+   exactly as tall, or each feature's rail ends up a different height and a
+   swap reflows the page under it. */
+@media(min-width:560px){.mini{display:block;height:124px}}
+/* A short screen gets the narrow card too — mock out, notes in — so the
+   whole chapter still fits in one screen. Every card carries notes, so the
+   rail stays one height across features here as well. */
+@media(min-width:560px) and (max-height:820px){
+  .rcard{min-height:318px}
+  .mini{display:none}
+  .rcard--mock .rcard__notes{display:grid}
+}
+.mini__body{overflow:hidden}
+.mini__bar{
+  display:flex;align-items:center;gap:5px;padding:7px 9px;
+  border-bottom:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.42);
+}
+.mini__bar i{width:5px;height:5px;border-radius:50%;background:var(--bone-line);flex:none}
+.mini__bar span{
+  font-family:var(--mono);font-size:9px;color:var(--ash-deep);margin-left:5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.mini__body{padding:11px;display:grid;gap:8px}
+
+.mini__row{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px}
+.mini__k{color:var(--ash-deep);flex:none}
+.mini__v{
+  color:var(--ink);background:rgba(255,255,255,.62);border-radius:4px;padding:3px 7px;
+  flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.mini__ok{color:var(--ic,var(--citrine-deep));flex:none;font-size:9px}
+.mini__chips{display:flex;gap:5px;flex-wrap:wrap}
+.mini__chip{
+  font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  border:var(--rule) solid var(--bone-line);border-radius:999px;
+  padding:4px 9px;color:var(--ash-deep);white-space:nowrap;
+}
+.mini__chip.is-on{background:var(--ic);border-color:var(--ic);color:#fff}
+.mini__lines{display:grid;gap:6px}
+.mini__line{height:5px;border-radius:3px;background:var(--bone-2)}
+.mini__line--mid{width:86%}
+.mini__line--short{width:58%}
+.mini__tail{display:flex;align-items:center;gap:5px}
+.mini__tail .mini__line{flex:0 0 58%}
+.mini__caret{
+  display:inline-block;width:1.5px;height:10px;background:var(--ic);
+  vertical-align:-1px;margin-left:2px;
+}
+
+/* Script blurs the track during a feature spin, then clears the filter so
+   no stale containing block is left behind. */
+.rail__track{transform-origin:50% 50%}
+
+/* The static version stays an ordinary carousel: a flat row you scroll,
+   with the scrollbar left visible because it is the only affordance there. */
+html.no-motion .rail{scroll-snap-type:x proximity}
+html.no-motion .rcard{scroll-snap-align:center;transform:none!important;opacity:1!important}
+@media (prefers-reduced-motion:reduce){
+  .rail{scroll-snap-type:x proximity}
+  .rcard{scroll-snap-align:center}
+}

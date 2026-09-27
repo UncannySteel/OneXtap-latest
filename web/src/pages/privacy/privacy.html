@@ -1,0 +1,154 @@
+<!-- ══ Privacy ══ the line between the device and everything else ══════
+     The substance of this page is the product's privacy policy (it replaced
+     the backend's privacy-policy.html, and /privacy-policy redirects here).
+     Every data destination the app has must be named on it before it ships. -->
+<section class="sub-hero" data-ground="ink">
+  <div class="wrap">
+    <a class="back" href="/" data-back><span class="back__arrow" aria-hidden="true">←</span> Back</a>
+    <p class="label sub-hero__label" data-rise><span class="sub-hero__num">03</span>Company — Privacy</p>
+    <h1 class="display sub-hero__title" data-split>Yours, locally.</h1>
+    <p class="sub-hero__aside" data-rise>well… mostly. here's the rest.</p>
+    <p class="lede sub-hero__lede" data-rise>
+      The plain version: what Onextap keeps on your device, what leaves it when you ask for
+      something and who handles it, and what your account holds. Written down, not left to
+      inference. Last updated September 2026.
+    </p>
+  </div>
+</section>
+
+<div class="sub-body" data-ground="bone">
+  <div class="wrap">
+    <section class="sub-sec" aria-labelledby="privacy-device">
+      <p class="label">01 / On your device</p>
+      <div>
+        <h2 class="display sub-sec__title" id="privacy-device" data-split>Your profile lives in your browser.</h2>
+        <p class="sub-copy" data-rise>
+          Your details, saved answers, cover letters and resumes are kept in the browser's own
+          storage — <span class="mono-chip">chrome.storage.local</span> in the extension, local
+          storage on the dashboard — and never in our database. The dashboard hands your profile to
+          the extension on your own machine. Autofill uses only that local copy: filling a form
+          sends nothing anywhere. Stored locally is not the same as never sent, though; the next
+          two sections say exactly what goes out, and when.
+        </p>
+      </div>
+    </section>
+
+    <section class="sub-sec" aria-labelledby="privacy-leaves">
+      <p class="label">02 / What leaves it</p>
+      <div>
+        <h2 class="display sub-sec__title" id="privacy-leaves" data-split>Only when you ask.</h2>
+        <p class="sub-copy" data-rise>
+          Your profile's text leaves the device only when you use an AI feature, and only the text
+          that feature needs:
+        </p>
+        <ul class="sub-list" data-rise>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Writing an answer or personalising a cover letter</strong> sends Groq the question, your draft or template, the job description you pasted or had open, a short summary of your profile (current role, top skills, recent experience) and the saved answers relevant to the question.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Uploading a resume</strong> sends the file to Google (Gemini), which reads it into your profile's fields.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Job Matches</strong> sends a summary of your profile — skills, job titles, seniority and years of experience, not your full resume — with the listings being ranked, to Gemini, or to Groq when Gemini is unavailable.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Explain my fit</strong> sends fuller resume text — your summary and experience — with that one job's description, to Groq.</span></li>
+        </ul>
+        <p class="sub-copy" data-rise>
+          We do not sell, rent or trade any of it, and we do not use it to train models of our own.
+          What Groq and Google do with text sent through their APIs is governed by their terms, not
+          ours.
+        </p>
+      </div>
+    </section>
+
+    <section class="sub-sec" aria-labelledby="privacy-records">
+      <p class="label">03 / What is recorded</p>
+      <div>
+        <h2 class="display sub-sec__title" id="privacy-records" data-split>Metadata, not your words.</h2>
+        <p class="sub-copy" data-rise>
+          To catch failures, requests to rank job matches and to explain a fit are recorded with
+          Opik, an AI observability service run by Comet. As of this writing those records hold
+          operational metadata only — job counts, search filters, job IDs, success or failure —
+          never the resume, profile or answer text the requests carry. The Onextap team can see
+          them, and uses them only to diagnose and improve the product: never for advertising, and
+          never to build a profile of you. If they are ever to include your text, this page will
+          say so first.
+        </p>
+      </div>
+    </section>
+
+    <section class="sub-sec" aria-labelledby="privacy-account">
+      <p class="label">04 / Your account</p>
+      <div>
+        <h2 class="display sub-sec__title" id="privacy-account" data-split>What the account holds.</h2>
+        <p class="sub-copy" data-rise>
+          Your account, kept by Supabase, holds your email address, display name, credit balance and
+          subscription status — and, if you subscribe, the customer and subscription identifiers
+          Dodo Payments uses for billing. Card details go to Dodo Payments, never to us. Your
+          signed-in session is kept in your browser's local storage, not in a cookie. Everything
+          sent to our servers and to Supabase travels over HTTPS.
+        </p>
+      </div>
+    </section>
+
+    <section class="sub-sec" aria-labelledby="privacy-services">
+      <p class="label">05 / Who handles it</p>
+      <div>
+        <h2 class="display sub-sec__title" id="privacy-services" data-split>The services we use.</h2>
+        <ul class="sub-list" data-rise>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Supabase</strong> — sign-in, and the account and billing records above.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Groq</strong> — writing and improving answers and cover letters, Explain my fit, and the fallback for ranking job matches.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Google (Gemini)</strong> — reading uploaded resumes, and the main model for ranking job matches.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Google Sign-In</strong> — only if you choose it: your browser goes to Google's own sign-in page, and we receive back your email and name, through Supabase.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Dodo Payments</strong> — payments, and the billing portal for invoices and your card.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Opik (Comet)</strong> — the operational metadata described in 03.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Resend</strong> — delivering feedback-form messages to our team, with a reply-to address if you give one. Nothing is stored.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Google Fonts</strong> — this site's typefaces. Loading them, like any request to Google's servers, shows Google your IP address.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>Job sources</strong> (Adzuna, Greenhouse, Lever, Ashby, Arbeitnow, Jobicy, Himalayas, Remotive, RemoteOK) — a one-way, read-only feed of public postings. Nothing of yours is sent to them.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="sub-sec" aria-labelledby="privacy-extension">
+      <p class="label">06 / The extension</p>
+      <div>
+        <h2 class="display sub-sec__title" id="privacy-extension" data-split>It acts when you tell it to.</h2>
+        <p class="sub-copy" data-rise>The extension asks for a small, specific set of permissions:</p>
+        <ul class="sub-list" data-rise>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>storage</strong> — to keep your profile on your device.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>activeTab and scripting</strong> — to read a posting or fill a form on the tab you are looking at, and only after you click something in the extension. It has no standing access to your other tabs, and nothing runs when you simply open a page.</span></li>
+          <li><span class="tick" aria-hidden="true">◆</span> <span><strong>identity</strong> — to open Google's own sign-in window when you choose to sign in with Google.</span></li>
+        </ul>
+        <p class="sub-copy" data-rise>
+          When you ask it to read a posting, it reads the company name and the description text on
+          that page, up to 8,000 characters — not your cookies, not your other tabs, not your
+          browsing history.
+        </p>
+      </div>
+    </section>
+
+    <section class="sub-sec" aria-labelledby="privacy-cookies">
+      <p class="label">07 / Cookies &amp; security</p>
+      <div>
+        <h2 class="display sub-sec__title" id="privacy-cookies" data-split>No trackers.</h2>
+        <p class="sub-copy" data-rise>
+          No tracking cookies, and as of this writing no analytics or advertising scripts. If that
+          ever changes, this page will say so first, with a way to opt out. What is on your device
+          is protected by your browser and operating system; we add no separate encryption on top
+          of it, and we have no backdoor into it.
+        </p>
+      </div>
+    </section>
+
+    <section class="sub-sec" aria-labelledby="privacy-control">
+      <p class="label">08 / Your say</p>
+      <div>
+        <h2 class="display sub-sec__title" id="privacy-control" data-split>Keep it, or delete it.</h2>
+        <p class="sub-copy" data-rise>
+          Every drafted answer stays editable before it is saved or submitted: Onextap fills the
+          form; you decide what gets sent. Your profile, resumes and answers exist only on your
+          device, so clearing them in Onextap or uninstalling the extension removes them.
+          <strong>Delete account</strong>, in the dashboard's settings, cancels any subscription and
+          deletes your account and everything stored with it; until then, we keep account data only
+          while the account exists. For a copy of your account data, or to have the records in 03
+          removed, write to <a href="mailto:mazzah70@gmail.com">mazzah70@gmail.com</a> or
+          <a href="/contact/">ask us</a>.
+        </p>
+      </div>
+    </section>
+  </div>
+</div>

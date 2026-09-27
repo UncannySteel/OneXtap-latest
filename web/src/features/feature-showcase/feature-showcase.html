@@ -1,0 +1,153 @@
+<!-- ══ CH 02 ══ features, one rail each ═══════════════════════════════ -->
+<section class="ch ch--bone layer" id="how" data-ground="bone" data-chapter="02 — Features">
+ <div class="ch__body">
+  <div class="wrap">
+    <div class="ch__head">
+      <p class="label">02 / Features</p>
+      <div>
+        <h2 class="display feat__title" data-split>Pick a feature.</h2>
+      </div>
+    </div>
+
+    <div class="fbar">
+      <div class="fbar__inner" id="fbar" role="tablist" aria-label="Features">
+        <span class="fbar__thumb" id="fbarThumb" aria-hidden="true"></span>
+        <button class="fbar__btn" id="tab-autofill" role="tab" aria-selected="true"
+                aria-controls="rail" data-feature="autofill" type="button">Autofill</button>
+        <button class="fbar__btn" id="tab-mapping" role="tab" aria-selected="false"
+                aria-controls="rail" data-feature="mapping" type="button">Field mapping</button>
+        <button class="fbar__btn" id="tab-answers" role="tab" aria-selected="false"
+                aria-controls="rail" data-feature="answers" type="button">AI answers</button>
+        <button class="fbar__btn" id="tab-profiles" role="tab" aria-selected="false"
+                aria-controls="rail" data-feature="profiles" type="button">Profiles</button>
+        <button class="fbar__btn" id="tab-storage" role="tab" aria-selected="false"
+                aria-controls="rail" data-feature="storage" type="button">Storage</button>
+        <button class="fbar__btn" id="tab-letters" role="tab" aria-selected="false"
+                aria-controls="rail" data-feature="letters" type="button">Cover letters</button>
+      </div>
+    </div>
+
+    <div class="feat-line">
+      <p class="feat-desc" id="featDesc">Your profile, filled into any application form — every field, on every board, in one tap.</p>
+      <p class="label feat-hint">
+        <span class="hint-live">Drag the deck</span><span class="hint-static">Scroll the row</span>
+        <span class="rule"></span>
+        <span class="hint-live">On a loop</span><span class="hint-static">End to end</span>
+      </p>
+    </div>
+  </div>
+
+  <div class="rail" id="rail" role="tabpanel" aria-labelledby="tab-autofill"
+       aria-roledescription="carousel" tabindex="0">
+    <div class="rail__track" id="railTrack">
+      <article class="rcard" style="--ic:var(--i1);--ic-bg:var(--i1bg)">
+        <span class="rcard__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></span>
+        <h3 class="rcard__t">Build your profile</h3>
+        <p class="rcard__b">Enter your details once or upload a resume. Onextap parses and structures everything automatically.</p>
+        <ul class="rcard__notes">
+          <li>Resume upload, or type it in</li>
+          <li>Every field stays editable</li>
+        </ul>
+        <p class="rcard__meta"><span aria-hidden="true">&#9670;</span> resume.pdf &rarr; parsed once</p>
+      </article>
+
+      <article class="rcard" style="--ic:var(--i2);--ic-bg:var(--i2bg)">
+        <span class="rcard__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z"/><path d="M3.2 12h17.6"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg></span>
+        <h3 class="rcard__t">Open any job form</h3>
+        <p class="rcard__b">Navigate to any job application on any platform. The Onextap extension activates automatically.</p>
+        <ul class="rcard__notes">
+          <li>No per-site setup</li>
+          <li>Activates on the page you open</li>
+        </ul>
+        <p class="rcard__meta"><span aria-hidden="true">&#9670;</span> greenhouse &middot; lever &middot; workday</p>
+      </article>
+
+      <article class="rcard rcard--mock" style="--ic:var(--i3);--ic-bg:var(--i3bg)">
+        <span class="rcard__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M4 12h16"/></svg></span>
+        <h3 class="rcard__t">It reads the form</h3>
+        <p class="rcard__b">It reads the page and figures out that "Given name," "First name" and "fname_input_2" are all you.</p>
+        <div class="mini" aria-hidden="true">
+          <div class="mini__bar"><i></i><i></i><i></i><span>boards.greenhouse.io</span></div>
+          <div class="mini__body">
+            <div class="mini__row"><span class="mini__k">first_name</span><span class="mini__v">Azzah</span><span class="mini__ok">&#10003;</span></div>
+            <div class="mini__row"><span class="mini__k">email</span><span class="mini__v">azzah@example.com</span><span class="mini__ok">&#10003;</span></div>
+            <div class="mini__row"><span class="mini__k">years_exp</span><span class="mini__v">4</span><span class="mini__ok">&#10003;</span></div>
+          </div>
+        </div>
+        <ul class="rcard__notes">
+          <li>Reads labels and placeholders</li>
+          <li>Handles fields it has not seen</li>
+        </ul>
+        <p class="rcard__meta"><span aria-hidden="true">&#9670;</span> 11 fields found</p>
+      </article>
+
+      <article class="rcard" style="--ic:var(--i4);--ic-bg:var(--i4bg)">
+        <span class="rcard__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8l9-12h-7z"/></svg></span>
+        <h3 class="rcard__t">Tap to apply</h3>
+        <p class="rcard__b">Hit autofill. Review your AI-personalised answers in seconds. Submit. Move to the next one.</p>
+        <ul class="rcard__notes">
+          <li>Review before you submit</li>
+          <li>Nothing sends on its own</li>
+        </ul>
+        <p class="rcard__meta"><span aria-hidden="true">&#9670;</span> 11 fields &middot; 1 tap</p>
+      </article>
+
+      <article class="rcard" style="--ic:var(--i5);--ic-bg:var(--i5bg)">
+        <span class="rcard__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z"/><path d="M8.4 12.2l2.4 2.4l4.8-5"/></svg></span>
+        <h3 class="rcard__t">Next posting</h3>
+        <p class="rcard__b">Nothing to re-type on the one after this. The profile you built is already waiting on the next form.</p>
+        <ul class="rcard__notes">
+          <li>Profile persists across sites</li>
+          <li>Same two seconds each time</li>
+        </ul>
+        <p class="rcard__meta"><span aria-hidden="true">&#9670;</span> repeat &middot; forever</p>
+      </article>
+    </div>
+  </div>
+ </div>
+</section>
+
+<!-- ══ CH 02 ══ …watch it work: the form types itself ════════════════ -->
+<section class="ch ch--bone layer" id="watch" data-ground="bone" data-chapter="02 — Watch it work">
+ <div class="ch__body">
+  <div class="wrap">
+    <div class="ch__head">
+      <p class="label">02 / In practice</p>
+      <div>
+        <h2 class="display feat__title" data-split>Watch it work.</h2>
+      </div>
+    </div>
+
+    <div class="demo" id="demo">
+      <div class="demo__bar">
+        <span class="demo__dots"><i></i><i></i><i></i></span>
+        <span class="demo__url">boards.greenhouse.io / northwind-labs / product-designer / apply</span>
+        <span class="demo__badge">Onextap · filling</span>
+      </div>
+      <div class="demo__body">
+        <div class="demo__row" data-demo style="--fill:0">
+          <label class="demo__k">first_name</label>
+          <div class="demo__inp"><span class="demo__v">Kylie</span><i class="demo__caret"></i></div>
+        </div>
+        <div class="demo__row" data-demo style="--fill:0">
+          <label class="demo__k">email</label>
+          <div class="demo__inp"><span class="demo__v">kylie@example.com</span><i class="demo__caret"></i></div>
+        </div>
+        <div class="demo__row" data-demo style="--fill:0">
+          <label class="demo__k">years_of_experience</label>
+          <div class="demo__inp"><span class="demo__v">4</span><i class="demo__caret"></i></div>
+        </div>
+        <div class="demo__row" data-demo style="--fill:0">
+          <label class="demo__k">portfolio_url</label>
+          <div class="demo__inp"><span class="demo__v">Kylie.design</span><i class="demo__caret"></i></div>
+        </div>
+        <div class="demo__row demo__row--wide" data-demo style="--fill:0">
+          <label class="demo__k">"Why do you want to work here?" — AI draft</label>
+          <div class="demo__inp"><span class="demo__v">Northwind's design team ships its own research, which is rare. I've spent four years doing exactly that on a small team, and I'd rather keep owning the whole loop than hand it off.</span><i class="demo__caret"></i></div>
+        </div>
+        <p class="demo__note mono">Every draft is yours to edit before it goes anywhere near submit.</p>
+      </div>
+    </div>
+  </div>
+ </div>
+</section>

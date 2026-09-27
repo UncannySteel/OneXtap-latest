@@ -1,0 +1,57 @@
+/* --- cursor -------------------------------------------------------------- */
+/* A zero-size anchor that GSAP moves; every part hangs off it with negative
+   margins so it all stays centred on the point. Three states: idle ring,
+   `is-drag` (over the rail — hand plus label) and `is-dragging` (the label
+   gets out of the way and the hand closes). */
+.cursor{
+  position:fixed;top:0;left:0;width:0;height:0;
+  pointer-events:none;z-index:90;opacity:0;
+  transition:opacity .3s;will-change:transform;
+}
+.cursor.is-on{opacity:1}
+
+.cursor__ring{
+  position:absolute;left:0;top:0;width:26px;height:26px;margin:-13px 0 0 -13px;
+  border:1.5px solid var(--citrine);border-radius:50%;opacity:.9;
+  transition:width .25s,height .25s,margin .25s,background .25s,opacity .25s,transform .25s;
+}
+.cursor.is-hot .cursor__ring{
+  width:52px;height:52px;margin:-26px 0 0 -26px;background:rgba(198,218,67,.16);
+}
+.cursor.is-drag .cursor__ring{opacity:0;transform:scale(.35)}
+
+.cursor__grip{
+  position:absolute;left:0;top:0;width:58px;height:58px;margin:-29px 0 0 -29px;
+  border-radius:50%;background:var(--citrine);color:var(--ink);
+  display:grid;place-items:center;transform:scale(0);
+  transition:transform .36s cubic-bezier(.2,.9,.3,1.25),background .25s;
+}
+.cursor.is-drag .cursor__grip{transform:scale(1)}
+.cursor.is-dragging .cursor__grip{transform:scale(.84)}
+.cursor__icon{
+  position:absolute;width:26px;height:26px;fill:none;stroke:currentColor;
+  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;
+  transition:opacity .2s,transform .2s;
+}
+.cursor__icon--closed{opacity:0;transform:scale(.82)}
+.cursor.is-dragging .cursor__icon--open{opacity:0;transform:scale(.82)}
+.cursor.is-dragging .cursor__icon--closed{opacity:1;transform:scale(1)}
+
+.cursor__label{
+  position:absolute;left:36px;top:-10px;
+  background:var(--ink);color:var(--bone);
+  font-family:var(--ui);font-size:9px;font-weight:600;
+  letter-spacing:.2em;text-transform:uppercase;
+  padding:6px 11px;border-radius:999px;white-space:nowrap;
+  opacity:0;transform:translateX(-8px) scale(.9);transform-origin:0 50%;
+  transition:opacity .28s,transform .28s cubic-bezier(.2,.9,.3,1.25);
+}
+.cursor.is-drag .cursor__label{opacity:1;transform:translateX(0) scale(1)}
+.cursor.is-dragging .cursor__label{opacity:0;transform:translateX(-8px) scale(.9)}
+
+@media(hover:none),(pointer:coarse){.cursor{display:none}}
+
+html.no-motion .cursor{display:none}
+@media (prefers-reduced-motion:reduce){
+  .cursor{display:none}
+}

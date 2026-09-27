@@ -1,0 +1,168 @@
+/* ===========================================================================
+   The spine and the chapter menu
+   From 768px the spine is a rail down the left edge, forest-black like the
+   stage, and the page makes room for it. Below that it is a bar sharing the
+   header row, taking the header's ink as the ground under it changes. The
+   burger opens a full-screen menu of the chapters. How wide the spine is
+   lives in one place: --spine (tokens.css).
+   =========================================================================== */
+body{padding-left:var(--spine)}
+
+/* The open menu holds the page still: no wheel, key or scrollbar moves it
+   underneath (a jump still can; scripts are not held). Where a scrollbar
+   takes room, the gutter it leaves is kept, so nothing shifts sideways. */
+html.menu-open{overflow:hidden;scrollbar-gutter:stable}
+
+/* --- the spine ------------------------------------------------------------ */
+.spine{
+  position:fixed;inset:0 0 auto 0;z-index:62;height:var(--bar);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 var(--pad);pointer-events:none;
+  color:var(--bone);transition:color .45s ease;
+}
+.spine > *{pointer-events:auto}
+@media(max-width:767px){.spine[data-hud="dark"]{color:var(--ink)}}
+@media(min-width:768px){
+  .spine{
+    inset:0 auto 0 0;width:var(--spine);height:auto;
+    flex-direction:column;justify-content:flex-start;padding:0;
+    background:var(--ink);border-right:var(--rule) solid var(--moss-line);
+    pointer-events:auto;
+  }
+  /* As tall as the mark's slot, so the burger between them sits at the
+     middle of the screen. */
+  .spine::after{content:"";flex:none;height:var(--bar)}
+}
+
+/* The mark sits on the header row's centre line at every width. */
+.spine__logo{display:flex;align-items:center;justify-content:center;height:var(--bar);color:inherit}
+.spine__logo svg{
+  display:block;height:28px;width:auto;fill:currentColor;
+  transition:transform .6s cubic-bezier(.2,.9,.3,1.25);
+}
+@media(min-width:768px){
+  .spine__logo{flex:none;width:100%}
+  .spine__logo svg{height:30px}
+}
+
+/* --- the burger: three bars that fold into an X --------------------------- */
+.burger{
+  flex:none;display:flex;align-items:center;justify-content:center;
+  width:42px;height:42px;margin-right:-12px;padding:0;
+  border:0;background:none;color:inherit;cursor:pointer;
+  transition:color .25s;
+}
+/* Hover only where there is one: a tap would leave it stuck on. */
+@media(hover:hover){
+  .spine__logo:hover svg{transform:rotate(-14deg)}
+  .burger:hover{color:var(--citrine)}
+}
+@media(hover:hover) and (max-width:767px){.spine[data-hud="dark"] .burger:hover{color:inherit}}
+/* On the rail the whole middle of it is the button. */
+@media(min-width:768px){.burger{flex:1;width:100%;height:auto;margin:0}}
+
+.burger__icon{display:block;width:30px;height:30px}
+.burger__icon path{
+  fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;
+  /* Load-bearing: the bars turn about the icon's centre, not their own,
+     which is what brings the outer two together as an X. */
+  transform-box:view-box;transform-origin:center;
+}
+/* No state until the first open (nav.js), so nothing unfolds on load. */
+.burger[data-state="open"] .burger__mid{animation:burgerMidOpen .2s ease both}
+.burger[data-state="open"] .burger__right{animation:burgerRightOpen .2s ease both}
+.burger[data-state="open"] .burger__left{animation:burgerLeftOpen .2s ease both}
+.burger[data-state="closed"] .burger__mid{animation:burgerMidClose .2s ease both}
+.burger[data-state="closed"] .burger__right{animation:burgerRightClose .2s ease both}
+.burger[data-state="closed"] .burger__left{animation:burgerLeftClose .2s ease both}
+
+/* The middle bar goes; the outer two meet in the middle, then turn. */
+@keyframes burgerMidOpen{to{opacity:0}}
+@keyframes burgerRightOpen{50%{transform:translateX(-8px)}100%{transform:rotate(-45deg) translateX(-8px)}}
+@keyframes burgerLeftOpen{50%{transform:translateX(8px)}100%{transform:rotate(45deg) translateX(8px)}}
+@keyframes burgerMidClose{0%{opacity:0}100%{opacity:1}}
+@keyframes burgerRightClose{0%{transform:rotate(-45deg) translateX(-8px)}50%{transform:translateX(-8px)}100%{transform:none}}
+@keyframes burgerLeftClose{0%{transform:rotate(45deg) translateX(8px)}50%{transform:translateX(8px)}100%{transform:none}}
+
+/* --- the menu ------------------------------------------------------------- */
+/* Under the spine and the header, over everything else. Once closing it
+   lets clicks through at once, though it takes .3s to fade. */
+.menu{
+  position:fixed;inset:0;z-index:61;padding-left:var(--spine);
+  overflow-y:auto;overscroll-behavior:contain;
+  background:var(--ink);color:var(--bone);
+  opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .3s ease,visibility .3s;
+}
+.menu.is-open{opacity:1;visibility:visible;pointer-events:auto}
+
+.menu__inner{
+  display:flex;flex-direction:column;min-height:100%;
+  max-width:1280px;margin:0 auto;
+  padding:var(--sheet-top) var(--pad) clamp(24px,4vh,40px);
+}
+.menu__grid{margin:auto 0;display:grid;gap:40px}
+@media(min-width:640px){.menu__grid{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:1024px){.menu__grid{grid-template-columns:repeat(3,1fr);gap:48px}}
+
+.menu__label{color:var(--ash)}
+.menu__num{color:var(--citrine);margin-right:12px;font-variant-numeric:tabular-nums}
+
+.menu__list{list-style:none;margin:18px 0 0;padding:0}
+.menu__list li + li{margin-top:10px}
+@media(min-width:768px){
+  .menu__list{margin-top:26px}
+  .menu__list li + li{margin-top:16px}
+}
+/* Items rise in on one running stagger across all the columns (nav.js
+   sets each delay). */
+.menu__list li{
+  opacity:0;transform:translateY(14px);
+  transition:opacity .5s ease,transform .7s cubic-bezier(.16,1,.3,1);
+}
+.menu.is-open .menu__list li{opacity:1;transform:none}
+
+/* A link is a mask holding the word and, just below it, the word's italic
+   twin (nav.js adds the twin). On hover both roll up through the mask, so
+   the word leans into citrine italic; the rest of the menu steps back. The
+   two share one grid cell, so the mask is as wide as the wider of them:
+   the italic runs a little longer than the roman. */
+.menu__link{
+  display:inline-grid;vertical-align:top;overflow:hidden;padding-right:.1em;
+  font-family:var(--voice);font-weight:400;
+  font-size:34px;line-height:1.2;letter-spacing:-0.015em;
+  color:var(--bone);text-decoration:none;
+  transition:opacity .4s ease;
+}
+@media(min-width:768px){.menu__link{font-size:46px}}
+@media(min-width:1024px){.menu__link{font-size:52px}}
+.menu__word{grid-area:1/1;white-space:nowrap;transition:transform .55s cubic-bezier(.7,0,.2,1)}
+.menu__word--alt{font-style:italic;color:var(--citrine);transform:translateY(100%)}
+.menu__link:focus-visible .menu__word{transform:translateY(-100%)}
+.menu__link:focus-visible .menu__word--alt{transform:none}
+@media(hover:hover){
+  .menu__link:hover .menu__word{transform:translateY(-100%)}
+  .menu__link:hover .menu__word--alt{transform:none}
+  .menu__grid:has(.menu__link:hover) .menu__link:not(:hover){opacity:.45}
+}
+
+.menu__foot{
+  display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;
+  margin-top:56px;padding-top:22px;border-top:var(--rule) solid var(--moss-line);
+}
+.menu__fine{margin:0;font-size:12.5px;color:var(--ash)}
+
+/* A chapter reached from the nav takes focus (nav.js), so Tab carries on
+   from there. It fills the screen, so it needs no ring to be found. */
+main:focus,.layer:focus{outline:none}
+
+/* --- reduced motion --------------------------------------------------------
+   1ms, not none: the burger still has to arrive at its X. */
+html.no-motion .burger__icon path{animation-duration:1ms!important}
+html.no-motion .menu__list li,
+html.no-motion .menu__word,
+html.no-motion .spine__logo svg{transition:none}
+@media (prefers-reduced-motion:reduce){
+  .burger__icon path{animation-duration:1ms!important}
+  .menu__list li,.menu__word,.spine__logo svg{transition:none}
+}

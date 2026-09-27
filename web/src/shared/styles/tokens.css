@@ -1,0 +1,54 @@
+/* ===========================================================================
+   ONEXTAP — editorial redesign sample
+   One committed visual world: the ground colour carries the narrative
+   (forest-black → oat → forest-black → citrine), so this page does not follow
+   the viewer's light/dark theme. Every colour is painted explicitly.
+   =========================================================================== */
+
+:root{
+  --ink:#0C1710;          /* forest-black — the stage */
+  --ink-2:#121E14;        /* one step up, for banding */
+  --moss:#223019;         /* raised surface on ink */
+  --moss-line:#31432A;    /* hairline on ink */
+  --bone:#E9E4D4;         /* warm oat — the page */
+  --bone-2:#DDD7C4;       /* oat, one step down */
+  --bone-line:#C8C1AC;    /* hairline on oat */
+  --citrine:#C6DA43;      /* the one loud note */
+  --citrine-deep:#9FB52C;
+  --ash:#8C9585;          /* secondary type on ink */
+  --ash-deep:#5E6858;     /* secondary type on oat */
+
+  /* Card icon tints. Six muted tones so no two icons in a feature's set ever
+     repeat, each kept desaturated enough that the citrine stays the only
+     loud colour on the page. Assigned by card index, not by meaning. */
+  --i1:#7F9A1E; --i1bg:#EFF4D2;   /* olive   */
+  --i2:#B4643C; --i2bg:#F8E8DF;   /* clay    */
+  --i3:#4A6B8A; --i3bg:#E3ECF3;   /* slate   */
+  --i4:#7D4E77; --i4bg:#F2E5F0;   /* plum    */
+  --i5:#2F7A6B; --i5bg:#DDEFEA;   /* teal    */
+  --i6:#A6791F; --i6bg:#F7EDD7;   /* amber   */
+
+  --display:'Archivo','Archivo Narrow','Helvetica Neue',Arial,sans-serif;
+  --voice:'Instrument Serif',Georgia,'Times New Roman',serif;
+  --ui:'Instrument Sans','Helvetica Neue',Arial,sans-serif;
+  --mono:'DM Mono',ui-monospace,'SF Mono',Menlo,monospace;
+
+  --pad:clamp(20px,4.5vw,72px);
+  --rule:1px;
+
+  /* Every chapter is one screen tall; these keep its content clear of the
+     fixed header above and the chapter bar below. */
+  --sheet-top:clamp(76px,11vh,118px);
+  --sheet-bottom:clamp(60px,9vh,96px);
+  --tear:24px;            /* depth of a torn sheet's ragged edge */
+
+  /* The header row, and the nav spine beside it (features/nav). From 768px
+     the spine is a rail down the left edge, and the page, the header and
+     the chapter bar all make room for it. Below that it is a bar sharing
+     the header row, with its mark and menu button at either end. */
+  --bar:70px;             /* height of the header row */
+  --spine:0px;            /* width of the rail */
+  --spine-inset:44px;     /* room kept at each end of the header row for the bar's mark and button */
+}
+@media(min-width:768px){:root{--spine:64px;--spine-inset:0px}}
+@media(min-width:1024px){:root{--spine:72px}}

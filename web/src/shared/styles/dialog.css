@@ -1,0 +1,67 @@
+/* ===========================================================================
+   Pop-up windows (shared/lib/dialog.js): the feedback window, the FAQ,
+   sign-in. By default a window wears the demo form's clothes: oat paper, and
+   a window bar with three dots. Above the header row and the menu (z 60–62),
+   below the cursor (z 90). While one is open the page is held still, as the
+   open menu holds it.
+   =========================================================================== */
+html.dlg-open{overflow:hidden;scrollbar-gutter:stable}
+
+.dlg{
+  position:fixed;inset:0;z-index:80;
+  display:flex;padding:16px;
+  overflow-y:auto;overscroll-behavior:contain;
+  opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .3s ease,visibility 0s linear .3s;
+}
+/* Visible at once on opening, not at the end of a transition: focus moves
+   into the window in the same moment, and a hidden element cannot take it.
+   Closing, it stays visible until the fade is done. */
+.dlg.is-open{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .3s ease,visibility 0s}
+
+.dlg__scrim{
+  position:fixed;inset:0;background:rgba(12,23,16,.8);   /* --ink */
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+}
+
+/* margin:auto centres it, and unlike centring by alignment, lets a window
+   taller than the screen scroll from its top rather than lose it. */
+.dlg__win{
+  position:relative;margin:auto;width:min(580px,100%);
+  background:var(--bone);color:var(--ink);
+  border:var(--rule) solid var(--bone-line);border-radius:8px;overflow:hidden;
+  box-shadow:0 40px 120px rgba(4,8,6,.55);
+  transform:translateY(28px) scale(.98);
+  transition:transform .6s cubic-bezier(.16,1,.3,1);
+}
+.dlg.is-open .dlg__win{transform:none}
+
+/* --- the window bar ------------------------------------------------------- */
+.dlg__bar{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 9px 9px 14px;border-bottom:var(--rule) solid var(--bone-line);
+  background:var(--bone-2);
+}
+.dlg__dots{display:flex;gap:5px;flex:none}
+.dlg__dots i{width:8px;height:8px;border-radius:50%;background:var(--bone-line);display:block}
+.dlg__url{
+  flex:1;min-width:0;font-family:var(--mono);font-size:11px;color:var(--ash-deep);
+  background:#fff;border-radius:999px;padding:4px 12px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.dlg__x{
+  flex:none;display:grid;place-items:center;width:30px;height:30px;padding:0;
+  border:0;border-radius:50%;background:none;color:inherit;cursor:pointer;
+  transition:background .25s,color .25s,transform .3s cubic-bezier(.2,.9,.3,1.25);
+}
+.dlg__x svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+@media(hover:hover){.dlg__x:hover{background:var(--citrine);color:var(--ink);transform:rotate(90deg)}}
+
+.dlg__body{padding:clamp(22px,4vw,34px);display:grid;gap:18px}
+.dlg__body[hidden]{display:none}
+
+/* --- reduced motion: it simply appears ------------------------------------ */
+html.no-motion .dlg__win{transition:none;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .dlg__win{transition:none;transform:none}
+}

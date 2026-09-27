@@ -1,0 +1,19 @@
+/* --- fixed HUD ------------------------------------------------------------ */
+.hud{
+  position:fixed;inset:0 0 auto var(--spine);z-index:62;
+  display:flex;align-items:center;justify-content:space-between;
+  gap:16px;min-height:var(--bar);padding:0 calc(var(--pad) + var(--spine-inset));
+  color:var(--bone);pointer-events:none;
+  transition:color .45s ease;
+}
+/* The HUD floats over four different grounds. `difference` blending turns
+   blue-violet over the citrine band, so the ground it sits on is sampled
+   per scroll frame and the ink is set outright instead. */
+.hud[data-hud="dark"]{color:var(--ink)}
+.hud a,.hud button{pointer-events:auto}
+.hud__mark{
+  font-family:var(--display);font-stretch:70%;font-weight:700;
+  font-size:17px;letter-spacing:0.02em;text-transform:uppercase;
+  text-decoration:none;display:flex;align-items:baseline;gap:5px;
+}
+.hud__mark sup{font-size:8px;letter-spacing:0.1em;font-weight:500}

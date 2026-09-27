@@ -1,0 +1,161 @@
+/* ===========================================================================
+   The company pages — About, Contact, Privacy (src/pages/)
+   An ink band with the way back and the headline, the substance on oat in
+   the landing page's chapter heads, and a foot on ink. Every colour and
+   face is a token (shared/styles/tokens.css); the spine, the menu and the
+   header row are the landing page's own (features/nav, features/hud).
+   =========================================================================== */
+
+/* On the landing page nothing scrolls under the header row; here the page
+   does, so the row gets a ground of its own: the colour of whatever it is
+   over. It shares the row's ink (hud.js marks it, with the spine, as
+   [data-header-row]) and sits under the spine, the header and the menu. */
+.sub-bar{
+  position:fixed;inset:0 0 auto 0;z-index:60;height:var(--bar);
+  background:var(--ink);pointer-events:none;
+  transition:background-color .45s ease;
+}
+.sub-bar[data-hud="dark"]{background:var(--bone)}
+/* …and so does the chapter bar along the bottom (features/hud), inked the
+   same way. ([data-hud] only to outrank hud.css, which loads after this.) */
+.hud-foot[data-hud]{background:var(--ink);transition:color .45s ease,background-color .45s ease}
+.hud-foot[data-hud="dark"]{background:var(--bone)}
+
+/* --- the band: the way back, then the headline ---------------------------- */
+.sub-hero{
+  position:relative;background:var(--ink);color:var(--bone);
+  padding:var(--sheet-top) var(--pad) clamp(64px,12vh,136px);
+}
+.sub-hero .wrap{display:flex;flex-direction:column;align-items:flex-start}
+
+/* The way back: the header's button, ghosted. The arrow leans the way it
+   goes. */
+.back{
+  display:inline-flex;align-items:center;gap:10px;
+  font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;
+  color:var(--bone);text-decoration:none;
+  border:var(--rule) solid var(--moss-line);border-radius:999px;
+  padding:9px 18px 9px 14px;
+  transition:border-color .3s,color .3s;
+}
+.back__arrow{display:inline-block;font-size:13px;line-height:1;transition:transform .3s cubic-bezier(.2,.8,.3,1)}
+@media(hover:hover){
+  .back:hover{border-color:var(--citrine);color:var(--citrine)}
+  .back:hover .back__arrow{transform:translateX(-4px)}
+}
+
+.sub-hero__label{
+  display:flex;align-items:center;gap:12px;
+  margin-top:clamp(40px,9vh,112px);color:var(--ash);
+}
+.sub-hero__num{color:var(--citrine);font-variant-numeric:tabular-nums}
+.sub-hero__title{
+  font-size:clamp(3.6rem,min(15vw,26vh),14rem);
+  margin:clamp(14px,2.4vh,26px) 0 0;
+}
+.sub-hero__aside{
+  font-family:var(--voice);font-style:italic;font-weight:400;
+  font-size:clamp(1.9rem,min(4.8vw,8vh),4rem);line-height:1;
+  letter-spacing:-0.015em;color:var(--ash);
+  margin:clamp(12px,2.2vh,22px) 0 0;
+}
+.sub-hero__lede{margin-top:clamp(22px,3.4vh,36px)}
+.sub-hero__actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:clamp(24px,3.6vh,38px)}
+
+/* The loud button, on ink: the header's citrine. */
+.btn--lit{background:var(--citrine);color:var(--ink)}
+.btn--lit:hover{background:var(--bone)}
+.sub-hero .btn--ghost{border-color:var(--moss-line);color:var(--bone)}
+.sub-hero .btn--ghost:hover{border-color:var(--citrine)}
+
+/* --- the substance: chapter heads on oat ---------------------------------- */
+.sub-body{
+  background:var(--bone);color:var(--ink);
+  padding:clamp(56px,10vh,120px) var(--pad) clamp(72px,13vh,150px);
+}
+/* A label beside its section, over a hairline that draws itself in as the
+   section arrives (sub-page.js; at rest it is simply drawn). */
+.sub-sec{
+  --rule-in:1;
+  position:relative;display:grid;gap:14px 40px;grid-template-columns:minmax(0,1fr);
+  padding-top:16px;
+}
+.sub-sec::before{
+  content:"";position:absolute;inset:0 0 auto 0;height:var(--rule);
+  background:var(--bone-line);transform:scaleX(var(--rule-in));transform-origin:0 50%;
+}
+.sub-sec + .sub-sec{margin-top:clamp(52px,9vh,104px)}
+@media(min-width:820px){.sub-sec{grid-template-columns:150px minmax(0,1fr)}}
+.sub-sec > .label{opacity:.6;padding-top:3px}
+
+.sub-sec__title{font-size:clamp(2.1rem,min(5.2vw,8.5vh),4.6rem);max-width:17ch}
+.sub-copy{
+  font-size:clamp(15px,1.2vw,17.5px);line-height:1.6;color:var(--ash-deep);
+  max-width:60ch;margin:clamp(14px,2.4vh,22px) 0 0;
+}
+.sub-copy + .sub-copy{margin-top:12px}
+.sub-copy a,.sub-list a{
+  color:var(--ink);text-decoration:underline;text-decoration-color:var(--citrine-deep);
+  text-decoration-thickness:1.5px;text-underline-offset:3px;transition:color .25s;
+}
+.sub-copy a:hover,.sub-list a:hover{color:var(--citrine-deep)}
+.mono-chip{
+  font-family:var(--mono);font-size:.86em;background:var(--bone-2);
+  border-radius:4px;padding:1px 6px;color:var(--ink);
+}
+
+/* The pricing plans' list: diamonds, hairlines between. */
+.sub-list{list-style:none;margin:clamp(16px,2.6vh,24px) 0 0;padding:0;max-width:64ch}
+.sub-list li{
+  display:flex;gap:11px;align-items:baseline;font-size:15px;line-height:1.55;
+  padding:11px 0;border-bottom:var(--rule) solid var(--bone-line);color:var(--ink);
+}
+.sub-list li:last-child{border-bottom:0}
+.sub-list .tick{color:var(--citrine-deep);font-size:11px;flex:none}
+.sub-list strong{font-weight:600}
+
+/* Figures, set like the landing page's tally. */
+.sub-stats{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  margin-top:clamp(22px,3.6vh,36px);max-width:760px;
+}
+.sub-stat{padding:4px clamp(12px,2.4vw,28px) 0}
+.sub-stat:first-child{padding-left:0}
+.sub-stat + .sub-stat{border-left:var(--rule) solid var(--bone-line)}
+.sub-stat__num{
+  display:block;font-family:var(--display);font-stretch:62%;font-weight:650;
+  font-size:clamp(3.2rem,min(9vw,13vh),6.6rem);line-height:0.8;letter-spacing:-0.04em;
+  color:var(--citrine-deep);font-variant-numeric:tabular-nums;
+}
+.sub-stat .label{display:block;margin-top:12px;color:var(--ash-deep);letter-spacing:0.16em}
+
+.sub-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:clamp(20px,3.2vh,30px)}
+
+/* --- the foot: the landing page's footer, cut down ------------------------ */
+/* Room at the bottom for the chapter bar (features/hud), as a chapter keeps. */
+.page-foot{
+  background:var(--ink);color:var(--ash);
+  padding:clamp(40px,7vh,72px) var(--pad) var(--sheet-bottom);
+}
+.page-foot__grid{
+  display:grid;gap:30px;grid-template-columns:1fr;
+  border-top:var(--rule) solid var(--moss-line);padding-top:30px;
+}
+@media(min-width:560px){.page-foot__grid{grid-template-columns:1fr 1fr}}
+@media(min-width:960px){.page-foot__grid{grid-template-columns:1.6fr 1fr 1fr 1.4fr}}
+.page-foot h4{font-size:10px;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;color:var(--bone);margin:0 0 14px}
+.page-foot ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.page-foot a{font-size:13.5px;text-decoration:none;color:var(--ash);transition:color .25s}
+.page-foot a:hover,.page-foot a[aria-current="page"]{color:var(--citrine)}
+.page-foot__note{font-size:12.5px;line-height:1.6;max-width:40ch;margin:0}
+.page-foot__mark{
+  font-family:var(--display);font-stretch:62%;font-weight:700;text-transform:uppercase;
+  font-size:clamp(3rem,min(22vw,30vh),20rem);line-height:0.8;letter-spacing:-0.04em;
+  color:var(--moss);padding-top:clamp(40px,6vw,72px);
+}
+
+/* --- reduced motion: nothing rises; everything is simply there ------------ */
+html.no-motion .back__arrow{transition:none}
+@media (prefers-reduced-motion:reduce){
+  .back__arrow{transition:none}
+}

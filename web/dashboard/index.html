@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard — Onextap</title>
+  <!-- The landing page's faces, from the same stylesheet (see css/tokens.css). -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+  <link rel="icon" type="image/png" href="/icon.png">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="css/workspaces.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div class="app" id="app" data-view="home" data-dock="left" aria-busy="true">
+
+    <header class="topbar">
+      <a class="brand" href="#/" aria-label="Onextap dashboard home">
+        <!-- The landing page's mark (demo: features/nav). -->
+        <svg class="brand-mark" viewBox="0 0 92.84 100" aria-hidden="true"><path fill-rule="evenodd" d="M92.84 50.05C92.84 58.13 91.43 66.31 88.03 74C84.63 81.69 78.91 88.7 71.49 93.27C64.07 97.84 55.26 100.02 46.54 100C37.82 99.98 29.01 97.86 21.55 93.33C14.1 88.79 8.34 81.79 4.9 74.08C1.47 66.38 -0.01 58.17 0 50.05C0.01 41.92 1.47 33.72 4.88 26C8.29 18.27 14.01 11.19 21.5 6.67C28.98 2.15 37.8 0.02 46.54 0C55.27 -0.02 64.11 2.17 71.53 6.75C78.96 11.34 84.66 18.38 88.05 26.08C91.44 33.78 92.84 41.97 92.84 50.05ZM83.91 50.05C85.07 56.57 86.01 64.05 84.27 71.83C82.53 79.61 77.58 87.16 70.39 91.36C63.2 95.56 54.24 95.87 46.54 94.19C38.84 92.5 32.11 88.77 26.89 84.08C21.67 79.4 17.89 73.9 15.11 68.19C12.32 62.49 10.31 56.58 9.12 50.05C7.92 43.52 7.03 36.02 8.77 28.24C10.52 20.46 15.54 12.99 22.71 8.78C29.88 4.56 38.84 4.24 46.54 5.91C54.24 7.58 60.99 11.29 66.19 16.01C71.39 20.72 75.22 26.16 78.02 31.87C80.83 37.58 82.74 43.52 83.91 50.05Z"/></svg>
+        <span class="brand-name">Onextap</span>
+      </a>
+
+      <div class="settings" id="settings">
+        <button class="icon-btn settings-trigger" id="settings-trigger" type="button" data-icon="settings"
+                aria-label="Settings" aria-haspopup="menu" aria-expanded="false" aria-controls="settings-menu"></button>
+
+        <div class="menu" id="settings-menu" role="menu" aria-label="Settings">
+          <div class="menu-header">
+            <span class="label menu-caption">Signed in as</span>
+            <span class="menu-email" data-bind="email"></span>
+          </div>
+          <div class="menu-stat" data-icon="coins">
+            <span>Available credits</span>
+            <span class="credits-pill" data-bind="credits"></span>
+          </div>
+          <div class="menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" data-action="change-avatar" data-icon="image">Change avatar</button>
+          <button type="button" role="menuitem" data-action="manage-subscription" data-icon="card">Manage subscription</button>
+          <div class="menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" data-action="log-out" data-icon="logout">Log out</button>
+          <button type="button" role="menuitem" data-action="delete-account" data-icon="trash" class="is-danger">Delete account</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="stage">
+      <!-- On the home view this is the centred hero; inside a workspace it becomes the dock. -->
+      <aside class="dock" id="dock" aria-label="Profile and navigation">
+        <div class="dock-body">
+          <div class="dock-bar" id="dock-bar" title="Drag to move · double-click to re-dock">
+            <span class="dock-grip" data-icon="grip" aria-hidden="true"></span>
+            <div class="dock-controls" role="group" aria-label="Panel position">
+              <button type="button" class="icon-btn icon-btn-sm" data-dock-to="left" data-icon="dockLeft" aria-label="Dock left" title="Dock left"></button>
+              <button type="button" class="icon-btn icon-btn-sm" data-dock-to="float" data-icon="float" aria-label="Undock" title="Undock"></button>
+              <button type="button" class="icon-btn icon-btn-sm" data-dock-to="right" data-icon="dockRight" aria-label="Dock right" title="Dock right"></button>
+            </div>
+          </div>
+
+          <div class="profile">
+            <div class="avatar" id="avatar"></div>
+            <div class="profile-text">
+              <h1 class="user-name" data-bind="name"></h1>
+              <span class="plan-tag" id="plan-tag" data-bind="plan"></span>
+            </div>
+          </div>
+
+          <p class="tagline" id="tagline"></p>
+
+          <nav class="nav" id="nav" aria-label="Workspaces"></nav>
+        </div>
+
+        <div class="dock-resize" id="dock-resize" role="separator" aria-orientation="vertical"
+             aria-label="Resize panel" title="Drag to resize · double-click to reset" tabindex="0"></div>
+      </aside>
+
+      <section class="workspace" id="workspace" tabindex="-1"></section>
+    </main>
+
+    <footer class="footer">
+      <a href="/dashboard/contact/">Contact us</a>
+      <a href="/dashboard/privacy/">Privacy policy</a>
+    </footer>
+  </div>
+
+  <div class="snap-hint" data-side="left" aria-hidden="true"></div>
+  <div class="snap-hint" data-side="right" aria-hidden="true"></div>
+
+  <input type="file" id="avatar-input" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+
+  <!-- Dressed as the landing page's windows: oat paper under a browser bar. -->
+  <dialog class="dialog" id="delete-dialog" aria-labelledby="delete-title">
+    <form method="dialog" id="delete-form">
+      <div class="dialog-bar">
+        <span class="dialog-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="dialog-url" aria-hidden="true">account / settings / delete</span>
+        <button type="submit" class="dialog-x" value="cancel" formnovalidate aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="dialog-body">
+        <p class="label dialog-eyebrow is-danger">Danger zone</p>
+        <h2 class="display" id="delete-title">Delete your account?</h2>
+        <p>This permanently deletes your account and any remaining credits, cancels your subscription if you have one, and clears your profiles, saved answers, cover letters and resumes from this browser. The copy the extension keeps stays until you remove the extension. It can’t be undone.</p>
+        <label class="field">
+          <span class="field-k">type <strong>DELETE</strong> to confirm</span>
+          <input type="text" id="delete-confirm" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="dialog-actions">
+          <button type="submit" class="btn btn-ghost" value="cancel" formnovalidate>Cancel</button>
+          <button type="submit" class="btn btn-danger" value="confirm" id="delete-submit" disabled>Delete account</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Manage subscription (js/subscription.js fills the plans). -->
+  <dialog class="dialog dialog-wide" id="subscription-dialog" aria-labelledby="subscription-title">
+    <form method="dialog">
+      <div class="dialog-bar">
+        <span class="dialog-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="dialog-url" aria-hidden="true">account / settings / subscription</span>
+        <button type="submit" class="dialog-x" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="dialog-body">
+        <p class="label dialog-eyebrow">Subscription</p>
+        <h2 class="display" id="subscription-title">Your plan</h2>
+        <p data-sub="status"></p>
+        <ul class="plans" data-sub="plans"></ul>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-ghost" data-sub="billing">Billing &amp; invoices</button>
+          <button type="submit" class="btn btn-solid" data-sub="done">Done</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

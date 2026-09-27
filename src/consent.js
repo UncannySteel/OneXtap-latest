@@ -1,8 +1,9 @@
 /**
  * Cookie/analytics consent flags.
  *
- * No cookies or analytics run today (see privacy-policy.html, "Cookies &
- * Local Storage"). This module exists so the day an analytics SDK is added,
+ * No cookies or analytics run today (see the privacy page, web/src/pages/
+ * privacy/privacy.html, "Cookies & security"). This module exists so the day
+ * an analytics SDK is added,
  * its init call has a gate to check (`if (await getAnalyticsConsent())`)
  * instead of needing a design pass at that point. Backed by the same
  * cross-surface `storage` wrapper as every other "remember this choice" flag

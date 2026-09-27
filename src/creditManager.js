@@ -148,6 +148,36 @@ export const creditManager = {
   },
 
   /**
+   * The account row as GET /api/me reports it. Throws on failure — it is the
+   * dashboard's first call, and "could not load your account" is its own
+   * screen, not a silent free tier.
+   * @returns {Promise<{id: string, email: string, displayName: string|null,
+   *   credits: number, isPremium: boolean, subscriptionStatus: string,
+   *   premiumSince: string|null, createdAt: string}>}
+   */
+  getAccount: async () => {
+    return authFetch('/api/me');
+  },
+
+  /**
+   * The same check as verifyPremium, with the billing dates the dashboard's
+   * subscription panel shows: `nextBillingDate` (ISO) and `cancelAtPeriodEnd`.
+   * Both are absent when Dodo could not be reached. Resolves `{isPremium:
+   * false, error}` rather than throwing, as verifyPremium does — `error` is
+   * how a caller tells "not premium" from "could not ask".
+   * @returns {Promise<{isPremium: boolean, nextBillingDate?: string|null,
+   *   cancelAtPeriodEnd?: boolean, subscriptionStatus?: string, error?: string}>}
+   */
+  getSubscription: async () => {
+    try {
+      return await authFetch('/api/verify-premium');
+    } catch (error) {
+      log.warn('Subscription check failed:', error.message);
+      return { isPremium: false, error: error.message };
+    }
+  },
+
+  /**
    * Create a Dodo Payments Checkout Session for premium upgrade.
    * @returns {Promise<{url: string, sessionId: string}>}
    */
@@ -156,10 +186,39 @@ export const creditManager = {
   },
 
   /**
-   * Cancel the current premium subscription via Dodo Payments.
-   * @returns {Promise<{success: boolean}>}
+   * Cancel the premium subscription via Dodo Payments. An active one is
+   * cancelled at the end of the period already paid for (`cancelAtPeriodEnd`,
+   * with `endsAt`); one that is on hold or otherwise not in good standing is
+   * cancelled on the spot.
+   * @returns {Promise<{success: boolean, cancelAtPeriodEnd: boolean, endsAt: string|null}>}
    */
   cancelSubscription: async () => {
     return authFetch('/api/cancel-subscription', { method: 'POST' });
+  },
+
+  /**
+   * Withdraw a cancellation scheduled for the end of the period.
+   * @returns {Promise<{success: boolean, cancelAtPeriodEnd: false, nextBillingDate: string|null}>}
+   */
+  resumeSubscription: async () => {
+    return authFetch('/api/resume-subscription', { method: 'POST' });
+  },
+
+  /**
+   * A link to Dodo's hosted billing portal (invoices, card on file).
+   * @returns {Promise<{url: string}>}
+   */
+  createPortalSession: async () => {
+    return authFetch('/api/create-portal-session', { method: 'POST' });
+  },
+
+  /**
+   * Delete the signed-in account: cancels any live subscription, then the
+   * Supabase user and everything keyed to it. Local data is the caller's to
+   * clear. Throws with the server's message on failure.
+   * @returns {Promise<{success: true}>}
+   */
+  deleteAccount: async () => {
+    return authFetch('/api/account', { method: 'DELETE' });
   },
 };

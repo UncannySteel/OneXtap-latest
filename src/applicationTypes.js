@@ -26,11 +26,12 @@
  * `setApplicationType()` throws on anything not listed, which is why nothing
  * can write one of these ids back while they are commented out.
  *
- * TO BRING THEM BACK: uncomment the entries below AND the two pickers that
- * choose between them — src/components/dashboard/DashboardView.jsx and
- * src/components/popup/PopupView.jsx. Restoring the entries alone gives users
- * no way to reach them; restoring a picker alone gives them a one-option
- * dropdown.
+ * TO BRING THEM BACK: uncomment the entries below AND give users a picker —
+ * the popup's is commented out in src/components/popup/PopupView.jsx, and the
+ * website dashboard (web/dashboard/) would need one of its own (its Cover
+ * Letter workspace reads its labels from here already). Restoring the entries
+ * alone gives users no way to reach them; restoring a picker alone gives them
+ * a one-option dropdown.
  */
 export const DEFAULT_APPLICATION_TYPE = 'job';
 

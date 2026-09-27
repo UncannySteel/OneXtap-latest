@@ -1,0 +1,68 @@
+/* --- fixed HUD ------------------------------------------------------------ */
+/* Beside the nav spine, and above its menu (features/nav). */
+.hud{
+  position:fixed;inset:0 0 auto var(--spine);z-index:62;
+  display:flex;align-items:center;justify-content:space-between;
+  gap:16px;min-height:var(--bar);padding:0 calc(var(--pad) + var(--spine-inset));
+  color:var(--bone);pointer-events:none;
+  transition:color .45s ease;
+}
+/* The HUD floats over four different grounds. `difference` blending turns
+   blue-violet over the citrine band, so the ground it sits on is sampled
+   per scroll frame and the ink is set outright instead. */
+.hud[data-hud="dark"],.hud-foot[data-hud="dark"]{color:var(--ink)}
+.hud a,.hud button{pointer-events:auto}
+.hud__mark{
+  font-family:var(--display);font-stretch:70%;font-weight:700;
+  font-size:17px;letter-spacing:0.02em;text-transform:uppercase;
+  text-decoration:none;display:flex;align-items:baseline;gap:5px;
+}
+.hud__mark sup{font-size:8px;letter-spacing:0.1em;font-weight:500}
+/* Below 460px the row cannot hold the spine's mark and burger as well as
+   the wordmark and both buttons; the mark stands in for the wordmark. */
+@media(max-width:459px){.hud__mark{display:none}}
+
+.hud__actions{
+  display:flex;align-items:center;gap:8px;
+  margin-left:auto;   /* on the right, with or without the wordmark */
+}
+.hud__cta{
+  font:inherit;font-size:11px;font-weight:600;text-transform:uppercase;white-space:nowrap;
+  letter-spacing:0.14em;color:var(--ink);background:var(--citrine);
+  border:0;border-radius:999px;padding:9px 18px;cursor:pointer;
+  transition:transform .3s cubic-bezier(.2,.8,.3,1),background .45s,color .45s;
+}
+.hud[data-hud="dark"] .hud__cta{background:var(--ink);color:var(--bone)}
+.hud__cta:hover{transform:translateY(-2px)}
+
+/* Log in: the button's outline, in the header's own ink, so it turns with
+   the ground under it as the wordmark does. */
+.hud__login{
+  font:inherit;font-size:11px;font-weight:600;text-transform:uppercase;white-space:nowrap;
+  letter-spacing:0.14em;color:inherit;background:none;
+  border:var(--rule) solid color-mix(in srgb,currentColor 45%,transparent);
+  border-radius:999px;padding:8px 16px;cursor:pointer;
+  transition:transform .3s cubic-bezier(.2,.8,.3,1),border-color .3s;
+}
+.hud__login:hover{transform:translateY(-2px);border-color:currentColor}
+/* On the narrowest phones it is just the words, beside the solid button. */
+@media(max-width:399px){
+  .hud__actions{gap:2px}
+  .hud__login{border-color:transparent;padding:8px 8px}
+  .hud__login:hover{border-color:transparent}
+}
+@media(max-width:359px){
+  .hud__login,.hud__cta{letter-spacing:0.06em}
+  .hud__cta{padding:9px 12px}
+}
+
+.hud-foot{
+  position:fixed;inset:auto 0 0 var(--spine);z-index:60;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px var(--pad);pointer-events:none;
+  color:var(--bone);transition:color .45s ease;
+}
+.hud-foot .label{opacity:.72}
+.progress{display:flex;align-items:center;gap:10px}
+.progress__track{width:84px;height:var(--rule);background:currentColor;opacity:.3}
+.progress__bar{display:block;height:100%;width:0;background:currentColor;opacity:1}

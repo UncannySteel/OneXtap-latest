@@ -2,33 +2,41 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dashboard",
+      "name": "web",
       "runtimeExecutable": "node",
       "runtimeArgs": [
         "node_modules/vite/bin/vite.js",
         "--config",
         "vite.dashboard.config.js",
         "--host",
-        "127.0.0.1",
+        "localhost",
         "--port",
-        "5178",
+        "5173",
         "--strictPort"
       ],
-      "port": 5178
+      "port": 5173
     },
     {
-      "name": "were-hiring",
-      "runtimeExecutable": "python3",
+      "name": "api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--watch", "server/index.js"],
+      "port": 3001
+    },
+    {
+      "name": "web-preview",
+      "runtimeExecutable": "node",
       "runtimeArgs": [
-        "-m",
-        "http.server",
-        "8778",
-        "--bind",
-        "127.0.0.1",
-        "--directory",
-        "/private/tmp/claude-501/-Users-azzah-Desktop-OnexTap-B-Ext/9ea851e1-1c3b-4c32-94be-28542bb3d2a3/scratchpad"
+        "node_modules/vite/bin/vite.js",
+        "preview",
+        "--config",
+        "vite.dashboard.config.js",
+        "--host",
+        "localhost",
+        "--port",
+        "5174",
+        "--strictPort"
       ],
-      "port": 8778
+      "port": 5174
     }
   ]
 }

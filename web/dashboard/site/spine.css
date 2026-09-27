@@ -1,0 +1,7 @@
+/* The landing page's tokens make room for its nav spine (a rail down the
+   left from 768px, a bar sharing the header row below that). These pages
+   have no spine, so it takes no room at any width. Loaded straight after
+   web/src/shared/styles/tokens.css, whose rules these mirror one for one. */
+:root{--spine:0px;--spine-inset:0px}
+@media(min-width:768px){:root{--spine:0px}}
+@media(min-width:1024px){:root{--spine:0px}}

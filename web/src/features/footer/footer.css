@@ -1,0 +1,21 @@
+/* --- footer --------------------------------------------------------------- */
+/* A full screen of its own: the links at the top, the mark set as big as the
+   width allows and pinned to the bottom edge. */
+.foot{position:relative;background:var(--ink);color:var(--ash)}
+.foot .ch__body{justify-content:flex-start}
+.foot .wrap{flex:1;display:flex;flex-direction:column}
+.foot__grid{
+  display:grid;gap:34px;grid-template-columns:1fr;
+  border-top:var(--rule) solid var(--moss-line);padding-top:30px;
+}
+@media(min-width:760px){.foot__grid{grid-template-columns:1.6fr 1fr 1fr 1.4fr}}
+.foot h4{font-size:10px;font-weight:600;letter-spacing:0.22em;text-transform:uppercase;color:var(--bone);margin:0 0 14px}
+.foot ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.foot a{font-size:13.5px;text-decoration:none;color:var(--ash);transition:color .25s}
+.foot a:hover{color:var(--citrine)}
+.foot__note{font-size:12.5px;line-height:1.6;max-width:40ch;margin:0}
+.foot__mark{
+  font-family:var(--display);font-stretch:62%;font-weight:700;text-transform:uppercase;
+  font-size:clamp(3rem,min(22vw,36vh),22rem);line-height:0.8;letter-spacing:-0.04em;
+  color:var(--moss);margin-top:auto;padding-top:clamp(40px,6vw,72px);
+}

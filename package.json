@@ -3,15 +3,17 @@
   "version": "1.0.2",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --config vite.dashboard.config.js",
+    "dev:extension": "vite",
     "build": "vite build",
     "build:dashboard": "vite build --config vite.dashboard.config.js",
-    "preview": "vite preview",
+    "preview": "vite preview --config vite.dashboard.config.js",
     "server": "npm start --prefix server",
     "server:dev": "npm run dev --prefix server",
     "server:install": "npm install --prefix server",
     "test": "node --test \"test/**/*.test.js\"",
-    "evals": "node --test \"test/evals/**/*.test.js\""
+    "evals": "node --test \"test/evals/**/*.test.js\"",
+    "test:e2e": "playwright test --config web/playwright.config.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
@@ -20,6 +22,8 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "groq-sdk": "^0.15.0",
+    "gsap": "3.12.5",
+    "lenis": "1.1.18",
     "lucide-react": "^0.575.0",
     "opik": "^2.2.59",
     "react": "^18.2.0",
@@ -28,6 +32,7 @@
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.2.1",
+    "@playwright/test": "^1.63.0",
     "@types/chrome": "^0.0.268",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",

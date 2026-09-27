@@ -1,0 +1,1049 @@
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--ui);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, p { margin: 0; }
+button { font: inherit; color: inherit; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--citrine); outline-offset: 3px; }
+.icon { flex: none; display: block; }
+
+/* ---------- Type roles (the landing page's: demo/src/shared/styles/base.css) ---------- */
+.display {
+  font-family: var(--display);
+  font-weight: 650;
+  font-stretch: 62%;
+  text-transform: uppercase;
+  letter-spacing: -0.035em;
+  line-height: 0.84;
+  text-wrap: balance;
+}
+.label {
+  font-family: var(--ui);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+}
+.mono { font-family: var(--mono); font-size: 12px; letter-spacing: 0.01em; }
+
+/* Masked words (js/motion.js): each word rises through its own mask. */
+.w { display: inline-block; overflow: hidden; vertical-align: bottom; padding-bottom: 0.06em; }
+.wi { display: inline-block; }
+.rises .wi {
+  animation: word-rise 0.9s var(--ease-rise) backwards;
+  animation-delay: calc(var(--rise-delay, 0ms) + var(--i, 0) * 60ms);
+}
+[data-rise] {
+  animation: rise-up 0.8s var(--ease-rise) backwards;
+  animation-delay: calc(0.15s + var(--r, 0) * 90ms);
+}
+@keyframes word-rise { from { transform: translateY(105%); } }
+@keyframes rise-up { from { opacity: 0; transform: translateY(18px); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.6); } }
+@keyframes rule-in { from { transform: scaleX(0); } }
+
+/* ---------- Shell ---------- */
+.app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: var(--topbar-h) 1fr auto;
+}
+.app[data-view="workspace"] { height: 100vh; height: 100dvh; }
+.app.is-dragging { user-select: none; cursor: grabbing; }
+
+/* ---------- Top bar (the landing's header row) ---------- */
+.topbar {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 var(--pad);
+  border-bottom: var(--rule) solid var(--moss-line);
+  background: var(--ink);
+}
+.app[data-view="workspace"] .topbar { padding-left: 20px; }
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--bone);
+  text-decoration: none;
+}
+.brand-mark {
+  display: block;
+  width: auto;
+  height: 24px;
+  fill: currentColor;
+  transition: transform 0.6s var(--ease-spring);
+}
+.brand-name {
+  font-family: var(--display);
+  font-stretch: 70%;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+@media (hover: hover) { .brand:hover .brand-mark { transform: rotate(-14deg); } }
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ash);
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s;
+}
+.icon-btn:hover, .icon-btn[aria-expanded="true"] { color: var(--citrine); }
+.icon-btn-sm { width: 28px; height: 28px; }
+.icon-btn-sm:hover { color: var(--bone); background: var(--moss); }
+.icon-btn[aria-pressed="true"] { color: var(--citrine); background: var(--moss); }
+/* The gear turns as the landing's mark does, on a spring. */
+.settings-trigger .icon { transition: transform 0.6s var(--ease-spring); }
+.settings-trigger:hover .icon { transform: rotate(60deg); }
+.settings-trigger[aria-expanded="true"] .icon { transform: rotate(90deg); }
+
+/* ---------- Settings menu: a small ink window ---------- */
+.settings { position: relative; }
+.menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 280px;
+  padding: 8px;
+  border: var(--rule) solid var(--moss-line);
+  border-radius: var(--radius-lg);
+  background: var(--ink-2);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scale(0.96);
+  transform-origin: top right;
+  transition: opacity 0.2s, transform 0.3s var(--ease), visibility 0s linear 0.3s;
+}
+.settings[data-open] .menu {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.2s, transform 0.45s var(--ease-spring), visibility 0s;
+}
+/* Rows rise in on one running stagger, as the landing's chapter menu does
+   (settings.js numbers them). */
+.menu > * {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.3s ease, transform 0.5s var(--ease-expo);
+}
+.settings[data-open] .menu > * {
+  opacity: 1;
+  transform: none;
+  transition-delay: calc(40ms + var(--i, 0) * 25ms);
+}
+.menu-header { display: grid; gap: 4px; padding: 10px 10px 12px; }
+.menu-caption { color: var(--ash); }
+.menu-email {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--bone);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-stat,
+.menu [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+.menu-stat { color: var(--ash); }
+.menu-stat .icon, .menu [role="menuitem"] .icon { color: var(--ash); transition: color 0.2s; }
+.credits-pill {
+  margin-left: auto;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--citrine);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.menu [role="menuitem"] {
+  border: 0;
+  background: transparent;
+  color: var(--bone);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.menu [role="menuitem"]:hover,
+.menu [role="menuitem"]:focus-visible { background: rgba(233,228,212,.07); outline: none; }
+.menu [role="menuitem"]:hover .icon,
+.menu [role="menuitem"]:focus-visible .icon { color: var(--citrine); }
+.menu [role="menuitem"].is-danger,
+.menu [role="menuitem"].is-danger .icon { color: var(--danger-on-ink); }
+.menu [role="menuitem"].is-danger:hover,
+.menu [role="menuitem"].is-danger:focus-visible { background: color-mix(in srgb, var(--i2) 16%, transparent); }
+.menu-sep { height: var(--rule); margin: 6px 4px; background: var(--moss-line); }
+
+/* ---------- Stage ---------- */
+.stage { position: relative; min-height: 0; }
+
+/* ---------- Profile ---------- */
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--moss);
+  color: var(--bone);
+  font-family: var(--display);
+  font-stretch: 62%;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  box-shadow: 0 0 0 3px var(--ink), 0 0 0 4px var(--moss-line);
+  view-transition-name: avatar;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-text { min-width: 0; }
+.user-name {
+  font-family: var(--display);
+  font-stretch: 62%;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  view-transition-name: user-name;
+}
+.plan-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border: var(--rule) solid var(--moss-line);
+  border-radius: 999px;
+  color: var(--ash);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  view-transition-name: plan-tag;
+}
+.plan-tag[data-plan="pro"] {
+  color: var(--citrine);
+  border-color: color-mix(in srgb, var(--citrine) 45%, transparent);
+  background: color-mix(in srgb, var(--citrine) 10%, transparent);
+}
+.app[aria-busy="true"] .profile,
+.app[aria-busy="true"] .tagline { opacity: 0; }
+.profile, .tagline { transition: opacity 0.25s; }
+
+/* ---------- Nav (shared) ---------- */
+.nav { position: relative; }
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nav-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--citrine);
+  font-variant-numeric: tabular-nums;
+}
+.nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The label and its italic twin share one masked cell; on hover both roll
+   up, so the word leans into citrine italic (the landing's chapter menu). */
+.nav-word { white-space: nowrap; }
+.nav-thumb { display: none; }
+
+/* ---------- Home view: the landing's hero, centred ---------- */
+/* It fits the window: every height below scales with the viewport's (vh),
+   so the top bar, the profile, the cards and the footer share one screen
+   down to about 540px tall. Shorter than that, the page scrolls. */
+.app[data-view="home"] .stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 4vh, 48px) var(--pad) clamp(20px, 5vh, 60px);
+}
+.app[data-view="home"] .dock-body { display: contents; }
+.app[data-view="home"] .workspace,
+.app[data-view="home"] .dock-bar,
+.app[data-view="home"] .dock-resize,
+.app[data-view="home"] .nav-link[data-id="overview"] { display: none; }
+.app[data-view="home"] .dock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 920px;
+  text-align: center;
+}
+.app[data-view="home"] .profile { display: flex; flex-direction: column; align-items: center; gap: clamp(12px, 2.4vh, 22px); }
+.app[data-view="home"] .avatar {
+  width: clamp(64px, 11vh, 104px);
+  height: clamp(64px, 11vh, 104px);
+  font-size: clamp(28px, 4.9vh, 46px);
+}
+.app[data-view="home"] .profile-text { display: flex; flex-direction: column; align-items: center; gap: clamp(10px, 1.8vh, 16px); }
+.app[data-view="home"] .user-name {
+  font-size: clamp(2.6rem, min(11vw, 13vh), 8rem);
+  line-height: 0.84;
+  letter-spacing: -0.035em;
+  white-space: normal;
+  overflow: visible;
+  text-wrap: balance;
+}
+.app[data-view="home"] .tagline {
+  margin: clamp(14px, 2.6vh, 32px) 0 clamp(18px, 4vh, 52px);
+  max-width: 30ch;
+  font-family: var(--voice);
+  font-style: italic;
+  font-size: clamp(1.2rem, min(2.6vw, 3.6vh), 2.2rem);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  color: var(--ash);
+}
+.app[data-view="home"] .nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+/* A card per workspace: a raised sheet on ink that lifts, with the pricing
+   plans' citrine edge wiping in along its top. */
+.app[data-view="home"] .nav-link {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  gap: clamp(16px, 3vh, 32px) 12px;
+  min-height: clamp(104px, 16vh, 148px);
+  padding: 18px 20px 20px;
+  border: var(--rule) solid var(--moss-line);
+  border-radius: var(--radius-card);
+  background: var(--ink-2);
+  color: var(--bone);
+  text-align: left;
+  transition: transform 0.45s var(--ease), box-shadow 0.45s var(--ease), border-color 0.3s, background-color 0.3s;
+}
+.app[data-view="home"] .nav-link::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--citrine);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.5s var(--ease);
+}
+.app[data-view="home"] .nav-link .icon { justify-self: end; color: var(--ash); transition: color 0.3s, transform 0.45s var(--ease-spring); }
+.app[data-view="home"] .nav-label {
+  grid-column: 1 / -1;
+  align-self: end;
+  display: inline-grid;
+  justify-self: start;
+  padding-right: 0.1em;
+  font-family: var(--voice);
+  font-size: 27px;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+.app[data-view="home"] .nav-word { grid-area: 1 / 1; transition: transform 0.55s var(--ease-roll); }
+.app[data-view="home"] .nav-word-alt { font-style: italic; color: var(--citrine); transform: translateY(100%); }
+.app[data-view="home"] .nav-link:focus-visible .nav-word { transform: translateY(-100%); }
+.app[data-view="home"] .nav-link:focus-visible .nav-word-alt { transform: none; }
+@media (hover: hover) {
+  .app[data-view="home"] .nav-link:hover {
+    transform: translateY(-6px);
+    border-color: color-mix(in srgb, var(--bone) 30%, transparent);
+    background-color: var(--moss);
+    box-shadow: 0 30px 54px -30px rgba(4,8,6,.9);
+  }
+  .app[data-view="home"] .nav-link:hover::before { transform: none; }
+  .app[data-view="home"] .nav-link:hover .icon { color: var(--citrine); transform: rotate(-8deg) scale(1.08); }
+  .app[data-view="home"] .nav-link:hover .nav-word { transform: translateY(-100%); }
+  .app[data-view="home"] .nav-link:hover .nav-word-alt { transform: none; }
+  .app[data-view="home"] .nav:has(.nav-link:hover) .nav-link:not(:hover) { opacity: 0.6; }
+}
+.app[data-view="home"] .nav-link:focus-visible::before { transform: none; }
+
+/* Entrance: once, at boot (main.js sets .is-entering, then takes it away). */
+.app.is-entering .avatar { animation: pop-in 0.7s var(--ease-spring) backwards 0.05s; }
+.app.is-entering .plan-tag { animation: rise-up 0.8s var(--ease-rise) backwards 0.45s; }
+.app.is-entering .tagline { animation: rise-up 0.8s var(--ease-rise) backwards 0.55s; }
+.app.is-entering .nav-link {
+  animation: rise-up 0.8s var(--ease-rise) backwards;
+  animation-delay: calc(0.6s + var(--n, 0) * 70ms);
+}
+
+/* ---------- Workspace view: an ink rail beside an oat sheet ---------- */
+.app[data-view="workspace"] .stage {
+  display: grid;
+  grid-template-columns: var(--dock-w) minmax(0, 1fr);
+  overflow: hidden;
+}
+.app[data-view="workspace"][data-dock="right"] .stage { grid-template-columns: minmax(0, 1fr) var(--dock-w); }
+.app[data-view="workspace"][data-dock="float"] .stage { grid-template-columns: minmax(0, 1fr); }
+.app[data-view="workspace"] .tagline { display: none; }
+
+.app[data-view="workspace"] .dock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: var(--rule) solid var(--moss-line);
+  background: var(--ink);
+}
+.app[data-view="workspace"] .dock-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 8px 12px 16px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--moss-line) transparent;
+}
+.app[data-view="workspace"][data-dock="right"] .dock {
+  order: 2;
+  border-right: 0;
+  border-left: var(--rule) solid var(--moss-line);
+}
+.app[data-view="workspace"][data-dock="float"] .dock {
+  position: fixed;
+  z-index: 30;
+  left: var(--float-x, 24px);
+  top: var(--float-y, 80px);
+  width: var(--dock-w);
+  max-height: calc(100dvh - var(--topbar-h) - 24px);
+  border: var(--rule) solid var(--moss-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+/* Resize handle on the dock's inner edge (VS Code-style sash) */
+.dock-resize {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.app[data-dock="right"] .dock-resize { right: auto; left: -3px; }
+.app[data-dock="float"] .dock-resize { top: 12px; bottom: 12px; }
+.dock-resize::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  border-radius: 1px;
+  background: var(--citrine);
+  opacity: 0;
+  transform: scaleY(0.4);
+  transition: opacity 0.2s, transform 0.4s var(--ease);
+}
+.dock-resize:hover::after { transition-delay: 0.15s; }
+.dock-resize:hover::after,
+.dock-resize:focus-visible::after,
+.app.is-resizing .dock-resize::after { opacity: 1; transform: none; }
+.dock-resize:focus-visible { outline: none; }
+.app.is-resizing,
+.app.is-resizing * { cursor: col-resize !important; user-select: none; }
+
+.dock-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 -4px;
+  padding: 2px 0;
+  border-radius: var(--radius-sm);
+  color: var(--ash);
+  cursor: grab;
+  touch-action: none;
+}
+.dock-grip { padding: 4px; display: grid; place-items: center; transition: color 0.2s; }
+.dock-bar:hover .dock-grip { color: var(--citrine); }
+.dock-controls { display: flex; gap: 2px; cursor: auto; }
+
+.app[data-view="workspace"] .profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 6px 18px;
+  margin-bottom: 12px;
+  border-bottom: var(--rule) solid var(--moss-line);
+}
+.app[data-view="workspace"] .avatar { width: 44px; height: 44px; font-size: 20px; }
+.app[data-view="workspace"] .profile-text { display: grid; justify-items: start; gap: 7px; }
+.app[data-view="workspace"] .user-name { max-width: 100%; font-size: 22px; }
+
+/* The dock's list, and one citrine thumb that slides to the open workspace
+   (main.js moves it), as the landing's feature bar moves its thumb. */
+.app[data-view="workspace"] .nav { display: flex; flex-direction: column; gap: 2px; }
+.app[data-view="workspace"] .nav-num,
+.app[data-view="workspace"] .nav-word-alt { display: none; }
+.app[data-view="workspace"] .nav-label { display: block; }
+.app[data-view="workspace"] .nav-link {
+  position: relative;
+  z-index: 1;
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: var(--ash);
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.3s, background-color 0.25s;
+}
+.app[data-view="workspace"] .nav-link:not([aria-current]):hover { background: rgba(233,228,212,.06); color: var(--bone); }
+.app[data-view="workspace"] .nav-link[aria-current="page"] { color: var(--ink); }
+.app[data-view="workspace"] .nav-thumb {
+  display: block;
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--thumb-h, 0px);
+  border-radius: 999px;
+  background: var(--citrine);
+  transform: translateY(var(--thumb-y, 0px));
+  transition: transform 0.44s cubic-bezier(.2,.9,.3,1.1), height 0.44s cubic-bezier(.2,.9,.3,1.1);
+  pointer-events: none;
+  view-transition-name: nav-thumb;
+}
+.nav.is-placing .nav-thumb { transition: none; }
+
+/* The sheet: the landing's oat chapter, with its chapter head. */
+.workspace {
+  min-width: 0;
+  overflow: auto;
+  padding: clamp(32px, 6vh, 64px) var(--pad) 56px;
+  background: var(--bone);
+  color: var(--ink);
+  color-scheme: light;
+  scrollbar-color: var(--bone-line) transparent;
+}
+.workspace:focus { outline: none; }
+.workspace :focus-visible { outline-color: var(--ink); }
+.ws-head {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px 40px;
+  max-width: 1100px;
+  padding-top: 16px;
+  margin-bottom: clamp(28px, 5vh, 52px);
+}
+/* The hairline draws itself in as the sheet arrives; at rest it is simply drawn. */
+.ws-head::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--rule);
+  background: var(--bone-line);
+  transform-origin: 0 50%;
+  animation: rule-in 0.9s var(--ease-rise) backwards;
+}
+.ws-label { display: flex; gap: 10px; padding-top: 3px; color: var(--ash-deep); }
+.ws-num { color: var(--citrine-deep); font-variant-numeric: tabular-nums; }
+.ws-title { font-size: clamp(2.6rem, min(6vw, 10vh), 5.2rem); }
+.ws-desc {
+  max-width: 54ch;
+  margin-top: clamp(14px, 2.4vh, 22px);
+  font-size: clamp(16px, 1.35vw, 19px);
+  line-height: 1.55;
+  color: var(--ash-deep);
+}
+.ws-empty {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  max-width: 720px;
+  padding: clamp(24px, 3vw, 40px);
+  border: var(--rule) dashed var(--bone-line);
+  border-radius: var(--radius-card);
+  background: rgba(255,255,255,.38);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6);
+}
+@media (min-width: 900px) {
+  .ws-head { grid-template-columns: 150px minmax(0, 1fr); }
+  .ws-empty { margin-left: 190px; }
+}
+.ws-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--citrine);
+}
+.ws-empty h3 {
+  font-family: var(--voice);
+  font-weight: 400;
+  font-size: clamp(1.7rem, 2.6vw, 2.1rem);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+.ws-empty p { max-width: 44ch; margin-bottom: 12px; color: var(--ash-deep); }
+
+/* ---------- Snap hints (shown while dragging the floating dock) ---------- */
+.snap-hint {
+  position: fixed;
+  z-index: 25;
+  top: calc(var(--topbar-h) + 8px);
+  bottom: 8px;
+  width: var(--dock-w);
+  border: 2px dashed var(--citrine-deep);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--citrine) 18%, transparent);
+  opacity: 0;
+  transform: scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.35s var(--ease-spring);
+}
+.snap-hint[data-side="left"] { left: 8px; }
+.snap-hint[data-side="right"] { right: 8px; }
+.snap-hint[data-active] { opacity: 1; transform: none; }
+
+/* ---------- Footer: the landing's foot-bar labels ---------- */
+.footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 16px var(--pad);
+  border-top: var(--rule) solid var(--moss-line);
+  background: var(--ink);
+}
+.footer a {
+  color: var(--ash);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: color 0.25s;
+}
+.footer a:hover { color: var(--citrine); }
+.footer a:first-child { justify-self: start; }
+.footer a:last-child { justify-self: end; }
+.app[data-view="workspace"] .footer { padding-block: 10px; }
+
+/* ---------- Buttons (the landing's pills) ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 13px 24px;
+  border: var(--rule) solid transparent;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.3s var(--ease), background 0.3s, color 0.3s, border-color 0.3s, opacity 0.2s;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn-solid { background: var(--ink); color: var(--bone); }
+.btn-solid:hover { background: var(--citrine); color: var(--ink); }
+.btn-ghost { border-color: var(--bone-line); background: transparent; color: var(--ink); }
+.btn-ghost:hover { border-color: var(--ink); }
+.btn-danger { background: var(--danger-fill); color: var(--bone); }
+.btn-danger:hover { background: color-mix(in srgb, var(--i2) 62%, var(--ink)); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.btn[hidden] { display: none; }
+.btn-arrow { display: inline-block; transition: transform 0.3s var(--ease); }
+.btn:hover .btn-arrow { transform: translateX(4px); }
+
+/* ---------- Dialog: the landing's window (oat paper, browser bar) ---------- */
+.dialog {
+  width: min(540px, calc(100vw - 32px));
+  padding: 0;
+  overflow: hidden;
+  border: var(--rule) solid var(--bone-line);
+  border-radius: 8px;
+  background: var(--bone);
+  color: var(--ink);
+  color-scheme: light;
+  box-shadow: var(--shadow-win);
+  opacity: 0;
+  transform: translateY(28px) scale(0.98);
+  transition: opacity 0.3s ease, transform 0.6s var(--ease-expo), overlay 0.3s allow-discrete, display 0.3s allow-discrete;
+}
+.dialog[open] { opacity: 1; transform: none; }
+@starting-style { .dialog[open] { opacity: 0; transform: translateY(28px) scale(0.98); } }
+.dialog::backdrop {
+  background: rgba(12,23,16,.8);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  transition: opacity 0.3s ease, overlay 0.3s allow-discrete, display 0.3s allow-discrete;
+}
+.dialog[open]::backdrop { opacity: 1; }
+@starting-style { .dialog[open]::backdrop { opacity: 0; } }
+.dialog :focus-visible { outline-color: var(--ink); }
+
+.dialog-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 9px 9px 14px;
+  border-bottom: var(--rule) solid var(--bone-line);
+  background: var(--bone-2);
+}
+.dialog-dots { display: flex; gap: 5px; flex: none; }
+.dialog-dots i { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--bone-line); }
+.dialog-url {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ash-deep);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dialog-x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s, transform 0.3s var(--ease-spring);
+}
+.dialog-x svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+@media (hover: hover) { .dialog-x:hover { background: var(--citrine); color: var(--ink); transform: rotate(90deg); } }
+
+.dialog-body { display: grid; gap: 14px; padding: clamp(22px, 4vw, 34px); }
+.dialog h2 { font-size: clamp(2.4rem, 8vw, 3.4rem); margin-top: -4px; }
+.dialog p { color: var(--ash-deep); font-size: 14.5px; line-height: 1.55; }
+.dialog .dialog-eyebrow { color: var(--ash-deep); }
+/* Clay, deepened so a 10px label still reads on oat. */
+.dialog .dialog-eyebrow.is-danger { color: var(--danger-fill); }
+.field { display: grid; gap: 7px; margin: 6px 0 4px; }
+.field-k { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.02em; color: var(--ash-deep); }
+.field strong { color: var(--ink); font-weight: 500; }
+.field input {
+  width: 100%;
+  padding: 11px 13px;
+  border: var(--rule) solid var(--bone-line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.field input:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(198,218,67,.5); }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+
+/* ---------- Subscription panel: the landing's two plans, side by side ---------- */
+.dialog-wide { width: min(640px, calc(100vw - 32px)); overflow-y: auto; overscroll-behavior: contain; }
+.plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+/* A plan is a card on the oat; the one you're on is inked, with the
+   dashboard cards' citrine edge along its top. */
+.plan {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 18px 20px;
+  border: var(--rule) solid var(--bone-line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, #fff 45%, var(--bone));
+}
+.plan[data-current] { border-color: var(--ink); }
+.plan[data-current]::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--citrine);
+}
+.plan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+.plan-name { color: var(--ink); }
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--citrine);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.plan-price { display: flex; align-items: baseline; gap: 8px; }
+.plan-price .display { font-size: 3.2rem; }
+.plan-period { font-family: var(--mono); font-size: 11px; color: var(--ash-deep); }
+.plan-features {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+/* The landing's pricing ticks. */
+.plan-features li { display: flex; gap: 9px; }
+.plan-features li::before { content: "◆"; flex: none; color: var(--citrine-deep); font-size: 9px; line-height: calc(13.5px * 1.45); }
+.plan-cta { margin-top: auto; }
+.plan-cta:disabled { cursor: progress; }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 11px 18px 11px 15px;
+  border: var(--rule) solid var(--moss-line);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bone);
+  box-shadow: var(--shadow);
+  font-size: 13.5px;
+  opacity: 0;
+  transform: translate(-50%, 14px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.5s var(--ease-spring);
+}
+.toast::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--citrine); }
+.toast[data-show] { opacity: 1; transform: translate(-50%, 0); }
+/* A failure takes the clay; work in progress, a turning ring. */
+.toast[data-type="error"]::before { background: var(--danger-on-ink); }
+.toast[data-type="loading"]::before {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--citrine);
+  border-right-color: transparent;
+  background: none;
+  animation: toast-spin 0.75s linear infinite;
+}
+@keyframes toast-spin { to { transform: rotate(360deg); } }
+
+/* ---------- Loading and error screens (before the user is known) ---------- */
+.boot-note {
+  position: fixed;
+  inset: var(--topbar-h) 0 auto;
+  z-index: 5;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: clamp(40px, 12vh, 120px) var(--pad);
+  text-align: center;
+}
+.boot-note h2 { font-family: var(--voice); font-weight: 400; font-size: clamp(1.8rem, 3vw, 2.4rem); line-height: 1.05; }
+.boot-note p { max-width: 46ch; color: var(--ash); line-height: 1.55; }
+.boot-note .btn-solid { background: var(--citrine); color: var(--ink); }
+.boot-note .btn-solid:hover { background: var(--bone); }
+
+/* ---------- Cursor (the landing's: a citrine ring; a grip over the dock bar) ---------- */
+.cursor {
+  position: fixed;
+  z-index: 90;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+  will-change: transform;
+}
+.cursor.is-on { opacity: 1; }
+html:has(dialog[open]) .cursor { opacity: 0; }
+.cursor-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border: 1.5px solid var(--citrine);
+  border-radius: 50%;
+  opacity: 0.9;
+  transition: width 0.25s, height 0.25s, margin 0.25s, background 0.25s, opacity 0.25s, transform 0.25s;
+}
+.cursor.is-hot .cursor-ring { width: 52px; height: 52px; margin: -26px 0 0 -26px; background: rgba(198,218,67,.16); }
+.cursor.is-drag .cursor-ring,
+.cursor.is-hidden .cursor-ring { opacity: 0; transform: scale(0.35); }
+.cursor-grip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 50%;
+  background: var(--citrine);
+  color: var(--ink);
+  transform: scale(0);
+  transition: transform 0.36s var(--ease-spring);
+}
+.cursor.is-drag .cursor-grip { transform: scale(1); }
+.cursor.is-dragging .cursor-grip { transform: scale(0.84); }
+.cursor-icon {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.cursor-icon-closed { opacity: 0; transform: scale(0.82); }
+.cursor.is-dragging .cursor-icon-open { opacity: 0; transform: scale(0.82); }
+.cursor.is-dragging .cursor-icon-closed { opacity: 1; transform: none; }
+.cursor-label {
+  position: absolute;
+  left: 36px;
+  top: -10px;
+  padding: 6px 11px;
+  border: var(--rule) solid var(--moss-line); /* its edge, over the ink dock */
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bone);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-8px) scale(0.9);
+  transform-origin: 0 50%;
+  transition: opacity 0.28s, transform 0.28s var(--ease-spring);
+}
+.cursor.is-drag .cursor-label { opacity: 1; transform: none; }
+.cursor.is-dragging .cursor-label { opacity: 0; transform: translateX(-8px) scale(0.9); }
+/* Over the dock bar the grip stands in for the system cursor. */
+html.has-fine-cursor .dock-bar,
+html.has-fine-cursor .app.is-dragging,
+html.has-fine-cursor .app.is-dragging * { cursor: none; }
+html.has-fine-cursor .dock-controls .icon-btn { cursor: pointer; }
+@media (hover: none), (pointer: coarse) { .cursor { display: none; } }
+
+/* ---------- View transitions (progressive enhancement) ---------- */
+.app[data-view="workspace"] .dock { view-transition-name: dock; }
+.app[data-view="workspace"] .workspace { view-transition-name: workspace; }
+::view-transition-group(*) { animation-duration: 0.45s; animation-timing-function: var(--ease); }
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: 0.2s; }
+/* The oat sheet is dealt in like the landing's chapters: onto the stage from
+   home, on top of the last one between workspaces (which sinks), and away
+   again on the way home. util.js names the kind of move on <html>. */
+html[data-vt]::view-transition-old(workspace),
+html[data-vt]::view-transition-new(workspace) { mix-blend-mode: normal; }
+html[data-vt="enter"]::view-transition-new(workspace),
+html[data-vt="swap"]::view-transition-new(workspace) { animation: sheet-in 0.65s var(--ease-expo) both; }
+html[data-vt="swap"]::view-transition-old(workspace) { animation: sheet-sink 0.5s var(--ease) both; }
+html[data-vt="leave"]::view-transition-old(workspace) { animation: sheet-out 0.35s var(--ease) both; }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(44px); } 40% { opacity: 1; } }
+@keyframes sheet-sink { to { opacity: 0; transform: scale(0.97); filter: brightness(0.7); } }
+@keyframes sheet-out { to { opacity: 0; transform: translateY(32px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none !important; }
+  *, *::before, *::after { transition-duration: 0s !important; animation: none !important; }
+  .cursor { display: none; }
+}
+
+/* ---------- Narrow screens: home stacks, dock becomes an icon rail ---------- */
+@media (max-width: 759px) {
+  .app[data-view="home"] .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .app[data-view="home"] .nav-link { min-height: clamp(88px, 13vh, 120px); gap: 12px 10px; padding: 14px 14px 16px; }
+  .app[data-view="home"] .nav-label { font-size: 22px; }
+
+  .app[data-view="workspace"][data-dock] .stage { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
+  .app[data-view="workspace"][data-dock] .dock {
+    position: static;
+    order: 0;
+    width: auto;
+    max-height: none;
+    border: 0;
+    border-right: var(--rule) solid var(--moss-line);
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .app[data-view="workspace"] .dock-body { padding: 10px 8px; align-items: center; }
+  .app[data-view="workspace"] .dock-resize,
+  .app[data-view="workspace"] .dock-bar,
+  .app[data-view="workspace"] .profile-text,
+  .app[data-view="workspace"] .nav-label { display: none; }
+  .app[data-view="workspace"] .profile { padding: 4px 0 12px; justify-content: center; }
+  .app[data-view="workspace"] .avatar { width: 38px; height: 38px; font-size: 17px; }
+  .app[data-view="workspace"] .nav { align-self: stretch; }
+  .app[data-view="workspace"] .nav-link { justify-content: center; padding: 11px; }
+  .workspace { padding: 24px 16px; }
+  .footer { grid-template-columns: 1fr; justify-items: center; gap: 8px; }
+  .footer a:first-child, .footer a:last-child { justify-self: center; }
+  .app[data-view="workspace"] .footer { display: none; }
+}

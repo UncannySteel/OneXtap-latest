@@ -1,0 +1,52 @@
+<!-- The spine: a rail down the left edge (a bar across the top on phones)
+     holding the mark and the menu button. It stays above the open menu, so
+     the button that opened it is the one that closes it. -->
+<div class="spine" data-header-row>
+  <a class="spine__logo" href="#top" data-jump aria-label="Onextap, back to the start">
+    <svg viewBox="0 0 92.84 100" aria-hidden="true"><path fill-rule="evenodd" d="M92.84 50.05C92.84 58.13 91.43 66.31 88.03 74C84.63 81.69 78.91 88.7 71.49 93.27C64.07 97.84 55.26 100.02 46.54 100C37.82 99.98 29.01 97.86 21.55 93.33C14.1 88.79 8.34 81.79 4.9 74.08C1.47 66.38 -0.01 58.17 0 50.05C0.01 41.92 1.47 33.72 4.88 26C8.29 18.27 14.01 11.19 21.5 6.67C28.98 2.15 37.8 0.02 46.54 0C55.27 -0.02 64.11 2.17 71.53 6.75C78.96 11.34 84.66 18.38 88.05 26.08C91.44 33.78 92.84 41.97 92.84 50.05ZM83.91 50.05C85.07 56.57 86.01 64.05 84.27 71.83C82.53 79.61 77.58 87.16 70.39 91.36C63.2 95.56 54.24 95.87 46.54 94.19C38.84 92.5 32.11 88.77 26.89 84.08C21.67 79.4 17.89 73.9 15.11 68.19C12.32 62.49 10.31 56.58 9.12 50.05C7.92 43.52 7.03 36.02 8.77 28.24C10.52 20.46 15.54 12.99 22.71 8.78C29.88 4.56 38.84 4.24 46.54 5.91C54.24 7.58 60.99 11.29 66.19 16.01C71.39 20.72 75.22 26.16 78.02 31.87C80.83 37.58 82.74 43.52 83.91 50.05Z"/></svg>
+  </a>
+  <button class="burger" id="burger" type="button"
+          aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+    <svg class="burger__icon" viewBox="0 0 30 30" aria-hidden="true">
+      <path class="burger__mid" d="M15 3v24"/>
+      <path class="burger__right" d="M23 3v24"/>
+      <path class="burger__left" d="M7 3v24"/>
+    </svg>
+  </button>
+</div>
+
+<!-- The menu: every chapter, grouped. Each link jumps straight to its
+     chapter (data-jump, see nav.js) rather than scrolling the story there. -->
+<nav class="menu" id="siteMenu" aria-label="Chapters" data-cover="ink" data-lenis-prevent inert>
+  <div class="menu__inner">
+    <div class="menu__grid">
+      <div class="menu__group">
+        <p class="label menu__label"><span class="menu__num">01</span>The story</p>
+        <ul class="menu__list">
+          <li><a class="menu__link" href="#top" data-jump>Overview</a></li>
+          <li><a class="menu__link" href="#form" data-jump>The Paperwork</a></li>
+        </ul>
+      </div>
+      <div class="menu__group">
+        <p class="label menu__label"><span class="menu__num">02</span>The product</p>
+        <ul class="menu__list">
+          <li><a class="menu__link" href="#how" data-jump>Features</a></li>
+          <li><a class="menu__link" href="#watch" data-jump>Watch it work</a></li>
+          <li><a class="menu__link" href="#boards" data-jump>Job Sources</a></li>
+        </ul>
+      </div>
+      <div class="menu__group">
+        <p class="label menu__label"><span class="menu__num">03</span>The offer</p>
+        <ul class="menu__list">
+          <li><a class="menu__link" href="#price" data-jump>Pricing</a></li>
+          <li><a class="menu__link" href="#close" data-jump>Get hired</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="menu__foot">
+      <p class="menu__fine">Chrome, Edge, Brave and Opera.</p>
+      <p class="menu__fine">&copy; <span id="menuYear"></span> Onextap</p>
+    </div>
+  </div>
+</nav>

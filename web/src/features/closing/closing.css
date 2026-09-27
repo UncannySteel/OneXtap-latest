@@ -1,0 +1,21 @@
+/* ===========================================================================
+   CH 05 — closing band
+   =========================================================================== */
+.close{position:relative;background:var(--citrine);color:var(--ink)}
+.close__title{font-size:clamp(4rem,min(19vw,34vh),18rem);margin:14px 0 0}
+.close__row{
+  display:flex;flex-wrap:wrap;gap:18px 34px;align-items:center;
+  margin-top:clamp(28px,4.5vh,50px);
+}
+.close__fine{font-size:13px;color:#4A5720;max-width:40ch}
+.close__actions{display:flex;flex-wrap:wrap;gap:10px}
+
+/* FAQ: the ghost button, outlined in ink so it holds on citrine. Opens the
+   FAQ window (features/faq). */
+.close .close__faq{border-color:rgba(12,23,16,.35)}   /* --ink */
+.close .close__faq:hover{border-color:var(--ink)}
+.close__faq-mark{
+  display:grid;place-items:center;width:20px;height:20px;margin-right:-8px;
+  border-radius:50%;background:var(--ink);color:var(--citrine);
+  font-size:11px;font-weight:700;line-height:1;
+}

@@ -1,0 +1,30 @@
+/* ===========================================================================
+   Contact — the feedback card and the quick answers
+   =========================================================================== */
+.fb-card{
+  display:grid;gap:24px 40px;align-items:end;
+  margin-top:clamp(20px,3.4vh,32px);max-width:900px;
+  padding:clamp(20px,3vw,34px);
+  background:var(--bone-2);border:var(--rule) solid var(--bone-line);border-radius:6px;
+}
+@media(min-width:900px){.fb-card{grid-template-columns:minmax(0,1fr) auto}}
+.fb-card__lead{margin:0;font-size:15px;line-height:1.55;color:var(--ash-deep)}
+.fb-card .sub-list{margin-top:8px}
+.fb-card__btn{justify-content:center}
+
+.faq{margin:clamp(16px,2.6vh,24px) 0 0;max-width:900px}
+.faq__row{
+  display:grid;gap:4px 32px;padding:14px 0;
+  border-bottom:var(--rule) solid var(--bone-line);
+}
+.faq__row:last-child{border-bottom:0}
+@media(min-width:720px){.faq__row{grid-template-columns:220px minmax(0,1fr)}}
+.faq dt{font-size:15px;font-weight:600;color:var(--ink)}
+.faq dd{margin:0;font-size:15px;line-height:1.55;color:var(--ash-deep)}
+/* A link that opens the window rather than going anywhere: dressed as one. */
+.faq a,.faq__link{
+  font:inherit;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;
+  text-decoration:underline;text-decoration-color:var(--citrine-deep);
+  text-decoration-thickness:1.5px;text-underline-offset:3px;transition:color .25s;
+}
+.faq a:hover,.faq__link:hover{color:var(--citrine-deep)}
