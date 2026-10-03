@@ -303,6 +303,23 @@ test.describe('the feedback window', () => {
   });
 });
 
+// The page Vercel serves for an unknown address (dist-dashboard/404.html). Its
+// asset paths are absolute, so it renders at any depth; here it is loaded by
+// its own name, since the dev server falls back to the landing page instead.
+test.describe('the not-found page', () => {
+  test('keeps the site chrome, and leads home and to the dashboard', async ({ page }) => {
+    const errors = await openPage(page, '/404.html');
+    await expect(page).toHaveTitle('Not found — Onextap');
+    await expect(page.locator('h1')).toHaveText('Nothing here.');
+    await expect.poll(() => page.textContent('#chapterLabel')).toBe('Lost — 404');
+    await expect(page.locator('.hud [data-login]')).toBeVisible();
+    await expect(page.locator('.sub-hero__lede a[href="/"]')).toBeVisible();
+    await expect(page.locator('.sub-hero__lede a[href="/dashboard/"]')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+});
+
 test.describe('company pages, reduced motion', () => {
   test.use({ reducedMotion: 'reduce' });
 

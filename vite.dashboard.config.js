@@ -56,6 +56,8 @@ export default defineConfig({
         dashboard: here('./web/dashboard/index.html'),
         dashboardContact: here('./web/dashboard/contact/index.html'),
         dashboardPrivacy: here('./web/dashboard/privacy/index.html'),
+        // dist-dashboard/404.html, which Vercel serves for any unknown address.
+        notFound: here('./web/404.html'),
       },
     },
   },

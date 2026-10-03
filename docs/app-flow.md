@@ -1,39 +1,61 @@
 # Onextap — Application Flows
 
-> **Out of date, to be rewritten:** the entry points, sign-in, the dashboard
-> screens, upgrade and cancellation, account settings and stored state below
-> are the React app's. The landing page and dashboard are now the plain-JS
-> website under `web/`; `HANDOVER.md` §4 describes what they do, and
-> `web/README.md` and `web/dashboard/README.md` how. The popup's flows (§1,
-> §4) are unchanged.
-
 Every user-facing path through the product, traced to the code that runs it.
-Describes the system at commit `9b01adb` (2026-09-09).
+Rewritten on 2026-10-03 for the website (landing page and dashboard under
+`web/`) that replaced the React landing page and dashboard. The popup's
+flows (§1, §4) were traced at commit `9b01adb` and are unchanged by that
+work. Traced from code and exercised against stubs, **not yet against real
+services** (`HANDOVER.md` §7 item 2).
 
-**Related:** [`prd.md`](prd.md) · [`trd.md`](trd.md) ·
-[`ui-ux-design.md`](ui-ux-design.md) · [`backend-schema.md`](backend-schema.md)
+**Related:** [`repo-structure.md`](repo-structure.md) ·
+[`../HANDOVER.md`](../HANDOVER.md) · [`../README.md`](../README.md) ·
+[`backend-schema.md`](backend-schema.md)
 
 ---
 
 ## 0. Entry points
 
-The same React app (`src/popup.jsx` → `OnextapDashboard.jsx`, the `App` root) boots into one
-of four states, decided at load:
+One origin serves the site and the API (`vercel.json`):
 
-| Condition | View | Notes |
+| Path | What | Code |
 |---|---|---|
-| `?mode=extension-bridge` | `ExtensionBridge` | Renders nothing; postMessage RPC. **No caller in this repo.** |
-| `chrome.runtime.id` present, no `?mode=dashboard` | `PopupView` | Forces a 400×600 document |
-| Otherwise, signed out | `PublicLandingPage` | Marketing + auth section |
-| Otherwise, signed in | `DashboardView` | Sidebar shell, full width |
+| `/` | Landing page | `web/index.html`, `web/src/main.js` |
+| `/about/` `/contact/` `/privacy/` | Its company pages | `web/src/pages/` |
+| `/dashboard/` | Dashboard | `web/dashboard/index.html`, `web/dashboard/js/main.js` |
+| `/dashboard/contact/` `/dashboard/privacy/` | The dashboard's company pages | `web/dashboard/site/` |
+| `/api/*` | Express app | `api/index.js` → `server/index.js` |
+| `/privacy-policy`, `/privacy-policy.html` | 308 → `/privacy/` | `vercel.json` |
 
-`?view=vault` / `?view=cover` deep-links the dashboard to a tab.
-`?extensionId=<id>` tells the dashboard which extension to message.
-A splash screen shows for 2s on dashboard boot only.
+The extension has three: the popup (`index.html` → `src/popup.jsx` → `App` in
+`OnextapDashboard.jsx` → `PopupView`), the service worker
+(`extension/background.js`), and the content script (`public/content.js`,
+injected on demand). Opened outside the extension, or with the old
+`?mode=dashboard`, the popup's page redirects to the web dashboard.
+
+**Arriving at the landing page** (`web/index.html`, a script in `<head>`,
+before anything paints): `?extensionId=`, `?view=`, `?payment=`, `?code=` or
+`#access_token=` is forwarded to `/dashboard/` with the rest of the address.
+That covers the published extension (it opens the site root), a checkout
+started before the dashboard moved, and a Supabase redirect to the site root.
+`?login=1` or `?signup`, with `?next=/dashboard/…`, opens the sign-in window
+(`openOnArrival` in `web/src/app/wire.js`); `next` may only point inside
+`/dashboard/`.
+
+**Arriving at the dashboard** (`web/dashboard/js/main.js`):
+
+| Parameter | Effect |
+|---|---|
+| `?extensionId=<id>` | Which extension to sync profiles to (`src/extensionClient.js`) |
+| `?view=vault\|cover\|jobs\|profiles` | Opens that workspace (`legacyViews` in `js/config.js`) |
+| `?upgrade=1` | Opens the plan panel |
+| `?payment=success\|cancelled` | Back from checkout (§8) |
+| `#/` · `#/<workspace>` | Home · `job-matches`, `my-profiles`, `answer-studio`, `cover-letter` |
+
+The one-shot parameters are removed from the address once read.
 
 ---
 
-## 1. First run
+## 1. First run (popup)
 
 ```text
 Install from Chrome Web Store
@@ -54,128 +76,140 @@ Click the toolbar icon ──► PopupView, checking = true
    empty state
         │
         ▼
- chrome.tabs.create(DASHBOARD_URL + ?extensionId=<runtime.id>)
+ chrome.tabs.create(<site>/dashboard/?extensionId=<runtime.id>)
 ```
 
 The popup deliberately refuses to be a profile editor. With no profile it
-shows one route out: open the dashboard.
+shows one route out: the web dashboard, told which extension it belongs to.
+"Open Answer Studio" and Job Matches add `?view=vault` / `?view=jobs`.
 
 ---
 
 ## 2. Sign-up and sign-in
 
+**On the website**, the sign-in window (`web/src/features/login/login.js`) is
+on every page of the landing site, behind the header's Log in. What it does
+is `signInAttempt` in `web/src/app/backend.js`, which loads `@app/auth.js`
+(and so Supabase's SDK) on the first attempt:
+
 ```text
-Landing page ──► #auth section ──► [Sign in | Create account]
+Sign-in window
         │
         ├─ Email + password
-        │   └─ signup: getPasswordStrength() must not be 'weak'
-        │      (≥8 chars, upper + lower + number; 'strong' at ≥12 with a symbol)
-        │          │
-        │          ▼
-        │      supabase.auth.signUp({ data: { full_name } })
-        │          │
-        │          ├─ session returned ──► signed in
-        │          └─ null session      ──► "Check your email for a confirmation link."
+        │   ├─ checked first: an email, and on sign-up 8+ characters with
+        │   │  upper and lower case and a number
+        │   ├─ sign in:  supabase.auth.signInWithPassword
+        │   │      └─ "Signed in as <email>."  ── Continue ──► /dashboard/ (or ?next)
+        │   └─ sign up:  supabase.auth.signUp
+        │          ├─ session back   ──► "Account created for <email>." ── Continue ──► dashboard
+        │          └─ no session     ──► "Check your email." (Continue just closes)
         │
-        └─ Google
-            ├─ web:       supabase.auth.signInWithOAuth  (redirect)
-            └─ extension: signInWithOAuth → skipBrowserRedirect
-                          → chrome.identity.launchWebAuthFlow
-                          → parse access_token/refresh_token from the URL hash
-                          → supabase.auth.setSession(...)
+        └─ Google ──► supabase.auth.signInWithOAuth, redirectTo = <site>/dashboard/
+                      (off the redirect allowlist, Supabase falls back to the
+                       site root, and the forwarding script passes it on)
 ```
 
-**On the database side**, `on_auth_user_created` fires and inserts a
-`profiles` row with 3 credits plus an `initial` credit transaction. If that
-trigger is missing, `getProfile()` backfills the row on first API call.
+Refusals are put in plain words (`WORDS` in `backend.js`): a wrong password,
+an unconfirmed email, an existing account, a rate limit, a weak password, no
+network. The session lands in `localStorage` (`sb-<project ref>-auth-token`),
+which the landing page and the dashboard share, being one origin. Signed in,
+the header's Log in reads Dashboard (`wireHeader`), and Get started free /
+Upgrade to Premium go straight to the dashboard (`wireOffers`).
 
-**Session storage** differs by surface: `localStorage` on the web,
-`chrome.storage.local` in the extension via the adapter in
-`supabaseClient.js`.
+**The dashboard** checks the session before anything else
+(`services.getSession`). None: it drops whatever session is stored, locally,
+and sends the reader to `/?login=1&next=<where they were>`, so the two pages
+can never bounce a dead session between them. Then `GET /api/me` reads the
+account; a 401 there is the same trip to sign in, and an unreachable server
+leaves a session-only view with a toast saying credits and plan may be out of
+date.
 
-**After sign-in:**
+**In the popup**, the session lives in `chrome.storage.local` (the adapter in
+`src/supabaseClient.js`). Google there uses `chrome.identity.launchWebAuthFlow`
+and parses the tokens from the redirect (`src/auth.js`), which needs
+`https://<extension-id>.chromiumapp.org/` on Supabase's allowlist.
 
-- `onAuthStateChange` sets the user and stops the auth spinner (a 5s fallback
-  timer guarantees the UI never blocks on it).
-- A lazy, non-blocking `verifyPremium()` runs once, keyed on `user.id`.
-- The guided tour fires only for accounts created in the **last 2 minutes**
-  and only if `onextap_tutorial_seen` is unset. Older accounts get the flag
-  set silently so it never appears.
+**On the database side**, `on_auth_user_created` inserts a `profiles` row
+with 3 credits and an `initial` credit transaction. If that trigger is
+missing, `getProfile()` backfills the row on the first API call.
 
-**Sign-out** clears `user_profile` and `onextap_profiles` from both storage
-backends and remounts the content.
+**First run of the dashboard:** the guided tour shows only on the home view,
+and only to accounts created in the last 2 minutes; everyone else gets
+`onextap_tutorial_seen` set so it never appears.
 
 ---
 
-## 3. Building a profile
+## 3. Building a profile (My Profiles)
 
 ### 3.1 By hand
 
 ```text
 Dashboard ──► My Profiles ──► edit fields ──► Save
                                                 │
-                                    saveLegacyUserProfile(profile)
+                                    saveLegacyUserProfile(profile)   (this browser)
                                                 │
-                                    ┌───────────┴───────────┐
-                                    ▼                       ▼
-                          storage (local)      ONEXTAP_SYNC_DATA → extension
-                                                            │
-                                              ┌─────────────┴─────────────┐
-                                          success                     failure
-                                              │                         │
-                                     "Saved & Synced!"          "Saved (sync failed)"
+                                    ONEXTAP_SYNC_DATA ──► the extension, if this
+                                                │         page can reach it
+                     ┌──────────────────────────┼──────────────────────────┐
+                 confirmed                 no reply                no extension here
+                     │                          │                          │
+     "Saved and synced to the      "Saved here — the extension    "Saved on this device"
+      extension"                    didn't confirm the sync"
 ```
 
-A failed sync is reported, never fatal — the local write already succeeded.
+A failed sync is reported, never fatal: the local save already happened. The
+page can reach the extension only from an origin in its `externally_connectable`
+(`https://www.onextap.com`, `https://onextap.com`, `http://localhost:5173`),
+with the extension's ID: from `?extensionId=` (opened from the popup), else
+the published extension's.
+
+**In the extension** (`extension/background.js`, `extension/profileSync.js`),
+the payload is filed into the profile store the popup reads
+(`onextap_profiles`): matched by id, then by name, else added under the
+dashboard's id; it becomes the active profile, and the `user_profile` mirror
+is rebuilt from it. The extension's other profiles are left alone.
 
 ### 3.2 From a resume
 
 ```text
-Choose file (PDF or image)
+Choose or drop a file (PDF or image, size-capped)
     │
-    ├─ fileToBase64()
-    ├─ getAccessToken()  ──► null → "Not authenticated. Please sign in first."
-    ├─ GET /api/me       ──► !ok  → "Session token rejected… sign out and back in."
-    ├─ chrome.runtime available? ──► no → "Extension not installed"
-    ├─ getExtensionId()          ──► null → "Open the dashboard from the popup"
+    ├─ type and size checked; hashed (a re-upload of the same bytes is found in the library)
+    ├─ getAccessToken()  ──► none → "Not authenticated. Please sign in first."
+    ├─ GET /api/me       ──► rejected → "Session token rejected… sign out and sign in again."
     │
-    ▼
-PARSE_RESUME ──► service worker ──► POST /api/parse-resume
-                                            │
-                                     Gemini flash → (fallback) pro
-                                            │
-                                     parseJsonLenient()
-                                            │
-                                     fails? one repair pass at temp 0
-                                            │
-                                            ▼
-                                     { data: <structured> }
+    ├─ extension reachable? ──► PARSE_RESUME via the service worker
+    └─ otherwise            ──► POST /api/parse-resume directly
+                                        │
+                                 Gemini (primary → fallback model)
+                                        │
+                                 { data: <structured>, text }
     │
     ▼
-Merge over the existing profile — never replace:
-  • scalar fields only when the model found something
-  • education/experience only when non-empty
-  • skills unioned via Set
-  • address deep-merged; country match sets the dial code
+mergeParsedResumeIntoProfile (src/resumeToProfile.js): over the form, never replacing
+    │
+    └─ saveParsedResume ──► the resume library (onextap_resumes), for Job Matches
+                            and the popup; a full library never costs the merge
+"Resume read — review the fields, then save."
 ```
 
 The pre-flight to `/api/me` is there so an expired token fails in a second
-rather than after a 90-second upload.
+rather than after a long upload.
 
 ### 3.3 Switching profiles
 
-`ProfileSwitcher` (dashboard sidebar and popup header) creates, renames,
-deletes and switches. Every mutation writes the store *and* re-mirrors the
-active profile into `user_profile`, so the content script always reads the
-one the user last selected.
+On the dashboard, the profile switcher (`web/dashboard/js/ui/switchers.js`)
+creates, renames, deletes and switches; in the popup, `ProfileSwitcher`.
+Every mutation writes the store *and* re-mirrors the active profile into
+`user_profile`.
 
-Guards: unique trimmed names (case-insensitive, ≤32 chars); `Default` and the
-last remaining profile cannot be deleted; deleting the active profile falls
-back to `Default`.
+Guards: unique trimmed names (case-insensitive, ≤32 characters); `Default`
+and the last remaining profile cannot be deleted; deleting the active profile
+falls back to `Default`.
 
 ---
 
-## 4. Autofill — the core flow
+## 4. Autofill — the core flow (popup)
 
 ```text
 User opens an application form, clicks the Onextap icon
@@ -221,239 +255,242 @@ AUTOFILL_TRIGGERED { profile, sections }
 bare `company`. Bare `name` is deliberately never an intent keyword — it
 would hit company-name and school-name fields.
 
-**Known gap:** `sections` is sent but `autofill()` ignores it. Toggling a
-section off changes the button label only; every matching field is still
-filled.
+**Known gap (still true on 2026-10-03):** `sections` is sent but `autofill()`
+ignores it. Toggling a section off changes the button label only; every
+matching field is still filled.
 
-### Refusals
-
-| Condition | Message |
+| Refusal | Message |
 |---|---|
 | `chrome:`, `chrome-extension:`, `edge:`, `about:`, Web Store | "Cannot read this page" (scrape) / "Cannot access this page" (fill) |
 | No active tab | "Error: No active tab" |
 | No profile | "No Profile - Open Dashboard" |
-| Every section toggled off | Button disabled, tooltip "Select at least one section to fill." |
+| Every section toggled off | Button disabled, "Select at least one section to fill." |
 
 ---
 
-## 5. Answer Studio
+## 5. Answer Studio (dashboard)
 
 ```text
-Dashboard ──► Answer Studio  (or popup ──► "Open Answer Studio" ──► ?view=vault)
+Answer Studio (or the popup's "Open Answer Studio" ──► ?view=vault)
         │
-        ├─ load profile + vault (aiImprovementsLeft normalised to a number)
-        └─ loadCredits(): isPremium() then getCreditsWithStatus()
-        │
-        ▼
-Type a question (+ optional draft), pick a tone, click "Improve with AI"
-        │
-   ┌────┴─────────────────────────────────────────────┐
-   │ Pre-checks                                        │
-   │  • question empty        → "Enter a question first."│
-   │  • consumesCredit = !premium && improvementsLeft≤0 │
-   │  • consumesCredit && credits ≤ 0 → "No credits remaining."│
-   └────┬─────────────────────────────────────────────┘
-        ▼
-SCRAPE_ACTIVE_TAB (10s timeout) ──► { company, description }
-        │  pasted text, when present, wins over the scrape
-        ▼
-Build the request:
-   question · draft · jobContext (6000 chars) · profileContext
-   · top-3 overlapping vault answers · taskHint · styleHint · model
+        ├─ the active profile's saved answers (each with aiImprovementsLeft)
+        └─ GET /api/credits: balance + Premium flag
         │
         ▼
-POST /api/answer-vault/generate  (90s timeout)
+Question (+ optional draft), tone, optional company and pasted job description
         │
-   Groq primary ──(404/429/5xx/empty/blocked)──► Groq fallback
-        │
-   server rejects: empty · <8 non-space chars · finish_reason === 'length'
-        │
+   ┌────┴─────────────────────────────────────────────────────┐
+   │ consumesCredit = !premium && improvementsLeft ≤ 0        │
+   │ consumesCredit && credits ≤ 0 → "No credits remaining.   │
+   │   Premium makes answers unlimited."  (no AI call)        │
+   └────┬─────────────────────────────────────────────────────┘
+        ▼
+POST /api/answer-vault/generate (question, draft, job context ≤6000 chars, profile
+     context, saved answers, task and style hints, model, resume corpus if any)
+        │   Groq primary → fallback; empty, too short or cut-off answers rejected
    ┌────┴────┐
  fail      success
-   │          │
- no charge    ├─ answer replaces the editor text
-              │
-              ├─ premium? ─ yes → done, no counter
-              │
-              └─ no ──┬─ consumesCredit → deductCredit() (10s)
-                      │      ok   → credits = remaining, improvements = 3
-                      │      fail → improvements = 0 + a warning; answer kept
-                      │
-                      └─ else → improvements -= 1
-                      │
-                      └─ persist answer + counter to the active vault item
+   │          ├─ the answer replaces the editor; fabrication flags shown (advisory)
+ no charge    ├─ Premium → done
+              └─ else: consumesCredit → POST /api/credits/deduct
+                         ok   → improvements = 3
+                         fail → improvements = 0, a warning; the answer stays
+                       not consuming → improvements − 1
+                       → saved on the answer being edited
 ```
 
-**Context messaging.** No job context: "Generated without job-page context.
-Open a job listing and click Improve again to tailor it." Pasted description:
-"Generated using pasted job description context."
+**Credit rule:** one credit buys an answer plus three improvements of it.
+The page charges after the fact; see `HANDOVER.md` §7 item 25 and
+`docs/plans/active/server-side-generation-charging.md`. The dashboard has no
+access to the job page: the description is pasted (the popup can read it).
 
-**Credit model in one line:** one credit buys one generation plus three
-follow-up improvements on that same answer.
-
-**Saving** de-duplicates against existing questions *and* answers
-(case-insensitive) when adding new; editing an existing entry updates in
-place. Every save writes the store and re-syncs to the extension.
+Saving de-duplicates against existing questions *and* answers
+(case-insensitive) when adding; editing updates in place. Every save writes
+the store and syncs to the extension.
 
 ---
 
-## 6. Cover letters
+## 6. Cover letters (dashboard and popup)
 
 ```text
-Add template (name + body)          max 10 per profile
+Templates: up to 10 per profile, typed, pasted or uploaded (.txt/.md)
         │
         ▼
-Select template ──► "Personalize"
+Select a template ──► company, role, job description
+        │   (dashboard: pasted · popup: read from the open page, else pasted)
         │
-        ├─ no template body → "Add a cover letter template first."
-        ├─ not signed in    → "Sign in to use AI personalization."
-        │
-        ▼
-SCRAPE_ACTIVE_TAB (scrape wins over the typed company/role when present)
-        │
-        └─ still no description → "Open an application page or paste a description below."
-        │
+        ├─ no template body / no description → says which
+        ├─ credit check (src/coverLetterCredits.js):
+        │     free if Premium, or a re-run: same template, same description
+        │     (its first 6000 characters, case and spacing aside)
+        │     otherwise 1 credit; at 0 → "No credits remaining. Premium makes
+        │     cover letters unlimited." (no AI call)
         ▼
 POST /api/answer-vault/generate
-   question: "<Document label> for this application"
-   draft:    the template body
-   taskHint: rewrite for this opportunity, preserve voice,
-             name the organisation, weave in 2–4 requirements,
-             stay within ±10% of the original length
+   question: "<label> for this application", draft: the template body,
+   taskHint: rewrite for this opportunity, keep the voice, name the company
+   and role, weave in 2–4 requirements, ±10% of the original length
         │
         ▼
-Suggestion shown beside the original
-        │
-        ├─ Copy
-        ├─ Save as variant  → { company, role, jdSnippet(500), body, createdAt }
-        └─ Fill into page   → FILL_COVER_LETTER
-                                │
-                       keyword pass over visible textareas / text inputs
-                       (cover letter · personal statement · statement of
-                        purpose · motivation · essay · additional information)
-                                │  overwrites existing content
-                       fallback: largest empty textarea by rows
-                                │
-                       none matched → { success: false }
+Result beside the original
+        ├─ paid → POST /api/credits/deduct → one free re-run stored on the template
+        │         (aiRerunsLeft, aiRerunKey); a failed deduct stores none
+        ├─ re-run → its allowance used up
+        ├─ Copy · Save version (company, role, description excerpt, body)
+        └─ popup only: Fill page → FILL_COVER_LETTER into the best text field
 ```
 
-Personalising stamps `lastUsed` on the template. Cover-letter generation does
-**not** consume a credit today — it calls the generation endpoint directly
-without a deduct.
+Beside the button, the next press's cost is spelled out: a free re-run,
+"Uses 1 credit, which includes one free re-run", or no credits left.
+Personalising stamps `lastUsed` on the template. The published extension
+(v1.0.3) predates this rule: its popup personalises for free until the next
+release.
 
 ---
 
-## 7. Upgrade to Premium
+## 7. Job Matches (dashboard)
 
 ```text
-Upgrade button (landing pricing · overview · account modal · out-of-credits toast)
+Pick a resume from the library (or upload one, as in §3.2)
         │
         ▼
-PremiumModal — $5.00/month
+Filters: a DRAFT, applied with Apply / Enter (a rank costs LLM calls)
         │
         ▼
-POST /api/create-checkout-session
+POST /api/jobs/rank  (the shared pool; prefilter → LLM batches → gate → up to 2 reformulations)
+        │   hourly limit per account; results cached server-side
+        ▼
+Ranked cards: score band, evidence, matched and missing skills; "Low detail" for
+snippet-only postings; every degraded state says so (keyword-only scoring, partly
+AI-scored, filters broadened, the hourly limit, a thin pool)
+        │
+        ├─ Sort: re-orders what is in hand, no re-rank
+        ├─ Refresh: the one way to ask the same question again
+        └─ Explain my fit ──► POST /api/jobs/explain
+                 the server refuses at 0 credits (403), charges after success,
+                 refunds if a later step fails; reopening an explained job is free
+```
+
+The last result is kept in memory, keyed by the resume and the applied
+filters, so leaving the page and coming back does not re-rank (a reload
+does). Only the parsed fields the ranker needs, and for Explain the resume
+corpus, leave the device, as request bodies.
+
+---
+
+## 8. Upgrade, cancellation and billing (the plan panel)
+
+```text
+Upgrade (landing pricing, the dashboard's plan panel, ?upgrade=1)
+        │
+        ▼
+POST /api/create-checkout-session (metadata.supabaseUserId)
         ├─ already active at Dodo → 400 "You already have an active Premium subscription."
-        └─ create session with metadata.supabaseUserId
-        │
         ▼
-window.location.href = session.checkout_url     (the app unmounts here)
-        │
-        ▼
-Dodo hosted checkout ──► return_url = CLIENT_URL?payment=success
+Dodo hosted checkout ──► return to <CLIENT_URL>/dashboard/?payment=success
         │
         ├── in parallel ──► Dodo webhook ──► POST /api/webhook
         │                        signature verified over the raw body
-        │                        resolveUserId: metadata → dodo_customer_id → email
-        │                        subscription.active → is_premium = true, premium_since = now
+        │                        account resolved: metadata → dodo_customer_id → email
+        │                        subscription.active → is_premium = true
         ▼
 Dashboard sees ?payment=success
-        ├─ strips payment/session_id/payment_id/status/email/license_key from the URL
-        ├─ toast: "Payment received! Activating your Premium subscription..."
-        └─ poll verifyPremium() every 8s, up to 15 attempts (2 minutes)
-                ├─ premium → "Premium activated! You now have unlimited AI credits."
-                └─ timeout → "Premium may take a moment to activate — please refresh shortly."
+        ├─ "Payment received! Activating your Premium subscription…"
+        └─ GET /api/verify-premium every 8 s, up to 15 times (2 minutes)
+                ├─ Pro → "Premium activated! You now have unlimited AI credits."
+                └─ timeout → "Premium may take a moment to activate — refresh shortly."
 
 ?payment=cancelled → "Payment cancelled."
 ```
 
-### Webhook events handled
+The panel (`web/dashboard/js/subscription.js`) has four states: Standard;
+Pro renewing (with the date); Pro ending (with its end date and "Keep Pro");
+Pro without dates (Dodo could not be reached).
 
-| Event | Effect on `profiles` |
+| Action | Route | Effect |
+|---|---|---|
+| Switch to Standard, subscription active | `POST /api/cancel-subscription` | Cancelled **at the end of the period** (`cancel_at_next_billing_date`). Premium stays on until Dodo's `subscription.cancelled` arrives |
+| Switch to Standard, on hold / pending / past due | same | Cancelled at once, as before |
+| Keep Pro | `POST /api/resume-subscription` | Withdraws the scheduled cancellation |
+| Billing & invoices | `POST /api/create-portal-session` | Dodo's portal, in a new tab (opened on the click, so no pop-up block) |
+
+| Webhook event | Effect on `profiles` |
 |---|---|
-| `subscription.active` | `is_premium = true`, subscription + customer ids, `status = active`, `premium_since = now()` |
+| `subscription.active` | `is_premium = true`, subscription and customer ids, `status = active`, `premium_since = now()` |
 | `subscription.renewed` | `is_premium = true`, `status = active` |
 | `subscription.on_hold` | `status = on_hold`, `payment_failed = true`, `last_failed_payment = now()` |
 | `subscription.cancelled` | `is_premium = false`, `status = cancelled`, `cancelled_at = now()` |
 | `subscription.failed` | `is_premium = false`, `status = failed` |
 | `payment.failed` | `payment_failed = true`, `last_failed_payment = now()` |
 
-Unresolvable users are logged and skipped — the webhook still returns
-`{ received: true }` so Dodo does not retry forever.
-
-### Cancellation
-
-Account Settings → Cancel subscription → `POST /api/cancel-subscription` →
-Dodo `subscriptions.update(status: 'cancelled')` → local `is_premium = false`,
-`status = cancelled`, `cancelled_at = now()`. Immediate; no proration.
+Unresolvable users are logged and skipped; the webhook still answers
+`{ received: true }` so Dodo does not retry forever. Once per visit, as the
+dashboard boots, `verify-premium` re-checks Premium against Dodo, and a
+Premium that has lapsed comes back to a real balance.
 
 ---
 
-## 8. Account settings
+## 9. Account settings (dashboard)
 
-```text
-Avatar / Settings ──► AccountSettingsModal
-        ├─ verifyPremium() + getCreditsWithStatus()
-        ├─ Credits: number, or ∞ for premium, or an inline error with "Try again"
-        ├─ Subscription: upgrade, or cancel
-        └─ Danger zone: type DELETE
-                └─ clears local storage, signs out, reloads
-                   ⚠ does NOT delete the Supabase auth user or profiles row
-```
+The settings menu (`web/dashboard/js/settings.js`, actions in `main.js`):
 
----
-
-## 9. Application types
-
-Selecting a type (popup header or dashboard sidebar) persists to
-`onextap_application_type` and immediately:
-
-| Type | Cover-letter label | Studio label |
-|---|---|---|
-| Job | Cover Letter | Answer Studio |
-| College / University | Personal Statement | Application Essays |
-| Scholarship | Scholarship Essay | Essay Answers |
-| Internship | Cover Letter | Answer Studio |
-
-If the active tab is not enabled for the new type, the view falls back to
-Overview (dashboard) or the first allowed tab (popup). Every type currently
-enables every feature, so this fallback is dormant.
+- **Change avatar** — an image of up to 5 MB, kept on this device
+  (`onextap_avatar_<user id>`). Without one: the Google photo, else initials.
+- **Manage subscription** — the plan panel (§8).
+- **Log out** — `signOut`, then removes `user_profile` and `onextap_profiles`
+  from this browser (resumes and the avatar stay), and goes to `/`.
+- **Delete account** — type `DELETE`, then `DELETE /api/account`: a billable
+  subscription is cancelled at Dodo first (the deletion stops if Dodo cannot
+  confirm), then the Supabase auth user is deleted, and `profiles`,
+  `credit_transactions`, `rank_cache` and `rank_rate_limit` go with it by
+  cascade. Only then is this browser's storage cleared and the session
+  dropped. The extension's copy and other browsers keep their local data, and
+  the dialog says so.
 
 ---
 
-## 10. Error and recovery paths
+## 10. Application types
+
+`src/applicationTypes.js` knows job, college, scholarship and internship, but
+**only Job is live**: the others are commented out, the popup's picker is
+hidden, and the dashboard has none. A stored type that is no longer listed
+reads as Job.
+
+---
+
+## 11. Error and recovery paths
 
 | Where | Trigger | What the user sees |
 |---|---|---|
-| Any React render | Thrown error | `ErrorBoundary` recovery screen with "Copy diagnostics" |
-| Credits panel | `/api/credits` fails | Inline amber block, the underlying error, config hints, "Try again" |
-| Answer Studio | Generation fails | Inline error; no credit spent |
-| Answer Studio | Generation succeeds but deduct fails | Answer kept, warning shown, improvements set to 0 |
-| Resume upload | Any pre-flight failure | A specific status string naming the cause |
+| Dashboard boot | No Supabase settings in the build | "The dashboard couldn't start." with what to check |
+| Dashboard boot | Dead session (or a 401 from `/api/me`) | Sent to sign in, the session dropped first |
+| Dashboard boot | `/api/me` unreachable | Session-only view; "Couldn't load your account…" |
+| Sign-in window | Supabase refuses | The reason in plain words; the form kept |
+| Resume upload | Any pre-flight or parse failure | A specific message naming the cause |
+| Answer Studio, cover letters | Generation fails | Inline error; no credit spent |
+| Answer Studio, cover letters | Generation succeeds, deduct fails | The text kept, a warning, no free follow-ups |
+| Answer Studio, cover letters | No credits | Refused before the AI call |
+| Explain my fit | No credits / a failure after the charge | 403 refusal / the credit refunded by the server |
+| Profile save | Extension did not confirm | "Saved here — the extension didn't confirm the sync" |
+| Feedback form | `/api/feedback` fails | "That didn't go through. Try again in a moment." |
+| Popup render | Thrown error | `ErrorBoundary` with "Copy diagnostics" |
 | Popup autofill | Restricted page | "Error: Cannot access this page" |
-| Extension sync | Worker unreachable | "Saved (sync to extension failed)" — local data is safe |
-| Server 500 | Unhandled route error | `errorLogger` responds; `X-Request-Id` ties the report to the log |
+| Server | Unhandled route error | `errorLogger` answers JSON; `X-Request-Id` ties a report to the log |
+| Any website page | Uncaught error | Logged (redacted) and kept for `__onextapIssues()` |
 
 ---
 
-## 11. State that persists
+## 12. State that persists
 
-| Key | Backend | Contents |
+| Key | Where | Contents |
 |---|---|---|
-| `onextap_profiles` | local | `{ profiles: { id: { name, isDefault, autofillData, coverLetters, savedAnswers } }, activeProfileId }` |
-| `user_profile` | local | Flat mirror of the active profile — what the content script reads |
-| `onextap_application_type` | local | `job` / `college` / `scholarship` / `internship` |
-| `onextap_tutorial_seen` | local | Guided-tour suppression |
-| `onextap_dark_mode` | `localStorage` | Theme, defaulting to `prefers-color-scheme` |
-| Supabase session | `chrome.storage.local` (ext) / `localStorage` (web) | JWT + refresh token |
+| `onextap_profiles` | extension: `chrome.storage.local`; web: `localStorage` | `{ profiles: { id: { name, isDefault, autofillData, coverLetters, savedAnswers } }, activeProfileId }` |
+| `user_profile` | same | Flat mirror of the active profile |
+| `onextap_resumes` | same | The resume library (parsed fields and text, never the file) |
+| `onextap_application_type` | extension | `job` (the only live type) |
+| `onextap_tutorial_seen` | web | The dashboard's tour, done |
+| `onextap_avatar_<user id>` | web | The avatar chosen on this device |
+| `dashboard.dock` | web | Where the dashboard's dock sits |
+| `sb-<project ref>-auth-token` | web: `localStorage`; extension: `chrome.storage.local` | The Supabase session |
 | `profiles` row | Postgres | Account, credits, premium and Dodo ids — **never profile content** |
+| `credit_transactions` | Postgres | Every credit movement, written by the server only |

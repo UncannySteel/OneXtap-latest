@@ -110,6 +110,7 @@ the Vercel project needs no change.
 ├── web/                       # The website (Vite root of vite.dashboard.config.js)
 │   ├── index.html             # Landing page; its <head> forwards old dashboard links
 │   ├── about/ contact/ privacy/   # Company pages (index.html each)
+│   ├── 404.html               # What Vercel serves for an unknown address
 │   ├── src/                   # The landing page (from DEMO_WEB)
 │   │   ├── main.js            #   entry: mounts every feature, then the stage
 │   │   ├── app/               #   stage, chapters, mount; backend.js + wire.js

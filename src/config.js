@@ -42,8 +42,23 @@ export const SITE_URL = configuredSite.endsWith(DASHBOARD_PATH.replace(/\/$/, ''
  */
 export const DASHBOARD_URL = `${SITE_URL}${DASHBOARD_PATH}`;
 
+/**
+ * The API's origin, with no trailing slash. VITE_API_URL wins when set.
+ * Without it, a production build answers by where it runs: on the website,
+ * the page's own origin, since the API is at /api/ on the same site (so a
+ * preview or a new domain calls its own API, not the live one); in the
+ * extension, https://www.onextap.com, since an extension page has no site
+ * origin of its own. Development builds get '' and need VITE_API_URL.
+ * `chrome.runtime.id` exists only in extension contexts, never on a web page,
+ * even one the extension can message.
+ */
+const inExtension = typeof chrome !== 'undefined' && !!chrome?.runtime?.id;
+const productionApi = inExtension || typeof window === 'undefined'
+  ? 'https://www.onextap.com'
+  : window.location.origin;
+
 export const API_URL = (
   import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD ? 'https://www.onextap.com' : '')
+  (import.meta.env.PROD ? productionApi : '')
 ).replace(/\/$/, '');
 export const ANSWER_STUDIO_MODEL = import.meta.env.VITE_ANSWER_STUDIO_MODEL || "llama-3.3-70b-versatile";

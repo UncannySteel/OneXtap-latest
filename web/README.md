@@ -105,6 +105,7 @@ API are plugged in from outside them:
 ```
 index.html                  page skeleton: <head>, fonts, the stage, one [data-mount] slot per feature
 about/ contact/ privacy/    the company pages' skeletons (index.html each)
+404.html                    the not-found page Vercel serves for an unknown address
                             (the HTML entries are listed in the repo root's vite.dashboard.config.js)
 src/
   main.js                   imports shared CSS, mounts features, builds the stage
@@ -120,6 +121,7 @@ src/
     sub-page.css            the ink band, the chapter heads on oat, the foot
     page-foot.html          the foot: the company pages, the way home, the mark
     about/ contact/ privacy/  ← each page's copy (<name>.html) and entry script (<name>.js)
+    not-found/              the 404 page's copy and script, on the same sub-page frame
   shared/
     styles/
       tokens.css            colours, fonts, spacing (:root variables) — start here for theming

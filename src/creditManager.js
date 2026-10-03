@@ -1,12 +1,11 @@
 import { getAccessToken } from './auth';
+import { API_URL } from './config';
 import { log as baseLog } from './logger';
 
+// API_URL comes from config.js, the one place it is decided. This module used
+// to work it out again, and the two copies both sent a website on any domain
+// but www.onextap.com to the live API.
 const log = baseLog.child('credits');
-
-const rawApiUrl =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
-  (typeof import.meta !== 'undefined' && import.meta.env?.PROD ? 'https://www.onextap.com' : '');
-const API_URL = String(rawApiUrl).replace(/\/$/, '');
 
 /**
  * Helper: make an authenticated fetch to the backend.
@@ -101,33 +100,10 @@ export const creditManager = {
     }
   },
 
-  /**
-   * Give back one credit after a generation that failed AFTER being charged.
-   *
-   * ═══ WHY THIS EXISTS ═══
-   *
-   * POST /api/credits/refund has been on the server since the beginning and
-   * had no client method at all. Every caller that deducts post-success has a
-   * window — the generation succeeded, the credit was spent, and then
-   * something downstream failed — in which the user has paid for nothing and
-   * nothing in the app can give it back. That is a silent, unreportable loss
-   * of the only scarce resource in the product.
-   *
-   * Shaped exactly like deductCredit, including returning a failure object
-   * rather than throwing: a refund runs on an error path, and a throw here
-   * would replace the error the user actually needs to see with a second one.
-   * Premium users are not charged and so are not refunded; the server says so.
-   *
-   * @returns {Promise<{success: boolean, remaining: number, isPremium?: boolean, error?: string}>}
-   */
-  refundCredit: async () => {
-    try {
-      return await authFetch('/api/credits/refund', { method: 'POST' });
-    } catch (error) {
-      log.error('Error refunding credit:', error);
-      return { success: false, remaining: 0, error: error.message };
-    }
-  },
+  // There is no refundCredit. The server's POST /api/credits/refund handed a
+  // credit back to anyone who asked, with nothing to prove a charge, and was
+  // removed (see the note where it stood in server/index.js). A client cannot
+  // be trusted to say it was charged: refunds belong to the route that charged.
 
   /**
    * Verify premium status via GET /api/verify-premium. The server re-checks

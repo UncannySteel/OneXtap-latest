@@ -254,7 +254,6 @@ takes the cron secret).
 | GET | `/api/me` | Authenticated user profile (also used to pre-flight a token) |
 | GET | `/api/credits` | Current credit balance and premium flag |
 | POST | `/api/credits/deduct` | Deduct 1 credit; no-op for premium |
-| POST | `/api/credits/refund` | Refund 1 credit after a failed generation |
 | GET | `/api/verify-premium` | Premium status, re-checked against Dodo, with the renewal date and any scheduled cancellation |
 | POST | `/api/answer-vault/generate` | Answer and cover-letter generation (Groq) |
 | POST | `/api/parse-resume` | Resume → structured profile JSON (Gemini) |

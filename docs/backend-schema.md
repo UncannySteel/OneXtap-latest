@@ -1,6 +1,8 @@
 # Onextap — Backend & Data Schema
 
-> **Since this was written:** the server gained `POST /api/resume-subscription`,
+> **Since this was written:** `POST /api/credits/refund` was removed (it gave
+> any account a credit per call; refunds now happen only inside the route that
+> charged); the server gained `POST /api/resume-subscription`,
 > `POST /api/create-portal-session` and `DELETE /api/account`, and
 > `verify-premium` now reports the renewal date and a scheduled cancellation
 > (README.md has the current route table); the React dashboard named below

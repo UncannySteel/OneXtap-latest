@@ -278,7 +278,7 @@ decision waiting to be made — build it, or stop claiming it.
 | D4 | Privacy policy describes an optional **Cloud Sync** toggle | No such toggle exists. |
 | D5 | "What to fill" section toggles imply partial fills | The popup sends `sections`, but `autofill()` in `public/content.js` ignores it — every matching field is filled regardless. Only the button label changes. |
 | D6 | **Delete account** | Clears local storage and signs out. The Supabase `auth.users` and `profiles` rows survive; no server route exists to remove them. |
-| D7 | `POST /api/credits/refund` and `creditManager.refundCredit()` | Implemented on both sides, called from nowhere. |
+| D7 | `POST /api/credits/refund` and `creditManager.refundCredit()` | Implemented on both sides, called from nowhere. **Removed 2026-10-03**: the route gave any account a credit per call, with no check of a charge. |
 | D8 | `ExtensionBridge` (`?mode=extension-bridge`) | A complete postMessage RPC endpoint with no caller in this repo. |
 | D9 | Premium: "two-pass AI rewrites", "priority processing", "deeper personalization" | The generation path is identical for free and premium accounts; only the credit check differs. |
 | D10 | `dodopayments` SDK | Root pins `^0.18.0`, `server/` pins `^2.36.0`. Vercel installs from the root, so production may run the older major. |

@@ -156,6 +156,60 @@ Done:
 - Docs updated for both (README, repo-structure, CLAUDE.md, AGENTS.md, the
   web READMEs), and §9 written.
 
+Committed as `f62aae7`.
+
+### Checkpoint 4 (2026-10-03, session 2): deploy-ready fixes
+
+The owner's answers at checkpoint 3:
+
+- **Push** to `github.com/UncannySteel/OneXtap-latest` (public): done, as
+  remote `latest`. GitHub made `merge/web-dashboard` the default branch, so a
+  plain clone checks it out. The history it carries was already public (the
+  original `Aiko002/Onextap` is public), and the commit email already appears
+  in the owner's other public repos.
+- **Item 25:** design the full fix for approval; build nothing yet.
+- **Next:** keep going here (no keys needed), then a checkpoint.
+- **How this repo ships:** it will be cloned and deployed as it is, with only
+  the required files added (§9). So whatever the code needs before a deploy
+  has to be done here.
+
+Done:
+
+- **Removed `POST /api/credits/refund`** (new §7 item 26, high). Since the
+  first commit it gave any signed-in account one credit per call, with no
+  check that anything had been charged: unlimited credits for a loop, which
+  is Premium for free, and it defeated even the server-charged "Explain my
+  fit". Nothing called it (not the live code at `bae4abc`, not this branch).
+  The server's internal `refundOneCredit()` stays, used by the route that
+  charged. `creditManager.refundCredit()` (no callers) is gone too.
+  `test/server/routes.test.js` pins it: no route whose path says refund, and
+  no `.credits + …` outside `refundOneCredit()`. Both tests fail against the
+  old server. **Production keeps the hole until this branch is deployed.**
+- **§7 item 18 fixed:** a production website build now calls the API on its
+  own origin when `VITE_API_URL` is empty, so a preview or a new domain
+  talks to its own API rather than the live one; the extension keeps
+  `https://www.onextap.com`. `src/creditManager.js` takes `API_URL` from
+  `src/config.js` instead of working it out again. Checked on a production
+  build under `vite preview`: the Contact page's feedback posted to
+  `localhost:5174/api/feedback`, with every request to onextap.com blocked
+  and none attempted.
+- **§7 item 25 designed** (not built): `docs/plans/active/server-side-generation-charging.md`.
+  One table of server-granted follow-ups, two atomic database functions,
+  charging inside the generate route before the model call, and a rollout
+  where `/api/credits/deduct` becomes a no-op so no old client is double
+  charged. Four decisions for the owner at its end.
+- **`docs/app-flow.md` rewritten** from the code for the website (§7 item 4
+  done): entry points and arrival parameters, sign-in, My Profiles and the
+  sync, Answer Studio, cover letters, Job Matches, the plan panel, settings,
+  errors, stored state. The popup's flows were kept, with the autofill
+  section-toggle gap re-checked (still ignored).
+- **§7 item 20 fixed:** `web/404.html`, on the company pages' frame, built to
+  `dist-dashboard/404.html`, which Vercel serves for unknown addresses. Seen
+  on a production build at desktop and phone width; an e2e test added.
+- `HANDOVER.md` §9 gained the deploy section (Vercel variables, the
+  extension's allowed domains, Supabase and Dodo URLs, the order).
+- `npm test`: 564 pass, 0 fail, 2 skipped.
+
 ---
 
 ## 1. What was asked, and what was decided
@@ -365,15 +419,16 @@ Behaviour only; the design is untouched.
   that survived `--no-experimental-webstorage` fail the same way on the
   untouched original clone (§7, item 11).
 - Checkpoint 1: 541 pass, 3 fail (the missing fixture file).
-- **Checkpoint 3: 562 pass, 0 fail, 2 skipped**, with
+- Checkpoint 3: 562 pass, 0 fail, 2 skipped.
+- **Checkpoint 4: 564 pass, 0 fail, 2 skipped**, with
   `server/data/cached_jobs.json` in place (untracked; without it, 3 fail).
 
-**E2E (`npm run test:e2e`)**, at checkpoint 3: 158 pass, 10 skipped
+**E2E (`npm run test:e2e`)**, at checkpoint 4: 161 pass, 10 skipped
 (keyboard and wheel tests on the phone profile), 0 fail, across desktop
 Chromium, phone Chromium and WebKit. It covers the landing page, its company
-pages, and one dashboard flow (cover-letter credits, signed in through the
-stubs). WebKit on Windows is slow enough to catch a page mid-transition; two
-such flakes were fixed at checkpoint 1.
+pages, the 404 page, and one dashboard flow (cover-letter credits, signed in
+through the stubs). WebKit on Windows is slow enough to catch a page
+mid-transition; two such flakes were fixed at checkpoint 1.
 
 ---
 
@@ -391,7 +446,7 @@ such flakes were fixed at checkpoint 1.
    - **a new extension release is now needed**, for checkpoint 2's profile-sync fix and checkpoint 3's cover-letter credits in the popup. Until it ships, the published popup (v1.0.3) still personalises cover letters for free while the website charges, and still misses dashboard edits;
    - it also links straight to `/dashboard/` (the landing forwards the old link meanwhile);
    - point the listing's privacy URL at `/privacy/` (the old URL redirects).
-6. **Rewrite `docs/app-flow.md`** (§7, item 4), once the flows are confirmed.
+6. **Check `docs/app-flow.md` against the real run** (§7, item 4), and fix it where they disagree.
 7. **Merge and push.** Everything is committed on the branch `merge/web-dashboard`.
 
 ---
@@ -426,7 +481,9 @@ before this work.
 
 **3. ~~The landing's Playwright suite is broken by the wiring.~~ Fixed at checkpoint 1** (§0). The four tests that expected the old `onextap:login` / `onextap:feedback` stubs now stub the network (`web/tests/stubs.js`) and assert the request bodies. Playwright 1.63 and its browsers are installed on this machine.
 
-**4. Docs.** Updated at checkpoint 2 (§0), except **`docs/app-flow.md`**, which still describes the React app's entry points, sign-in, upgrade and cancellation, account settings and stored state. It carries an "out of date" note and is to be rewritten once the real-service run has confirmed the flows.
+**4. ~~Docs.~~ Done:** updated at checkpoint 2, and `docs/app-flow.md` rewritten from the code at checkpoint 4. It is traced and stub-tested, not yet confirmed against real services; fix it where the real run disagrees.
+
+**26. Any account could mint credits through `POST /api/credits/refund`. Fixed at checkpoint 4 on this branch; production keeps the hole until this branch is deployed.** Pre-existing since the first commit (Feb 2026): the route added a credit for any signed-in, non-Premium account, with no check that a charge had happened, no limit, and no caller anywhere in the product. Removed, with `test/server/routes.test.js` to keep it out (§0).
 
 ### Medium
 
@@ -466,13 +523,13 @@ before this work.
 - This also fixes a bug: the old dashboard's "scrape the active tab" scraped the dashboard itself, and for cover letters that overrode what the user pasted.
 - The service worker's `SCRAPE_ACTIVE_TAB` is unchanged; it only makes sense from the popup.
 
-**18. Preview deployments call the production API.** `src/config.js` falls back to `https://www.onextap.com` when `VITE_API_URL` is empty in a production build. Pre-existing.
+**18. ~~Preview deployments call the production API.~~ Fixed at checkpoint 4:** with `VITE_API_URL` empty, a production website build calls its own origin, and the extension `https://www.onextap.com` (`src/config.js`).
 
 **19. Leftover code.**
 - `src/index.css` still holds the old dashboard's CSS: dead but harmless.
 - `src/consent.js` is unused, and kept on purpose as the future analytics consent gate.
 
-**20. Unknown URLs now get Vercel's default 404.** The single-page-app catch-all is gone. A custom `404.html` in `web/public/` would fix it.
+**20. ~~Unknown URLs get Vercel's default 404.~~ Fixed at checkpoint 4:** `web/404.html` (a Vite entry, so it shares the site's styles), built to `dist-dashboard/404.html`.
 
 **21. Job Matches shows "Scoring 30 of 30 jobs" immediately.** This is the backend's own constants (batch = prefilter = 30); the label is only an estimate.
 
@@ -482,7 +539,7 @@ before this work.
 
 **24. ~~The website never installs the client logger's global handlers.~~ Fixed at checkpoint 3:** every website entry calls `installGlobalErrorHandlers()`, so uncaught errors go through the logger and `__onextapIssues()` works in the console there too.
 
-**25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3.
+**25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3. **Design written at checkpoint 4, awaiting approval:** `docs/plans/active/server-side-generation-charging.md`.
 
 ### Found and fixed along the way (for the record)
 
@@ -507,10 +564,13 @@ needs them before anything can be tested against real services.
 
 ### Getting the code
 
-- Push the branch from this machine first. The only remote is `origin`,
-  `github.com/Aiko002/Onextap` (the backend's repo): `git push -u origin
-  merge/web-dashboard`, or add your own repo as a remote and push there.
-- On the new machine: `git clone <repo>`, then `git checkout merge/web-dashboard`.
+- It is on GitHub: `https://github.com/UncannySteel/OneXtap-latest` (public),
+  branch `merge/web-dashboard`, which is the repo's default branch. So
+  `git clone https://github.com/UncannySteel/OneXtap-latest.git` is all it
+  takes.
+- On this machine the remote is `latest` (`origin` is still the backend's
+  repo, `Aiko002/Onextap`, and was never pushed to). New commits here go up
+  with `git push latest merge/web-dashboard`.
 
 ### Software
 
@@ -582,6 +642,40 @@ session added:
   the first personalisation spends a credit, its re-run is free, and a new
   job description spends again.
 - `__onextapIssues()` answers in the dashboard's console.
+
+### Deploying (Vercel)
+
+This repo deploys as it is: `vercel.json` builds the website
+(`vite build --config vite.dashboard.config.js` → `dist-dashboard/`), serves
+`api/index.js` as one function under `/api/` (60 s limit), and runs the
+ingest cron daily at 06:00 UTC. What the Vercel project needs:
+
+- **Build-time variables** (inlined into the website): `VITE_SUPABASE_URL`,
+  `VITE_SUPABASE_ANON_KEY`, `VITE_DASHBOARD_URL` (the site's origin). Leave
+  `VITE_API_URL` empty: the site then calls its own `/api/`.
+- **Server variables**: everything in `server/.env` above, with
+  `CLIENT_URL` set to the site's origin (checkout returns there, and it is the
+  API's allowed CORS origin), `CRON_SECRET` set (Vercel sends it to the cron
+  route; unset, the route answers 503), `ALLOW_CACHE_SOURCE=false`, and
+  `DODO_PAYMENTS_ENVIRONMENT=live_mode` only when taking real payments.
+- **The domain matters for the extension.** `extension/manifest.json` lets
+  only `https://www.onextap.com`, `https://onextap.com` and
+  `http://localhost:5173` message the extension. On any other domain the
+  dashboard still works, but cannot sync profiles to the extension. Serving
+  it elsewhere means widening `externally_connectable` and a new extension
+  release (CLAUDE.md: ask first).
+- **Supabase** (the production project, this time): Redirect URLs for
+  `https://<domain>/dashboard/` (the Site URL can stay the root), and any
+  migration the production project lacks: it has 001–005 already
+  (`supabase/migrations/README.md`); this work adds none.
+- **Dodo**: the webhook pointed at `https://<domain>/api/webhook`, and the
+  customer portal enabled.
+- **The extension**: build it with `.env` holding the production values
+  (`VITE_API_URL=https://www.onextap.com`, `VITE_DASHBOARD_URL` the site's
+  origin) for the Web Store release (§6).
+- **Order**: deploying fixes the credit-minting route (§7 item 26) on the
+  website's API at once. The extension's changes (profile sync, cover-letter
+  credits in the popup) reach users only with the new extension release.
 
 ### For Claude on that machine
 
