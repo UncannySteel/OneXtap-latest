@@ -54,6 +54,12 @@ Instrument Serif for the voice, Instrument Sans for UI, DM Mono for figures.
   you back and forth.
 - **The name** comes from the account, then the profile, then the email.
   Credits read "Unlimited" on Premium.
+- **Credits.** One credit buys an answer plus three improvements (Answer
+  Studio), a cover letter plus one re-run for the same job description (Cover
+  Letter, `@app/coverLetterCredits.js`), or one fit explanation (Job Matches).
+  Answer Studio and Cover Letter check the balance before the AI call and
+  deduct through `POST /api/credits/deduct` after a successful one; "Explain my
+  fit" is charged by the server inside `POST /api/jobs/explain`.
 - **Settings**: change avatar (kept in this browser: the Google photo, else
   initials, unless you upload one), manage subscription, billing portal, log
   out, delete account. Logging out clears this browser's profiles

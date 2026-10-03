@@ -86,6 +86,8 @@ the Vercel project needs no change.
 │   │                          #   grounding the validator diffs against
 │   ├── fabricationCorpus.js   # Loads that grounding for the fabrication notice
 │   │                          #   (popup and web dashboard)
+│   ├── coverLetterCredits.js  # What personalising a cover letter costs: 1 credit
+│   │                          #   + 1 free re-run (pure; popup and web dashboard)
 │   ├── resumeStore.js         # Local resume library (`onextap_resumes`)
 │   ├── resumeParse.js         # Upload transport: base64 → PARSE_RESUME → parse
 │   ├── resumeToProfile.js     # Parsed resume → profile fields
@@ -130,8 +132,9 @@ the Vercel project needs no change.
 │   │   ├── site/              #   the dashboard's variants of the company pages
 │   │   └── contact/ privacy/  #   /dashboard/contact/, /dashboard/privacy/
 │   ├── public/                # Copied verbatim into the website build
-│   ├── tests/                 # Landing e2e (Playwright); stubs.js stands in
-│   │                          #   for Supabase and the API
+│   ├── tests/                 # E2E (Playwright): the landing page, its company
+│   │                          #   pages, the dashboard's cover-letter credits;
+│   │                          #   stubs.js stands in for Supabase and the API
 │   └── playwright.config.js
 ├── server/                    # Express backend (own package.json + node_modules)
 │   ├── index.js               # Every API route (~2.6k lines)
@@ -165,7 +168,7 @@ the Vercel project needs no change.
 │   └── .env                   # Server secrets — gitignored
 ├── test/                      # `npm test` (node --test). NOT under src/, so
 │   │                          #   Vite can never bundle it.
-│   ├── matching/ corpus/ resume/ jobs/ observability/ server/ extension/
+│   ├── matching/ corpus/ resume/ jobs/ observability/ server/ extension/ credits/
 │   └── evals/                 # `npm run evals` — accuracy + fabrication gates
 ├── scripts/                   # One-off data repairs (backfills)
 ├── api/index.js               # Vercel serverless entry: re-exports the Express app
@@ -207,12 +210,15 @@ The website (website build), through the @app alias (→ src/):
   web/dashboard/js/** ──► @app/{profileStore,resumeStore,resumeParse,resumeToProfile,
                                 auth,supabaseClient,creditManager,jobsApi,storage,
                                 config,extensionClient,answerStudio,applicationTypes,
-                                profileDefaults,fabricationCorpus,logger}.js
+                                profileDefaults,fabricationCorpus,coverLetterCredits,
+                                logger}.js
                      └──► @app/matching/index.js
                      └──► extension/constants.js   (my-profiles.js: COUNTRIES, GENDERS)
   web/dashboard/site/** ──► web/src/{features,shared,app,pages}/…   (the landing's own
                                                                      pieces, reused)
   web/src/app/backend.js ──► @app/config.js, @app/auth.js (loaded on first sign-in)
+  web/src/main.js, web/src/pages/sub-page.js, web/dashboard/site/sub-page.js
+                         ──► @app/logger.js   (installGlobalErrorHandlers)
 
 Leaf modules in src/:
 

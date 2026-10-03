@@ -68,13 +68,14 @@ status: `HANDOVER.md`.
 - Verbose server logs: `LOG_LEVEL=debug npm run server:dev`
   (levels: error/warn/info/debug; client side uses `VITE_LOG_LEVEL`)
 - **Test: `npm test`** (`node --test`) — matching, corpus, the stores,
-  server modules, the worker's profile sync.
-- **E2E: `npm run test:e2e`** — landing + company pages, against stubs.
+  credit rules, server modules, the worker's profile sync.
+- **E2E: `npm run test:e2e`** — landing + company pages, and the dashboard's
+  cover-letter credits, against stubs.
 - **Lint: none.** There is no ESLint or Prettier config.
 
-Nothing automated drives the dashboard, the popup, the content script or
-real services. There, "verified" means you built it and exercised the path
-in the browser. Say so plainly when you have not.
+Nothing else automated drives the dashboard, nor the popup, the content
+script or real services. There, "verified" means you built it and exercised
+the path in the browser. Say so plainly when you have not.
 
 ## Key facts
 

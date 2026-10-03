@@ -25,7 +25,11 @@ import * as hud from '../features/hud/hud.js';
 import * as login from '../features/login/login.js';
 import { signInAttempt } from '../app/backend.js';
 import { wireHeader } from '../app/wire.js';
+import { installGlobalErrorHandlers } from '@app/logger.js';
 import pageFoot from './page-foot.html?raw';
+
+// Uncaught errors go through the app's logger, as on the landing page.
+installGlobalErrorHandlers();
 
 var HOME = '/';
 

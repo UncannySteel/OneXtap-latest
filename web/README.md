@@ -166,8 +166,9 @@ tests/
   stage.spec.js             the e2e checks (npm run test:e2e)
   pages.spec.js             the company pages, their nav, Back, and the feedback window
   windows.spec.js           the FAQ and sign-in windows
-  stubs.js                  stand-ins for Supabase auth and /api/feedback; the test server's
-                            Supabase address cannot resolve (playwright.config.js)
+  dashboard.spec.js         the dashboard (signed in through the stubs): cover-letter credits
+  stubs.js                  stand-ins for Supabase auth, /api/feedback and the dashboard's API;
+                            the test server's Supabase address cannot resolve (playwright.config.js)
   tour.mjs                  steps every transition at several sizes and saves frames to look at
 ```
 

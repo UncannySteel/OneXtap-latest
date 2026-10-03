@@ -23,7 +23,8 @@ One origin serves all of it: the landing page at `/`, the dashboard at
   paste the job description; the popup reads it from the page you have open.
   One credit buys an answer plus three improvements of it.
 - **Cover letters** — up to 10 templates per profile, personalised with AI per
-  application, with saved versions.
+  application, with saved versions. One credit buys a personalisation plus one
+  free re-run of it (same template, same job description).
 - **Job Matches** (dashboard) — ranks a shared pool of job listings, ingested
   daily from Adzuna, company ATS boards and keyless job boards, against one of
   your resumes. "Explain my fit" costs one credit.
@@ -211,12 +212,13 @@ serves the Express app as a serverless function.
 - `npm test` — matching and corpus functions, the profile and resume stores,
   server modules (jobs pipeline, logger, cron auth) and the extension's
   profile sync.
-- `npm run test:e2e` — the landing page and its company pages in Chromium
-  (desktop and phone) and WebKit. Sign-in and the feedback form are answered
-  by `web/tests/stubs.js`, and the test server's Supabase address cannot
+- `npm run test:e2e` — the landing page and its company pages, and the
+  dashboard's cover-letter credits, in Chromium (desktop and phone) and
+  WebKit. Sign-in, the feedback form and the API are answered by
+  `web/tests/stubs.js`, and the test server's Supabase address cannot
   resolve, so a run never reaches a real project.
-- Nothing automated covers the dashboard, the popup, the content script or
-  the real services: check those by hand.
+- Nothing automated covers the rest of the dashboard, the popup, the content
+  script or the real services: check those by hand.
 
 ### Logging
 
@@ -233,9 +235,8 @@ LOG_LEVEL=debug npm run server:dev
   Vercel so log drains can parse it. Every response carries `X-Request-Id`,
   and every log line inside that request repeats it as `rid`.
 - **Website and popup** — `VITE_LOG_LEVEL` (default `warn` in a production
-  build). In the popup, recent warnings and errors are kept in memory and
-  `__onextapIssues()` in the console dumps them; the website does not install
-  those global handlers (`installGlobalErrorHandlers()` in `src/logger.js`).
+  build). Recent warnings and errors, uncaught ones included, are kept in
+  memory, and `__onextapIssues()` in the console dumps them.
 - **Content script** — errors and warnings always print; set
   `window.__onextapDebug = true` in the page console for the rest.
 

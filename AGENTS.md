@@ -23,9 +23,10 @@ front ends import works inside the extension and on the website.
 3. Follow the documented architecture instead of inventing new structure
    during implementation.
 4. Verify by building and exercising the path. `npm test` covers the pure
-   and store modules, the server modules and the worker's profile sync;
-   `npm run test:e2e` covers the landing page against stubs. There is no
-   linter, and nothing automated drives the dashboard, the popup or real
+   and store modules, the credit rules, the server modules and the worker's
+   profile sync; `npm run test:e2e` covers the landing page and the
+   dashboard's cover-letter credits against stubs. There is no linter, and
+   nothing else automated drives the dashboard, nor the popup or real
    services — there, verification is manual, so say what you actually ran.
 5. Escalate when an action is destructive, ambiguous, or requires judgment
    beyond the written rules.

@@ -6,6 +6,7 @@ import { reducedMotion, riseWords } from './motion.js';
 import { initSettings } from './settings.js';
 import { toast, transition } from './util.js';
 import { h } from './ui/dom.js';
+import { installGlobalErrorHandlers } from '@app/logger.js';
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 const PAYMENT_POLL_MS = 8000;
@@ -411,4 +412,7 @@ async function boot() {
   else maybeStartTour();
 }
 
+// Uncaught errors and rejections go through the logger (redacted, kept for
+// __onextapIssues() in the console), as they do in the popup.
+installGlobalErrorHandlers();
 boot();

@@ -9,7 +9,11 @@ const LEGACY_PROFILE_KEY = 'user_profile';
 
 /** @typedef {{ id: string, company: string, role: string, jdSnippet: string, body: string, createdAt: string }} CoverLetterVariant */
 
-/** @typedef {{ id: string, name: string, body: string, createdAt: string, lastUsed?: string, applicationType?: string, variants?: CoverLetterVariant[] }} CoverLetterTemplate */
+/**
+ * `aiRerunsLeft` / `aiRerunKey`: the free re-run a paid personalisation
+ * bought, and the job description it is for (src/coverLetterCredits.js).
+ * @typedef {{ id: string, name: string, body: string, createdAt: string, lastUsed?: string, applicationType?: string, variants?: CoverLetterVariant[], aiRerunsLeft?: number, aiRerunKey?: string|null }} CoverLetterTemplate
+ */
 
 /**
  * @typedef {Object} StoredProfile

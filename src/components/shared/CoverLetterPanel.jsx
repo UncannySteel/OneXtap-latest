@@ -5,8 +5,13 @@ import { getAccessToken } from '../../auth';
 import { getApplicationTypeConfig } from '../../applicationTypes';
 import { ANSWER_STUDIO_MODEL, API_URL } from '../../config';
 import { hasExtensionRuntime, sendToExtension } from '../../extensionClient';
-import { ANSWER_STYLE_INSTRUCTIONS } from '../../answerStudio';
+import { ANSWER_STYLE_INSTRUCTIONS, CREDIT_API_TIMEOUT_MS, withTimeout } from '../../answerStudio';
+import { creditManager } from '../../creditManager';
+import { applicationKey, consumesCredit, allowanceAfter } from '../../coverLetterCredits';
+import { log as baseLog } from '../../logger';
 import FabricationNotice, { loadFabricationCorpus } from './FabricationNotice';
+
+const log = baseLog.child('ui');
 
 // --- COVER LETTER ---
 const normalizeCoverLetterTemplates = (templates = []) =>
@@ -21,6 +26,11 @@ const normalizeCoverLetterTemplates = (templates = []) =>
  * Holds the templates for the active profile, generates per-application
  * variants against scraped job context, and pushes the chosen text into the
  * page with FILL_COVER_LETTER. Capped at MAX_COVER_LETTERS_PER_PROFILE.
+ *
+ * Personalising costs what src/coverLetterCredits.js says: one credit buys a
+ * personalisation and one free re-run of it; Premium is unlimited. Checked
+ * before the call, deducted through the server after a successful one, as in
+ * Answer Studio. The web dashboard's Cover Letter workspace does the same.
  *
  * @param {object} props
  * @param {(message: string, type?: 'success'|'error'|'loading') => void} props.showToast
@@ -47,6 +57,9 @@ const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 
   const [manualDescription, setManualDescription] = useState('');
   const [newTemplateName, setNewTemplateName] = useState('');
   const [addingTemplate, setAddingTemplate] = useState(false);
+  // null until loaded (or when it could not be); Infinity on Premium.
+  const [credits, setCredits] = useState(null);
+  const [premium, setPremium] = useState(false);
   const saveDebounceRef = useRef(null);
   const fileInputRef = useRef(null);
   const lastContextRef = useRef({ company: '', description: '' });
@@ -67,6 +80,17 @@ const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 
   }, []);
 
   useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    let alive = true;
+    creditManager.getCreditsWithStatus().then((res) => {
+      if (!alive) return;
+      setPremium(res.isPremium);
+      if (!res.error) setCredits(res.isPremium ? Infinity : (res.credits ?? 0));
+    });
+    return () => { alive = false; };
+  }, [user]);
 
   useEffect(() => {
     const checkPage = async () => {
@@ -238,6 +262,25 @@ const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 
         return;
       }
 
+      const key = applicationKey(description);
+      let latest = credits;
+      let isPremium = premium;
+      if (!isPremium && latest === null) {
+        const res = await creditManager.getCreditsWithStatus();
+        if (!res.error) {
+          isPremium = res.isPremium;
+          latest = res.isPremium ? Infinity : (res.credits ?? 0);
+          setPremium(isPremium);
+          setCredits(latest);
+        }
+      }
+      const charged = consumesCredit({ premium: isPremium, template, key });
+      if (charged && Number(latest || 0) <= 0) {
+        setGenerateError('No credits remaining. Premium makes cover letters unlimited.');
+        setIsGenerating(false);
+        return;
+      }
+
       const token = await getAccessToken();
       if (!token) throw new Error('Please sign in first.');
 
@@ -275,11 +318,27 @@ const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 
       setFabricationFlags(Array.isArray(body?.fabricationFlags) ? body.fabricationFlags : []);
       lastContextRef.current = { company, description };
 
+      let deducted = false;
+      if (charged) {
+        try {
+          const deduct = await withTimeout(creditManager.deductCredit(), CREDIT_API_TIMEOUT_MS, 'Credit update timed out after generation.');
+          if (!deduct.success) {
+            setGenerateError(deduct.error || 'Letter written, but your credits could not be updated.');
+          } else {
+            deducted = true;
+            setCredits(deduct.isPremium ? Infinity : deduct.remaining);
+          }
+        } catch (creditErr) {
+          log.warn('Credit deduction failed after generation:', creditErr);
+          setGenerateError('Letter written, but the credit update failed. Reopen Onextap to see your balance.');
+        }
+      }
+      const allowance = allowanceAfter({ premium: isPremium, charged, deducted, template, key });
       const next = coverLetters.map((t) =>
-        t.id === template.id ? { ...t, lastUsed: new Date().toISOString() } : t
+        t.id === template.id ? { ...t, lastUsed: new Date().toISOString(), ...allowance } : t
       );
       await persistTemplates(next);
-      showToast?.(`${documentLabel} personalized`, 'success');
+      showToast?.(charged || isPremium ? `${documentLabel} personalized` : `${documentLabel} personalized (free re-run)`, 'success');
     } catch (e) {
       setGenerateError(e?.message || 'AI generation failed');
       showToast?.(e?.message || 'Generation failed', 'error');
@@ -324,6 +383,13 @@ const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 
 
   const activeTemplate = coverLetters.find((t) => t.id === activeTemplateId);
   const canPersonalize = !!(manualDescription.trim() || hasJobDescription) && !!activeTemplate?.body?.trim() && !!user;
+  // What the button will cost, in words (src/coverLetterCredits.js).
+  const personalizeCost = (() => {
+    if (!user || premium || !activeTemplate?.body?.trim() || !manualDescription.trim()) return '';
+    if (!consumesCredit({ premium, template: activeTemplate, key: applicationKey(manualDescription) })) return 'Free re-run for this description';
+    if (credits === 0) return 'No credits left · Premium makes cover letters unlimited';
+    return 'Uses 1 credit · includes 1 free re-run';
+  })();
 
   return (
     <div className={`space-y-4 ${compact ? '' : 'max-w-3xl mx-auto'}`}>
@@ -469,6 +535,9 @@ const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 
             >
               {isGenerating ? 'Personalizing…' : `Personalize for this ${appTypeConfig.shortLabel.toLowerCase()} application`}
             </button>
+            {personalizeCost && (
+              <p className="mt-1 text-center text-[11px] text-onextap-dark/50 dark:text-[#9AB07A]">{personalizeCost}</p>
+            )}
           </div>
 
           {(suggestionText || isGenerating) && (

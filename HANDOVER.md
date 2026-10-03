@@ -1,11 +1,12 @@
 # Handover: Onextap backend plugged into the new landing page and dashboard
 
-**State on 2026-09-27:** built, and exercised in a browser against a local mock
-of the API and of Supabase auth. **Not yet run against real keys** (no `.env`
-or `server/.env` was provided). **Committed locally, not pushed**, on the
-branch `merge/web-dashboard`, off `main` (`bae4abc`) of
-`github.com/Aiko002/Onextap`: the first session's work is `81e1c01`, and each
-checkpoint since (§0) is its own commit.
+**State on 2026-10-03:** built, and exercised against stubs and a local mock
+of the API and of Supabase auth. **Not yet run against real keys**: there are
+none on this machine, and the owner will add them on another one (§9 lists
+everything that machine needs). **Committed locally**, on the branch
+`merge/web-dashboard`, off `main` (`bae4abc`) of `github.com/Aiko002/Onextap`:
+the first session's work is `81e1c01`, and each checkpoint since (§0) is its
+own commit.
 
 Section 7 lists every problem found that is still open. Read it before
 deploying. Section 0 is the log of the sessions since, newest last: start
@@ -110,6 +111,50 @@ Done:
   goes to a hosted service (Supabase auth is not local): the owner signs up
   or in, and clicks confirmation emails and "Delete account"; Claude drives
   the rest, and asks before submitting a Dodo test-mode checkout.
+
+Committed as `c5fe41f`.
+
+### Checkpoint 3 (2026-10-03, session 2): cover-letter credits, ready to move
+
+The owner's answers at checkpoint 2:
+
+- **Fixture:** the owner put `server/data/cached_jobs.json` in place (40
+  synthetic listings, all example.com) and chose to **keep it untracked**. So
+  `npm test` is green here and fails 3 fixture tests on a clone without it
+  (§9).
+- **Cover letters (§7 item 8):** charge like Answer Studio, but **1 credit
+  buys a personalisation plus 1 free re-run** (not 3). Done, below.
+- **Log out (§7 item 9):** keep deleting this browser's profiles. No change.
+- **Keys:** none on this machine. The owner will add them on another machine
+  after pulling from GitHub, and asked for the list of what it needs: §9.
+
+Done:
+
+- **Cover-letter credits**, on the dashboard and in the popup:
+  - `src/coverLetterCredits.js` (new, pure): a re-run is the same template
+    for the same job description (its first 6000 characters, case and
+    whitespace aside, hashed); the allowance is kept on the template
+    (`aiRerunsLeft`, `aiRerunKey`) and travels to the extension with it.
+    Premium never pays. A charge the server does not confirm buys no re-run.
+  - `web/dashboard/js/ws/cover-letter.js` and
+    `src/components/shared/CoverLetterPanel.jsx`: check the balance before the
+    call, deduct through `POST /api/credits/deduct` after a successful one, and
+    say what the next press costs next to the button.
+  - Copy: the landing's pricing and FAQ and the dashboard's plan list now say
+    credits cover cover letters, and Premium makes them unlimited.
+  - `test/credits/coverLetterCredits.test.js` (9 tests), and
+    `web/tests/dashboard.spec.js`: the first e2e test of the dashboard,
+    signed in through the stubs, driving the Cover Letter workspace through
+    paid, free re-run, new job, free re-run at zero credits, and refused.
+  - **Not checked:** the popup's half. It is the same rule through the same
+    module, but nothing automated drives the popup, and it needs keys and the
+    extension loaded (§9).
+- **§7 item 24 fixed:** every website entry (landing, company pages,
+  dashboard and its company pages) calls `installGlobalErrorHandlers()`.
+- `npm test`: 562 pass, 0 fail, 2 skipped (with the fixture file). Both builds
+  pass without keys (the extension's will not work until rebuilt with `.env`).
+- Docs updated for both (README, repo-structure, CLAUDE.md, AGENTS.md, the
+  web READMEs), and §9 written.
 
 ---
 
@@ -297,7 +342,7 @@ Behaviour only; the design is untouched.
     - tour; settings menu;
     - My Profiles: resume drop → fields filled → save (same storage keys and shape as before); create, switch and delete profiles;
     - Answer Studio: generate (credits 3 → 2, 3 free improvements), free improve, fabrication notice, save, edit, delete;
-    - Cover Letter: template, personalise (no credit spent), save version;
+    - Cover Letter: template, personalise (no credit spent, as it was before checkpoint 3's credit rule), save version;
     - Job Matches: ranking, notices, cards, explain (1 credit, reopening free), filters draft/apply, thin-pool empty state, restored result on return, refresh failure keeping results;
     - plan panel: upgrade → checkout return → Pro; renewal date; switch → pending → "Keep Pro"; billing portal in a new tab;
     - avatar; delete account; phone-width layouts.
@@ -310,7 +355,8 @@ Behaviour only; the design is untouched.
   - ranking and explain on the real pool;
   - Dodo checkout, webhook, portal, end-of-period cancellation and resume;
   - real account deletion.
-- **Extension messaging with the extension actually loaded** (profile sync from the dashboard).
+- **Extension messaging with the extension actually loaded** (profile sync from the dashboard, with checkpoint 2's fix).
+- **The popup's cover-letter credits** (checkpoint 3).
 - Safari and Firefox.
 
 **Unit tests (`npm test`) on this machine** (Node 25, Windows):
@@ -318,14 +364,16 @@ Behaviour only; the design is untouched.
 - At the first handover: 505 pass, 39 fail, 2 skipped out of the box; the 4
   that survived `--no-experimental-webstorage` fail the same way on the
   untouched original clone (§7, item 11).
-- **Since checkpoint 1: 541 pass, 3 fail, 2 skipped, out of the box.** The 3
-  need the missing fixture file (§7, item 11).
+- Checkpoint 1: 541 pass, 3 fail (the missing fixture file).
+- **Checkpoint 3: 562 pass, 0 fail, 2 skipped**, with
+  `server/data/cached_jobs.json` in place (untracked; without it, 3 fail).
 
-**Landing e2e (`npm run test:e2e`)**, since checkpoint 1: 155 pass, 10
-skipped (keyboard and wheel tests on the phone profile), 0 fail, across
-desktop Chromium, phone Chromium and WebKit. WebKit on Windows is slow
-enough to catch the page mid-transition; two such flakes were fixed (§0).
-Covers the landing and its company pages only: nothing drives the dashboard.
+**E2E (`npm run test:e2e`)**, at checkpoint 3: 158 pass, 10 skipped
+(keyboard and wheel tests on the phone profile), 0 fail, across desktop
+Chromium, phone Chromium and WebKit. It covers the landing page, its company
+pages, and one dashboard flow (cover-letter credits, signed in through the
+stubs). WebKit on Windows is slow enough to catch a page mid-transition; two
+such flakes were fixed at checkpoint 1.
 
 ---
 
@@ -340,10 +388,11 @@ Covers the landing and its company pages only: nothing drives the dashboard.
    - in test mode, confirm that cancelling at period end keeps Premium until the date and that `subscription.cancelled` then arrives.
 4. **Vercel**: same env var names; `VITE_DASHBOARD_URL` and `CLIENT_URL` stay the site origin.
 5. **Chrome Web Store**:
-   - a new extension build with the `/dashboard/` link is optional (the landing forwards the old link);
+   - **a new extension release is now needed**, for checkpoint 2's profile-sync fix and checkpoint 3's cover-letter credits in the popup. Until it ships, the published popup (v1.0.3) still personalises cover letters for free while the website charges, and still misses dashboard edits;
+   - it also links straight to `/dashboard/` (the landing forwards the old link meanwhile);
    - point the listing's privacy URL at `/privacy/` (the old URL redirects).
-6. **Update the docs** (§7, item 4).
-7. **Merge and push.** Everything is committed on the local branch `merge/web-dashboard` only.
+6. **Rewrite `docs/app-flow.md`** (§7, item 4), once the flows are confirmed.
+7. **Merge and push.** Everything is committed on the branch `merge/web-dashboard`.
 
 ---
 
@@ -387,20 +436,20 @@ before this work.
 
 **7. Supabase redirect allowlist.** Google sign-in and email confirmation depend on the configuration in §6. Without `/dashboard/` on the allowlist, Supabase falls back to the site root and the landing forwards the tokens. This path was tested only against the mock.
 
-**8. Cover-letter personalisation never spends a credit.** Pre-existing: the generate endpoint charges nothing itself; Answer Studio deducts separately, but cover letters don't. Free users therefore get unlimited cover-letter AI. Kept as it was, since changing it is a pricing decision.
+**8. ~~Cover-letter personalisation never spends a credit.~~ Done at checkpoint 3**, by the owner's decision: 1 credit buys a personalisation plus 1 free re-run, on the dashboard and in the popup (§0). The popup's half reaches users only with a new extension release (§6).
 
-**9. Logging out deletes this browser's profiles** (`user_profile` and `onextap_profiles`). This keeps the backend's behaviour. Resumes and the avatar stay. It may surprise users; worth a product decision.
+**9. Logging out deletes this browser's profiles** (`user_profile` and `onextap_profiles`). Resumes and the avatar stay. **Decided at checkpoint 2: keep it** (the backend's behaviour).
 
 **10. "Delete account" clears only this browser.** The extension's `chrome.storage` copy and other devices keep their local data. The dialog now says so.
 
 **11. `npm test` failed on this machine for three environmental reasons.** All pre-existing, and all reproduce on the untouched original:
 - ~~**Node 25 exposes a global `localStorage`**~~ — fixed at checkpoint 1 (`src/storage.js` checks for `getItem`).
-- **`server/data/cached_jobs.json` does not exist.** It was never committed (`.gitignore` has `server/data/`, and git history has no such file), though `server/jobs/adapters/cache.js` and 3 tests expect ~40 synthetic listings there. Those 3 tests fail on any fresh clone. Writing one means changing `.gitignore` to `server/data/*` + `!server/data/cached_jobs.json` (a negation cannot re-include a file inside an ignored directory). Mind the hazard in `cache.js`'s header: once the file exists, a local ingest against a real project seeds fake listings unless `ALLOW_CACHE_SOURCE=false` (which `server/.env.example` already sets).
+- **`server/data/cached_jobs.json` is not in git.** `.gitignore` has `server/data/`, and git history has no such file, though `server/jobs/adapters/cache.js` and 3 tests expect ~40 synthetic listings there. At checkpoint 3 the owner put the file in place on this machine and chose to keep it untracked, so the 3 tests pass here and fail on a clone without it: copy it by hand (§9). To track it instead, `.gitignore`'s `server/data/` has to become `server/data/*` + `!server/data/cached_jobs.json` (a negation cannot re-include a file inside an ignored directory). Mind the hazard in `cache.js`'s header: with the file present, a local ingest against a real project seeds fake listings unless `ALLOW_CACHE_SOURCE=false` (which `server/.env.example` already sets).
 - ~~**Windows line endings** break `test/server/logger.test.js`~~ — fixed at checkpoint 1 (splits on `/\r?\n/`).
 
 **12. The published extension (v1.0.3) still opens `onextap.com/?extensionId=…`.** The landing forwards it to the dashboard (tested). A new release links straight to `/dashboard/`. Publishing is the owner's call.
 
-**13. `dist/` was rebuilt at checkpoint 1, but without a `.env`.** That build has no Supabase address, so its Supabase client cannot start (the dev dashboard without a `.env` stops on `supabaseUrl is required`; the popup uses the same `src/supabaseClient.js`). Run `npm run build` again once `.env` is in place, before loading the unpacked extension.
+**13. `dist/` has only ever been built here without a `.env`** (checkpoints 1 to 3). That build has no Supabase address, so its Supabase client cannot start (the dev dashboard without a `.env` stops on `supabaseUrl is required`; the popup uses the same `src/supabaseClient.js`). Run `npm run build` again once `.env` is in place, before loading the unpacked extension.
 
 ### Low
 
@@ -431,7 +480,9 @@ before this work.
 
 **23. The landing's "signed in?" check reads Supabase's default storage key** (`sb-<ref>-auth-token`), in `web/src/app/backend.js`. A custom `storageKey` would break it.
 
-**24. The website never installs the client logger's global handlers.** Only `src/popup.jsx` calls `installGlobalErrorHandlers()` (`src/logger.js`), so on the landing page and the dashboard, uncaught errors and unhandled rejections skip the logger, and `__onextapIssues()` does not exist in the console. One call in `web/dashboard/js/main.js` (and `web/src/main.js`) would fix it. Found at checkpoint 2.
+**24. ~~The website never installs the client logger's global handlers.~~ Fixed at checkpoint 3:** every website entry calls `installGlobalErrorHandlers()`, so uncaught errors go through the logger and `__onextapIssues()` works in the console there too.
+
+**25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3.
 
 ### Found and fixed along the way (for the record)
 
@@ -446,3 +497,99 @@ before this work.
 
 - The mock servers and scratch builds lived outside the repo, and their `.claude/launch.json` entries were removed. `.claude/launch.json` now has `web` (the site on 5173), `api` (the server on 3001) and `web-preview`.
 - Committed on the local branch `merge/web-dashboard` (from checkpoint 1 on). Nothing has been pushed, and nothing has been deployed.
+
+---
+
+## 9. Setting up on another machine
+
+The code travels through GitHub. These things do not, and the next machine
+needs them before anything can be tested against real services.
+
+### Getting the code
+
+- Push the branch from this machine first. The only remote is `origin`,
+  `github.com/Aiko002/Onextap` (the backend's repo): `git push -u origin
+  merge/web-dashboard`, or add your own repo as a remote and push there.
+- On the new machine: `git clone <repo>`, then `git checkout merge/web-dashboard`.
+
+### Software
+
+- Git, and Node.js **21 or later** with npm (22 LTS is fine; this machine ran
+  25.8). Node 18 runs the app but not `npm test`, which passes a glob to
+  `node --test`.
+- Google Chrome, to load the unpacked extension.
+- For `npm run test:e2e`, Playwright's browsers, once:
+  `npx playwright install chromium webkit`.
+
+### Files that are not in git
+
+| File | Holds | From |
+| --- | --- | --- |
+| `.env` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL=http://localhost:3001`, `VITE_DASHBOARD_URL=http://localhost:5173` | `.env.example`, with the dev project's values |
+| `server/.env` | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, the Dodo test-mode key, webhook secret and product id, `CLIENT_URL=http://localhost:5173`, `RESEND_API_KEY`, `CRON_SECRET`, `ALLOW_CACHE_SOURCE` | `server/.env.example`, which documents the optional rest |
+| `server/data/cached_jobs.json` | The 40 synthetic job listings, kept untracked by the owner's choice | Copy it from this machine. Without it, 3 unit tests fail and the offline job source is empty |
+
+Never commit either `.env` (both are gitignored; CLAUDE.md rule 10).
+
+### Accounts and settings, on a dev project
+
+- **Supabase**, a dev project, not production (CLAUDE.md asks first for
+  anything against production):
+  - SQL Editor: `supabase/schema.sql`, then
+    `supabase/migrations/002_rank_cache.sql` (`schema.sql` already includes
+    001, 003, 004 and 005). Record it in `supabase/migrations/README.md`.
+  - Authentication: the email provider (decide whether addresses must be
+    confirmed), and Google if Google sign-in is to be tested.
+  - URL Configuration → Redirect URLs: `http://localhost:5173/dashboard/`, and
+    `https://<extension-id>.chromiumapp.org/` with the unpacked extension's ID
+    (shown at `chrome://extensions`) for Google sign-in from the popup.
+- **Dodo Payments**, test mode: a subscription product, an API key, a webhook
+  secret, and the customer portal enabled. For webhooks to reach a local
+  server, point the webhook at a tunnel to `http://localhost:3001/api/webhook`.
+- **Groq** and **Gemini** keys. Check which Groq model ids the key can reach
+  (`server/.env.example` says how).
+- **Resend**, to test the feedback form (mind its sandbox limit, in
+  `server/.env.example`).
+- **A job pool** for Job Matches: run the ingest once
+  (`curl -H "X-Cron-Secret: <CRON_SECRET>" http://localhost:3001/api/jobs/ingest`),
+  or, on a dev project only, set `ALLOW_CACHE_SOURCE=true` to ingest the
+  fixtures. `GET /api/jobs/meta` shows what the pool holds.
+
+### First run
+
+```bash
+npm install && npm run server:install
+# put .env, server/.env and server/data/cached_jobs.json in place
+npm test              # expect 562 pass, 0 fail
+npm run test:e2e      # expect every test to pass
+npm run build         # after .env: then Load unpacked → dist/ at chrome://extensions
+npm run server:dev    # API on :3001
+npm run dev           # the site on :5173
+```
+
+Open the dashboard from the extension's popup: it passes the unpacked
+extension's ID, which the sync needs.
+
+### Then check by hand
+
+Nothing automated covers these. The list in §7 item 2, plus what this
+session added:
+
+- **Profile sync, with the extension loaded** (§7 item 1): save a profile on
+  the dashboard, open the popup: the dashboard's profile is the active one,
+  and autofill uses it.
+- **Cover-letter credits** (§7 item 8), in the popup and on the dashboard:
+  the first personalisation spends a credit, its re-run is free, and a new
+  job description spends again.
+- `__onextapIssues()` answers in the dashboard's console.
+
+### For Claude on that machine
+
+- Claude's memory from this machine does not travel: this file is the record.
+  Start with "read HANDOVER.md and proceed"; §0's last entry is where things
+  stand.
+- Claude may not type credentials into Supabase's sign-in (a hosted service).
+  The owner signs up or in, and clicks confirmation emails and "Delete
+  account"; Claude drives the rest, and asks before a Dodo test-mode checkout.
+- `.claude/launch.json` (in the repo) has the preview configurations: `web`,
+  `api` and `web-preview`.

@@ -308,6 +308,8 @@ test.describe('the sign-in window', () => {
     await stubAuth(page);
     await stubDashboard(page);
     await bootLanding(page);
+    // The landing page logs uncaught errors through the app's logger.
+    expect(await page.evaluate(() => typeof window.__onextapIssues)).toBe('function');
     await press(page, isMobile, '.hud [data-login]');
     await page.fill('#loginEmail', 'reader@example.com');
     await page.fill('#loginPassword', 'hunter22');

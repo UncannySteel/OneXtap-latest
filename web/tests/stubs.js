@@ -96,6 +96,51 @@ export async function stubFeedback(page, answer = 'ok') {
   return sent;
 }
 
+/* The API the dashboard boots on and spends credits through, for an account
+   with `credits` and no Premium:
+     GET  /api/me, /api/credits, /api/verify-premium
+     POST /api/credits/deduct            one credit, never below zero
+     POST /api/answer-vault/generate     a fixed letter, numbered per call
+   Resolves with the calls made, in order ({ method, path, body }), and the
+   live balance as `state.credits`. Anything else under /api/ is a 404. */
+export async function stubApi(page, { credits = 3 } = {}) {
+  const calls = [];
+  const state = { credits };
+  const account = () => ({
+    id: '00000000-0000-4000-8000-00000000e2e0',
+    email: 'reader@example.com',
+    displayName: 'Ada Tester',
+    credits: state.credits,
+    isPremium: false,
+    // Old enough that the first-run tour stays away.
+    createdAt: '2026-01-01T00:00:00.000Z'
+  });
+  let generated = 0;
+  await page.route(url => url.pathname.startsWith('/api/'), async route => {
+    const request = route.request();
+    const headers = cors(request);
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    const path = new URL(request.url()).pathname;
+    const body = request.postData() ? request.postDataJSON() : null;
+    calls.push({ method: request.method(), path, body });
+
+    if (path === '/api/me') return route.fulfill({ headers, json: account() });
+    if (path === '/api/credits') return route.fulfill({ headers, json: { credits: state.credits, isPremium: false } });
+    if (path === '/api/verify-premium') return route.fulfill({ headers, json: { isPremium: false } });
+    if (path === '/api/credits/deduct') {
+      if (state.credits <= 0) return route.fulfill({ status: 402, headers, json: { success: false, remaining: 0, error: 'No credits remaining' } });
+      state.credits -= 1;
+      return route.fulfill({ headers, json: { success: true, remaining: state.credits, isPremium: false } });
+    }
+    if (path === '/api/answer-vault/generate') {
+      generated += 1;
+      return route.fulfill({ headers, json: { text: `Dear Norwick Labs team, letter number ${generated}.`, fabricationFlags: [] } });
+    }
+    return route.fulfill({ status: 404, headers, json: { error: 'not stubbed' } });
+  });
+  return { calls, state };
+}
+
 /* The dashboard, as a blank page: for tests that only check a button goes
    there, without booting it. */
 export async function stubDashboard(page) {

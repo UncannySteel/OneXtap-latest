@@ -6,8 +6,13 @@ import { loadProfileStore, updateActiveProfileData, MAX_COVER_LETTERS_PER_PROFIL
 import { getAccessToken } from '@app/auth.js';
 import { getApplicationTypeConfig } from '@app/applicationTypes.js';
 import { ANSWER_STUDIO_MODEL, API_URL } from '@app/config.js';
-import { ANSWER_STYLE_INSTRUCTIONS } from '@app/answerStudio.js';
+import { ANSWER_STYLE_INSTRUCTIONS, CREDIT_API_TIMEOUT_MS, withTimeout } from '@app/answerStudio.js';
+import { creditManager } from '@app/creditManager.js';
+import { applicationKey, consumesCredit, allowanceAfter } from '@app/coverLetterCredits.js';
 import { loadFabricationCorpus } from '@app/fabricationCorpus.js';
+import { log as baseLog } from '@app/logger.js';
+
+const log = baseLog.child('ui');
 
 // Cover Letter — the backend's CoverLetterPanel, for the web: templates for
 // the active profile (up to MAX_COVER_LETTERS_PER_PROFILE), personalised per
@@ -19,8 +24,11 @@ import { loadFabricationCorpus } from '@app/fabricationCorpus.js';
 // web page does not get — so here the target application is typed or pasted,
 // and the finished letter is copied (or saved, and filled from the popup).
 //
-// Personalising does not spend a credit, as in the backend: the generation
-// endpoint is called without a deduct.
+// Personalising costs what @app/coverLetterCredits.js says: one credit buys a
+// personalisation and one free re-run of it (same template, same job
+// description); Premium is unlimited. As in Answer Studio, the credit is
+// checked before the call and deducted through the server after a successful
+// one, and the re-run allowance is kept on the template.
 
 const APP_TYPE = 'job';
 const NAME_MAX = 32;
@@ -50,6 +58,10 @@ export function mount(body, ctx) {
   let flags = [];
   let lastContext = { company: '', description: '' };
   let saveTimer = null;
+  // The account's balance, as Answer Studio keeps it: null until loaded or
+  // when it could not be; Infinity on Premium.
+  let premium = false;
+  let credits = null;
 
   // ---------- persistence ----------
   async function persist(templates) {
@@ -94,6 +106,25 @@ export function mount(body, ctx) {
     renderAll();
   }
 
+  async function loadCredits() {
+    const res = await creditManager.getCreditsWithStatus();
+    if (!alive) return;
+    premium = res.isPremium;
+    if (!res.error) {
+      credits = premium ? Infinity : (res.credits ?? 0);
+      ctx.setCredits(credits);
+    }
+    refreshPersonalize();
+  }
+
+  /** What personalising the selected template for the pasted description will cost, in words. */
+  function costNote(template) {
+    if (premium || !template || !descIn.value.trim()) return '';
+    if (!consumesCredit({ premium, template, key: applicationKey(descIn.value) })) return 'This one is a free re-run.';
+    if (credits === 0) return 'No credits left: Premium makes cover letters unlimited.';
+    return 'Uses 1 credit, which includes one free re-run.';
+  }
+
   // ---------- the target application ----------
   const companyIn = input({ placeholder: 'Company or organisation' });
   const roleIn = input({ placeholder: 'Role' });
@@ -131,7 +162,7 @@ export function mount(body, ctx) {
     if (!letters.length) why = `Add a ${noun} template first.`;
     else if (!template?.body?.trim()) why = `The selected template is empty.`;
     else if (!descIn.value.trim()) why = 'Paste the job description to personalise.';
-    else why = template ? `Using “${template.name}”.` : '';
+    else why = template ? [`Using “${template.name}”.`, costNote(template)].filter(Boolean).join(' ') : '';
     if (hint) hint.textContent = why;
     if (!generating) personalizeBtn.disabled = !(template?.body?.trim() && descIn.value.trim());
   }
@@ -314,6 +345,23 @@ export function mount(body, ctx) {
       return;
     }
 
+    const key = applicationKey(description);
+    let latest = credits;
+    if (!premium && latest === null) {
+      const res = await creditManager.getCreditsWithStatus();
+      if (!res.error && Number.isFinite(res.credits)) {
+        latest = res.credits;
+        credits = res.credits;
+      }
+    }
+    const charged = consumesCredit({ premium, template, key });
+    if (charged && Number(latest || 0) <= 0) {
+      errorText = 'No credits remaining. Premium makes cover letters unlimited.';
+      renderResult();
+      ctx.toast('No credits remaining. Upgrade to continue.', 'error');
+      return;
+    }
+
     generating = true;
     errorText = '';
     suggestion = '';
@@ -353,8 +401,26 @@ export function mount(body, ctx) {
       suggestion = text;
       flags = Array.isArray(data?.fabricationFlags) ? data.fabricationFlags : [];
       lastContext = { company: companyName, description };
-      await persist(letters.map((t) => (t.id === template.id ? { ...t, lastUsed: new Date().toISOString() } : t)));
-      ctx.toast(`${LABEL} personalised.`);
+
+      let deducted = false;
+      if (charged) {
+        try {
+          const deduct = await withTimeout(creditManager.deductCredit(), CREDIT_API_TIMEOUT_MS, 'Credit update timed out after generation.');
+          if (!deduct.success) {
+            errorText = deduct.error || 'Letter written, but your credits could not be updated.';
+          } else {
+            deducted = true;
+            credits = deduct.isPremium ? Infinity : deduct.remaining;
+            ctx.setCredits(credits);
+          }
+        } catch (creditErr) {
+          log.warn('Credit deduction failed after generation:', creditErr);
+          errorText = 'Letter written, but the credit update failed. Refresh to see your balance.';
+        }
+      }
+      const allowance = allowanceAfter({ premium, charged, deducted, template, key });
+      await persist(letters.map((t) => (t.id === template.id ? { ...t, lastUsed: new Date().toISOString(), ...allowance } : t)));
+      ctx.toast(charged || premium ? `${LABEL} personalised.` : `${LABEL} personalised, on its free re-run.`);
     } catch (e) {
       if (!alive) return;
       errorText = e?.message || 'The AI couldn’t write this one.';
@@ -432,6 +498,7 @@ export function mount(body, ctx) {
 
   fill(templatesEl, section({ num: 1, label: 'Templates', title: `Your ${noun}s` }, skeleton(2)));
   load();
+  loadCredits();
 
   return {
     unmount() {

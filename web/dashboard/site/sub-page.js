@@ -29,6 +29,10 @@ import { splitWords } from '../../src/shared/lib/split-words.js';
 import * as cursor from '../../src/features/cursor/cursor.js';
 import * as hud from './hud/hud.js';
 import pageFoot from './page-foot.html?raw';
+import { installGlobalErrorHandlers } from '@app/logger.js';
+
+// Uncaught errors go through the app's logger, as on the dashboard.
+installGlobalErrorHandlers();
 
 // Where "home" is from here: the dashboard, not the landing page.
 var HOME = '/dashboard/';

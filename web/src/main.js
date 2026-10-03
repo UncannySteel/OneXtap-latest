@@ -19,6 +19,7 @@ import { initArrival } from './app/arrival.js';
 import { signInAttempt } from './app/backend.js';
 import { wireHeader, wireOffers, openOnArrival } from './app/wire.js';
 import { prefersReducedMotion, registerMotion, initSmoothScroll, scrollToTarget } from './shared/lib/motion.js';
+import { installGlobalErrorHandlers } from '@app/logger.js';
 
 import * as cursor from './features/cursor/cursor.js';
 import * as nav from './features/nav/nav.js';
@@ -32,6 +33,10 @@ import * as closing from './features/closing/closing.js';
 import * as footer from './features/footer/footer.js';
 import * as faq from './features/faq/faq.js';
 import * as login from './features/login/login.js';
+
+// Uncaught errors go through the app's logger (redacted, and kept for
+// __onextapIssues() in the console), as on the dashboard and in the popup.
+installGlobalErrorHandlers();
 
 // Keys match the data-mount attributes in index.html.
 mountFeatures({
