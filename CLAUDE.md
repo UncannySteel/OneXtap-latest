@@ -5,19 +5,21 @@ in `memory/` and `docs/` and is read on demand.
 
 ## Project
 
-Onextap: a Chrome MV3 extension that autofills job applications, plus a web
-dashboard and an Express backend. One React source tree ships as both the
-extension popup and the dashboard. Supabase holds accounts and billing only.
-Layout and import rules: `docs/repo-structure.md`.
+Onextap: a Chrome MV3 extension that autofills job applications, plus a
+website and an Express backend on one origin (landing `/`, dashboard
+`/dashboard/`, API `/api/`). The popup is React (`src/`); the website is plain
+JS (`web/`) importing `src/` modules via `@app`. Supabase holds accounts and
+billing only. Layout and import rules: `docs/repo-structure.md`; merge
+status: `HANDOVER.md`.
 
 ## Always
 
 1. Always rebuild and reload after touching `src/`, `extension/`, or
    `public/`: `npm run build`, then reload at `chrome://extensions/`. A
    loaded extension does not pick up dev-server changes.
-2. Always verify a `src/` change on both surfaces. The same code runs with
-   `chrome.*` present (extension) and absent (dashboard); guards look like
-   `typeof chrome !== 'undefined' && chrome?.runtime`.
+2. Always verify a change to a `src/` module the website imports on both
+   front ends: `chrome.*` present (popup) and absent (website). Guards look
+   like `typeof chrome !== 'undefined' && chrome?.runtime`.
 3. Always guard credit values with `Number.isFinite()` before comparing or
    rendering. Premium accounts report `Infinity`, not a number.
 4. Always keep the Dodo webhook registered *before* `express.json()` in
@@ -41,7 +43,8 @@ Layout and import rules: `docs/repo-structure.md`.
    Supabase. Local storage is not non-disclosure, and do not write comments
    claiming it is: resume text goes to Gemini and Groq transiently per
    request, and Opik **retains** the traces it records. A new destination for
-   profile data is an escalation, and `privacy-policy.html` has to say so
+   profile data is an escalation, and the privacy page
+   (`web/src/pages/privacy/privacy.html`, served at `/privacy/`) has to say so
    before it ships.
 9. Never reference anything outside its own body inside `scrapeJobPage()`
    (`extension/background.js`). It is serialized into the target page by
@@ -56,24 +59,29 @@ Layout and import rules: `docs/repo-structure.md`.
 ## Commands
 
 - Install: `npm install && npm run server:install`
-- Build extension → `dist/`: `npm run build`
-- Build dashboard → `dist-dashboard/`: `npm run build:dashboard`
-- Dev server (dashboard only): `npm run dev`
+- Build extension → `dist/`: `npm run build` (needs `.env` first)
+- Build website → `dist-dashboard/`: `npm run build:dashboard`
+- Website dev server: `npm run dev` (keep :5173, the only local origin
+  `externally_connectable` allows); extension's: `npm run dev:extension`
 - Backend with reload: `npm run server:dev`
 - Health check: `curl localhost:3001/api/health`
 - Verbose server logs: `LOG_LEVEL=debug npm run server:dev`
   (levels: error/warn/info/debug; client side uses `VITE_LOG_LEVEL`)
-- **Test: `npm test`** (`node --test`) — pure matching/corpus functions only.
+- **Test: `npm test`** (`node --test`) — matching, corpus, the stores,
+  server modules, the worker's profile sync.
+- **E2E: `npm run test:e2e`** — landing + company pages, against stubs.
 - **Lint: none.** There is no ESLint or Prettier config.
 
-Automated checks cover only the pure functions in `src/matching/` and
-`src/corpus.js`. Everywhere else, "verified" means you built it and
-exercised the path in the browser. Say so plainly when you have not.
+Nothing automated drives the dashboard, the popup, the content script or
+real services. There, "verified" means you built it and exercised the path
+in the browser. Say so plainly when you have not.
 
 ## Key facts
 
-- Two builds, one source. `vite.config.js` → extension; `vite.dashboard.config.js`
-  → dashboard, and that second one is what `vercel.json` runs on deploy.
+- Two builds. `vite.config.js` → extension (popup from `index.html`);
+  `vite.dashboard.config.js` → the whole website from `web/`, and that second
+  one is what `vercel.json` runs on deploy (the script keeps its old name,
+  `build:dashboard`).
 - `api/index.js` re-exports the Express app so Vercel serves it as a
   function. Keep it a bare re-export.
 - `server/load-env.js` must stay the first import in `server/index.js`;
@@ -94,7 +102,7 @@ exercised the path in the browser. Say so plainly when you have not.
 - `server/` has its own `package.json` and `node_modules`; root deps are
   duplicated there for the Vercel build.
 - Four loggers, one per runtime, because the runtimes cannot share code:
-  `server/logger.js` (adds request ids), `src/logger.js` (React app),
+  `server/logger.js` (adds request ids), `src/logger.js` (popup and website),
   `extension/logger.js` (service worker), and an inline one at the top of
   `public/content.js` (that file cannot import). Their redaction key lists
   mirror each other — a change to one usually belongs in the others.
@@ -112,20 +120,21 @@ Stop and ask before:
 - Adding or widening `permissions` / `host_permissions` /
   `externally_connectable` in `extension/manifest.json`.
 - Deleting user profile data or changing the `user_profile` ⟷
-  `onextap_profiles` migration in `src/profileStore.js`.
+  `onextap_profiles` handling: the migration in `src/profileStore.js`, or the
+  worker's sync in `extension/profileSync.js`.
 - Publishing to the Chrome Web Store or deploying to Vercel.
 
 ## Unverified — confirm before relying on these
 
-- **`dodopayments` version drift.** Root `package.json` pins `^0.18.0`;
-  `server/package.json` pins `^2.36.0`. Every other shared dep matches
-  exactly. Vercel installs from the root, so production may run a
-  major-version-older SDK than local dev. Flagged, not fixed.
-- **Branching.** All commits are on `main` with no branches, so no
-  "never commit to main" rule is written here. Add one if that is the intent.
-- **Node version.** README says Node 18+; there is no `engines` field.
-- **`EXTENSION_ID_FALLBACK`** in `src/config.js` is a hardcoded ID.
-  Unclear whether that is the published extension or a local build.
+- **Branching.** History is on `main`; the website merge is on the local
+  branch `merge/web-dashboard` (not pushed). No "never commit to main" rule is
+  written here. Add one if that is the intent.
+- **Node version.** README says Node 18+ (21+ for `npm test`'s glob); there
+  is no `engines` field.
+
+(`EXTENSION_ID_FALLBACK` in `src/config.js` was listed here; it is the
+published extension's ID, the one in `CHROME_WEB_STORE_URL`. An unpacked
+build gets a different ID, so open the dashboard from its popup.)
 
 ---
 

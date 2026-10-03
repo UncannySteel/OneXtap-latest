@@ -1,38 +1,74 @@
-# Onextap dashboard (frontend)
+# Onextap dashboard
 
-Plain HTML/CSS/ES modules — no build step and nothing to install. The fonts come from Google
-Fonts; the company pages' two libraries (GSAP, Lenis) are checked in under `vendor/`.
+The dashboard at `/dashboard/`: the four workspaces (Job Matches, My Profiles,
+Answer Studio, Cover Letter), the account and the plan. It came from the
+DEMO_DASH repo, whose workspaces were placeholders; they are now built out
+with the backend's features, in DEMO_DASH's design.
 
-It shares the landing page's design language (`../demo`): the same palette, faces and
-motion curves, copied value for value into `css/tokens.css` — change them in both places.
-Forest-black for the chrome, an oat sheet for the workspace, citrine as the one loud note;
-Archivo condensed for display type, Instrument Serif for the voice, Instrument Sans for UI,
-DM Mono for figures.
+Plain HTML/CSS/ES modules — no framework. It is part of the website build:
+run everything from the **repo root** (`npm run dev` serves the whole site on
+http://localhost:5173, the dashboard at `/dashboard/`; `npm run
+build:dashboard` builds it into `dist-dashboard/`). The API has to be running
+too (`npm run server:dev`), and `.env` in place.
 
-```
-python -m http.server 5173   # then open http://localhost:5173
-```
-(ES modules need to be served; opening `index.html` from disk won't load the JS.)
+The modules it shares with the extension popup — the profile and resume
+stores, auth, credits, resume parsing, matching — are imported from the repo's
+`src/` through the `@app` alias (`vite.dashboard.config.js`), so the dashboard,
+the popup and the server run one copy of them.
+
+It shares the landing page's design language (`web/src/`): the same palette,
+faces and motion curves, copied value for value into `css/tokens.css` — change
+them in both places. Forest-black for the chrome, an oat sheet for the
+workspace, citrine as the one loud note; Archivo condensed for display type,
+Instrument Serif for the voice, Instrument Sans for UI, DM Mono for figures.
 
 ## Structure
 
 | File | What it's for |
 | --- | --- |
-| `index.html` | Page shell: top bar, settings menu, profile/dock, workspace, footer, delete dialog |
+| `index.html` | Page shell: top bar, settings menu, profile/dock, workspace, footer, dialogs |
 | `css/tokens.css` | The landing page's colours, fonts and easing curves, plus radii and sizes — retheme here |
 | `css/dashboard.css` | Type roles, layout for the home view, the docked/floating workspace view, mobile, and the cursor |
-| `js/config.js` | Nav items / workspaces. Add one here and it gets a button, a dock entry and a `#/<id>` route. Also the plans (Standard, Pro) |
-| `js/services.js` | **Backend boundary.** Mock user + stubbed actions — replace with real API calls |
-| `js/workspaces.js` | Placeholder workspace content; swap in real views per workspace id |
-| `js/dock.js` | Dock left / right / floating, drag, edge-snap, resize — persisted in `localStorage` |
+| `css/workspaces.css` | The four workspaces' styles, on the dashboard's tokens only |
+| `js/config.js` | The workspaces (add one here and it gets a button, a dock entry and a `#/<id>` route), the popup's old `?view=` names, and the plans |
+| `js/services.js` | **The backend boundary**: session, sign-in redirect, account, credits, plan and billing portal, avatar, log out, account deletion, extension sync |
+| `js/workspaces.js` | Mounts the workspace for a route from `js/ws/<id>.js` |
+| `js/ws/` | The workspaces: `job-matches`, `my-profiles`, `answer-studio`, `cover-letter` |
+| `js/ui/` | Shared UI: `dom` (the `h()` builder), `controls`, the profile and resume `switchers`, `file-drop`, the `fabrication` notice |
+| `js/subscription.js` | The plan panel: Standard, Pro renewing, Pro ending (with "Keep Pro"), Pro without dates; upgrade, switch, billing |
 | `js/settings.js` | Settings dropdown (keyboard + outside-click handling) |
-| `js/subscription.js` | The Manage subscription panel: current plan, both plans, upgrade / switch, billing |
+| `js/tour.js` | The first-run tour |
+| `js/dock.js` | Dock left / right / floating, drag, edge-snap, resize — persisted in `localStorage` |
 | `js/motion.js` | The landing's masked-word headline rise, and the reduced-motion check |
 | `js/cursor.js` | The landing's cursor: a trailing citrine ring; a "Drag" grip over the dock bar |
-| `js/main.js` | Boot, routing, user binding, settings actions, the entrance, the dock's sliding thumb |
+| `js/util.js` | Toasts, view transitions, and the dashboard's own UI state in `localStorage` |
+| `js/main.js` | Boot: the session check, user binding, routing, settings actions, the return from checkout, the entrance |
 | `contact/`, `privacy/` | The company pages, one `index.html` each (see below) |
-| `site/` | The landing page's source for those pages, copied from `../demo/src` at the same paths |
-| `vendor/` | GSAP 3.12.5 and Lenis 1.1.18, the versions the landing page builds with |
+| `site/` | Those pages' scripts and the pieces they swap in for the landing's own |
+
+## The account
+
+- **Signed out**, the dashboard sends you to the landing page's sign-in
+  window (`/?login=1&next=/dashboard/…`); signed in, you come back. A stored
+  session that no longer works is dropped first, so the two pages cannot send
+  you back and forth.
+- **The name** comes from the account, then the profile, then the email.
+  Credits read "Unlimited" on Premium.
+- **Settings**: change avatar (kept in this browser: the Google photo, else
+  initials, unless you upload one), manage subscription, billing portal, log
+  out, delete account. Logging out clears this browser's profiles
+  (`user_profile`, `onextap_profiles`); resumes and the avatar stay. Deleting
+  the account deletes it on the server, then clears this browser; the
+  extension's copy and other browsers keep theirs, and the dialog says so.
+- **Returning from checkout** (`?payment=success`): re-checks Premium every 8
+  seconds for up to 2 minutes, while Dodo's webhook lands.
+- **Links in**: `?view=vault|cover|jobs|profiles` (the popup's) opens that
+  workspace; `?upgrade=1` opens the plan panel; `?extensionId=` says which
+  extension to sync with.
+- **Syncing to the extension**: saving a profile pushes it to the extension
+  over `ONEXTAP_SYNC_DATA` when the page can reach one (opened from the popup,
+  or the published extension's ID); a push that fails is reported, and the
+  local save stands.
 
 ## Behaviour
 
@@ -47,22 +83,15 @@ python -m http.server 5173   # then open http://localhost:5173
 
 ## Company pages
 
-Contact and Privacy are the landing page's own (`../demo/contact/`, `../demo/privacy/`), cut down.
-They look the same as the landing page's, except that they have no nav spine or chapter menu, no
-Log in or Add to Chrome in the header (which is just the wordmark, linking back to the dashboard),
-no chapter label or scroll progress along the bottom, and no Company or The story links in the foot.
+Contact and Privacy are the landing page's own, built from its source
+(`web/src/pages/`, `web/src/features/`) by the same Vite build — not copies.
+`site/contact.js` and `site/privacy.js` boot them through `site/sub-page.js`,
+which swaps in the dashboard's variants of a few pieces: the header row
+(`site/hud/`, just the wordmark, linking back to the dashboard), the foot
+(`site/page-foot.html`), the page frame (`site/sub-page.css`), and no nav
+spine (`site/spine.css`). Contact's
+feedback window posts to the same `POST /api/feedback` as the landing page's.
 
-`site/` is a copy of the parts of `../demo/src` they use (not `features/nav` or `features/login`),
-with those pieces taken out of `features/hud`, `pages/page-foot.html` and `pages/sub-page.js`,
-`--spine` set to 0 in `shared/styles/tokens.css`, and these changes where Vite did the work:
-
-- `import markup from './x.html?raw'` became `var markup = await loadText('./x.html', import.meta.url)` (`site/shared/lib/load.js`).
-- The CSS imports were dropped; each page links the styles in its `<head>`, in the build's cascade order.
-- `gsap`, `gsap/ScrollTrigger` and `lenis` resolve through an import map in each page to `vendor/`.
-
-To pick up a change to the landing page, copy the changed file from `../demo/src` to the same path
-under `site/` and repeat whichever of those edits it needs.
-
-The links in their copy are the landing page's, unchanged: `/contact/` and `/privacy/` work here,
-but Contact's "See pricing" (`/#price`) expects the landing page at the site root, and here the root
-is the dashboard.
+So a change to the landing page's Contact or Privacy copy reaches these pages
+with no copying; a change to the header row or the foot needs its variant
+here checked too.

@@ -6,7 +6,8 @@
 // origin). The message kind may be given as either `type` or `action`.
 // Every reply is { success: true, ... } or { success: false, error }:
 //
-//   ONEXTAP_SYNC_DATA        { payload }                  → {}            — writes payload to storage.local.user_profile
+//   ONEXTAP_SYNC_DATA        { payload }                  → {}            — files payload into storage.local.onextap_profiles
+//                                                                         as the active profile, and mirrors it to user_profile
 //   PARSE_RESUME             { data: { fileData, fileName, fileType, token } }
 //                                                         → { data }      — proxies POST /api/parse-resume
 //   SCRAPE_ACTIVE_TAB        —                            → { context: { company, description } }
@@ -16,6 +17,7 @@
 // endpoints, and the worker holds no session of its own.
 
 import { log, installWorkerErrorHandlers } from './logger.js';
+import { fileSyncedProfile } from './profileSync.js';
 
 installWorkerErrorHandlers();
 
@@ -125,11 +127,15 @@ async function handleMessage(msg, sendResponse) {
   try {
     // 1) SYNC PROFILE FROM WEBSITE
     if (kind === 'ONEXTAP_SYNC_DATA') {
-      if (!msg.payload) {
+      const payload = msg.payload;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
         sendResponse({ success: false, error: 'No profile payload' });
         return;
       }
-      await chrome.storage.local.set({ user_profile: msg.payload });
+      // Into the profile store the popup reads, not only the user_profile
+      // mirror, which it ignores once the store exists: see profileSync.js.
+      const { onextap_profiles: stored } = await chrome.storage.local.get('onextap_profiles');
+      await chrome.storage.local.set(fileSyncedProfile(stored, payload));
       sendResponse({ success: true });
       return;
     }

@@ -1,4 +1,4 @@
-import { storage } from './storage';
+import { storage } from './storage.js';
 
 const PROFILES_STORAGE_KEY = 'onextap_profiles';
 const DEFAULT_PROFILE_ID = 'default';

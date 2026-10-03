@@ -1,5 +1,13 @@
 # Onextap — UI / UX Design
 
+> **Since this was written:** the React landing page and dashboard described
+> here were replaced by the plain-JS website under `web/`, which keeps its own
+> design language (`web/src/shared/styles/tokens.css`,
+> `web/dashboard/css/tokens.css`; see `web/README.md` and
+> `web/dashboard/README.md`). Below, the popup's parts still hold; the
+> dashboard and landing parts describe the replaced React pages. What changed:
+> [`HANDOVER.md`](../HANDOVER.md).
+
 The design system and interaction model as implemented at commit `9b01adb`
 (2026-09-09). Every token, dimension and behaviour here is read from
 `tailwind.config.js`, `src/index.css` and the components under

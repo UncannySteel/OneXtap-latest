@@ -14,8 +14,9 @@ import { log as baseLog } from '@app/logger.js';
 
 const log = baseLog.child('resume');
 
-// The profile and resume pickers, as the popup has them (ProfileSwitcher,
-// ResumeSwitcher in src/components/shared/). Kept as two siblings rather than
+// The profile and resume pickers, as the backend's React app had them
+// (ProfileSwitcher, still the popup's, in src/components/shared/; and
+// ResumeSwitcher, removed with the React dashboard). Kept as two siblings rather than
 // one component with a mode switch, as docs/repo-structure.md (rule 11) asks:
 // "type a name and get an empty thing" and "pick a file and wait for a parse
 // that can fail" are different affordances. What they share is the dropdown

@@ -1,5 +1,12 @@
 # Onextap — Application Flows
 
+> **Out of date, to be rewritten:** the entry points, sign-in, the dashboard
+> screens, upgrade and cancellation, account settings and stored state below
+> are the React app's. The landing page and dashboard are now the plain-JS
+> website under `web/`; `HANDOVER.md` §4 describes what they do, and
+> `web/README.md` and `web/dashboard/README.md` how. The popup's flows (§1,
+> §4) are unchanged.
+
 Every user-facing path through the product, traced to the code that runs it.
 Describes the system at commit `9b01adb` (2026-09-09).
 

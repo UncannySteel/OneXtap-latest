@@ -1,5 +1,11 @@
 # Onextap — Product Requirements Document
 
+> **Since this was written:** the React landing page and dashboard it names
+> were replaced by the plain-JS website under `web/` (the website merge,
+> September 2026); the extension popup is unchanged. What changed and what is
+> still open: [`HANDOVER.md`](../HANDOVER.md). Layout:
+> [`repo-structure.md`](repo-structure.md).
+
 **Status:** Descriptive, not aspirational. This PRD documents the product as
 built at commit `9b01adb` (2026-09-09), extension version `1.0.3`. Where the
 shipped UI promises something the code does not do, it is listed in

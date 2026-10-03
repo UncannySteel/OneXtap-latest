@@ -1,13 +1,21 @@
-# Onextap landing page
+# Onextap website: the landing page
+
+`web/` is the website: this landing page and its company pages, and the
+dashboard in `dashboard/` (its own README). The landing page came from the
+DEMO_WEB repo and keeps its design; what its buttons and sign-in do is wired
+in from `src/app/backend.js` and `src/app/wire.js` (see "The backend", below).
 
 Vanilla JS + [Vite](https://vite.dev). GSAP (ScrollTrigger) and Lenis come from npm.
 The paper effects are hand-written WebGL — no 3D library.
 
+Everything runs from the **repo root**, which holds the one `package.json`
+and the Vite config for the whole site (`vite.dashboard.config.js`):
+
 ```bash
 npm install
-npm run dev        # http://localhost:5173
-npm run build      # outputs to dist/
-npm run test:e2e   # Playwright: Chromium desktop + phone, WebKit desktop
+npm run dev               # the whole site on http://localhost:5173
+npm run build:dashboard   # the whole site → dist-dashboard/
+npm run test:e2e          # Playwright: Chromium desktop + phone, WebKit desktop
 ```
 
 ## How the page moves
@@ -68,12 +76,36 @@ back to the button that opened it. There are three:
 A window's trigger carries `aria-haspopup="dialog"`; the menu closes itself
 when one is pressed, so a window never opens over the open menu.
 
+## The backend
+
+The features were built to be handed their behaviour, so the account and the
+API are plugged in from outside them:
+
+- **Sign-in** (`features/login`) gets `signInAttempt` from `src/app/backend.js`:
+  Supabase email/password and Google, through the same helpers as the
+  dashboard and the popup (`@app/auth.js`, loaded on the first attempt, so the
+  landing page does not carry the SDK on first paint). Errors are put in plain
+  words; a project that wants the address confirmed gets "Check your email";
+  Continue goes to the dashboard.
+- **Feedback** (`features/feedback`, on Contact) gets `sendFeedback`:
+  `POST /api/feedback`, emailed by the server and stored nowhere.
+- **The buttons** (`src/app/wire.js`): Add to Chrome opens the Web Store; Get
+  started free and Upgrade to Premium open sign-up, or go to the dashboard when
+  signed in; signed in, the header's Log in reads Dashboard.
+- **Arriving to sign in**: the dashboard sends signed-out visitors to
+  `/?login=1&next=…`; the window opens on arrival, and `next` may only point
+  inside `/dashboard/`.
+- **Forwarding** (a script in `index.html`'s `<head>`): `?extensionId=`,
+  `?view=`, `?payment=`, `?code=` and `#access_token=` arriving at the root
+  go on to `/dashboard/` — old extension links, checkouts started before the
+  move, and Supabase redirects to the site root.
+
 ## Structure
 
 ```
 index.html                  page skeleton: <head>, fonts, the stage, one [data-mount] slot per feature
 about/ contact/ privacy/    the company pages' skeletons (index.html each)
-vite.config.js              the four HTML entries
+                            (the HTML entries are listed in the repo root's vite.dashboard.config.js)
 src/
   main.js                   imports shared CSS, mounts features, builds the stage
   app/
@@ -81,6 +113,8 @@ src/
     stage.js                the sticky stage + scroll timeline, snapshots, anchors, rebuild on resize
     chapters.js             ← the page's running order and the transition into each chapter
     arrival.js              landing on a chapter from another page (/#price), and back where you left
+    backend.js              the line to the account and the API: sign-in, feedback, links
+    wire.js                 the calls to action, pointed at the product
   pages/                    the company pages
     sub-page.js             what they share: nav, header row, Back, the entrance, smooth scroll
     sub-page.css            the ink band, the chapter heads on oat, the foot
@@ -132,6 +166,8 @@ tests/
   stage.spec.js             the e2e checks (npm run test:e2e)
   pages.spec.js             the company pages, their nav, Back, and the feedback window
   windows.spec.js           the FAQ and sign-in windows
+  stubs.js                  stand-ins for Supabase auth and /api/feedback; the test server's
+                            Supabase address cannot resolve (playwright.config.js)
   tour.mjs                  steps every transition at several sizes and saves frames to look at
 ```
 
@@ -150,16 +186,14 @@ adds its own animation once it has arrived and returns how long that takes.
   a chapter's id; keep `data-jump` on it so it jumps rather than scrolls. The
   company pages rewrite them to `/#id` themselves.
 - **Company page copy**: `src/pages/<name>/<name>.html`.
-- **Where feedback goes**: nowhere yet. `initFeedback` in
-  `src/features/feedback/feedback.js` takes a `send(note)` that returns a
-  promise; until one is given, each note is only announced on the document
-  as an `onextap:feedback` event.
+- **Where feedback goes**: `sendFeedback` in `src/app/backend.js`, which the
+  Contact pages hand to `initFeedback`. Without a `send`, a note is only
+  announced on the document as an `onextap:feedback` event.
 - **FAQ questions**: `src/features/faq/faq.html`, one `<details>` each.
-- **Where sign-in goes**: nowhere yet. `initLogin` in
-  `src/features/login/login.js` takes a `signIn({ method, mode, email,
-  password })` that returns a promise; until one is given, each attempt is
-  announced on the document as an `onextap:login` event (never with the
-  password) and counts as signed in.
+- **Where sign-in goes**: `signInAttempt` in `src/app/backend.js`, which every
+  page hands to `initLogin`. Without a `signIn`, an attempt is announced on
+  the document as an `onextap:login` event (never with the password) and
+  counts as signed in.
 - **Pacing, order, or which transition joins two chapters**: `src/app/chapters.js`.
   Durations are in screens of scrolling.
 - **Add a section**: create `src/features/<name>/` with the three files (give

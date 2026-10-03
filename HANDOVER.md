@@ -55,6 +55,62 @@ Open questions put to the owner at this checkpoint: the extension sync fix
 (§7, item 1), dev keys (item 2), the fixture file (item 11), and whether to
 commit.
 
+### Checkpoint 2 (2026-09-27, session 2): extension sync fix, real services
+
+The owner's answers at checkpoint 1:
+
+- **Sync fix:** yes; the dashboard's profile becomes the active one in the
+  extension.
+- **Dev keys:** the owner is adding `.env` and `server/.env` for a dev
+  project (Dodo in test mode).
+- **Fixture:** the owner asked how to fix it. The three routes: get the
+  original file from the backend's author and track it; write a synthetic
+  one and track it; or skip the 3 tests when it is missing. Tracking it needs
+  `.gitignore`'s `server/data/` to become `server/data/*` +
+  `!server/data/cached_jobs.json`. Not decided yet.
+- **Commits:** on a branch. Done: `merge/web-dashboard`, `81e1c01` (first
+  session) and `64ccc75` (checkpoint 1). Nothing pushed.
+
+Done:
+
+- **§7 item 1 fixed in code** (not yet tried with the extension loaded):
+  - `extension/profileSync.js` (new, pure): `fileSyncedProfile(stored,
+    payload)` files an `ONEXTAP_SYNC_DATA` payload into `onextap_profiles`,
+    matched by id, then by name, else added under the dashboard's id; makes
+    it active; rebuilds the `user_profile` mirror as `profileStore.js` would.
+    The extension's other profiles are untouched. A rename carries over
+    unless the name is taken by another profile.
+  - `extension/background.js`: the handler writes both keys, and refuses a
+    payload that is not a plain object.
+  - Also fixes a second, quieter loss: with no store yet, the popup's
+    first-run migration filed synced cover letters inside `autofillData`.
+  - `test/extension/profileSync.test.js` (new, 9 tests) reads the result
+    back through `src/profileStore.js`, the popup's reader. The first test
+    fails against the old worker. `src/profileStore.js` now imports
+    `./storage.js` (the extension was missing, so Node could not load it).
+  - `npm test`: 550 pass, 3 fail (the fixture), 2 skipped.
+  - Reaching users needs a new extension release (the owner's call).
+- **Docs brought up to date (§7 item 4)**, except `docs/app-flow.md`:
+  - rewritten: `docs/repo-structure.md` (layout, the import graph for
+    `web/`, rules 2, 3, 9, 11; a new rule 12 on keeping the landing page as
+    designed), `README.md`, `web/README.md`, `web/dashboard/README.md`;
+  - updated: `CLAUDE.md` (project, rules 2 and 8, commands, key facts, the
+    escalation now names `extension/profileSync.js`; the stale dodopayments
+    note removed; `EXTENSION_ID_FALLBACK` resolved: it is the published
+    extension's ID, the same one as in `CHROME_WEB_STORE_URL`), `AGENTS.md`;
+  - `docs/{prd,trd,ui-ux-design,backend-schema}.md`: a dated note at the top
+    saying what changed since they were written, rather than a rewrite;
+  - `docs/app-flow.md`: marked out of date. It is to be rewritten after the
+    real-service run, which will confirm the flows it describes.
+  - Also found: `README.md`'s Node requirement was wrong for tests (`npm test`
+    passes a glob to `node --test`, which needs Node 21+), and the website
+    never calls `installGlobalErrorHandlers()` (new §7 item 24).
+- **Blocked on the owner:** `.env` and `server/.env` are not in place yet.
+  When they are, note that Claude may not type credentials into sign-in that
+  goes to a hosted service (Supabase auth is not local): the owner signs up
+  or in, and clicks confirmation emails and "Delete account"; Claude drives
+  the rest, and asks before submitting a Dodo test-mode checkout.
+
 ---
 
 ## 1. What was asked, and what was decided
@@ -304,8 +360,7 @@ before this work.
   - The popup reads the profile store, `onextap_profiles`, through `loadProfileStore()`.
   - `onextap_profiles` is created the first time the popup opens, and `user_profile` is ignored from then on.
 - **Result:** autofill keeps using the popup's own copy, and the dashboard's "Saved and synced" does not reach it.
-- **Proposed fix:** in the `ONEXTAP_SYNC_DATA` handler, also fold the payload into `onextap_profiles` under its `_activeProfileId` (see `saveLegacyUserProfile` in `src/profileStore.js` for the shape). The service worker cannot import `src/`, so this is inline code, and it needs a new extension release.
-- **Why not done:** `CLAUDE.md` says to ask before changing the `user_profile` ⟷ `onextap_profiles` handling. Needs the owner's go-ahead.
+- **Fixed in code at checkpoint 2** (§0), with the owner's go-ahead: the handler files the payload into `onextap_profiles` and makes it active (`extension/profileSync.js`, unit-tested against `src/profileStore.js`). **Still to do:** try it with the extension loaded (needs keys), and ship a new extension release (the owner's call).
 
 **2. Never run against real services.** Every server-backed flow was exercised only against a mock. With dev keys, run each of these once:
 - email sign-up with confirmation;
@@ -322,13 +377,7 @@ before this work.
 
 **3. ~~The landing's Playwright suite is broken by the wiring.~~ Fixed at checkpoint 1** (§0). The four tests that expected the old `onextap:login` / `onextap:feedback` stubs now stub the network (`web/tests/stubs.js`) and assert the request bodies. Playwright 1.63 and its browsers are installed on this machine.
 
-**4. Docs describe the old architecture.**
-- `CLAUDE.md` still says one React tree ships the popup and the dashboard, and its rule 8 points at `privacy-policy.html`, which no longer exists. The privacy policy is now `web/src/pages/privacy/privacy.html`.
-- `README.md`, `docs/repo-structure.md` (layout, dependency rules, "two builds, one source") and `docs/app-flow.md` (entry points, sign-in, upgrade and cancellation, account settings, stored state) need the new layout and flows.
-- `web/README.md` and `web/dashboard/README.md` are the original repos' READMEs:
-  - the dashboard's still says "no build step, run `python -m http.server`";
-  - the landing's says to run npm inside its own folder.
-- The "Unverified: dodopayments version drift" note in `CLAUDE.md` is stale: both `package.json` files pin `^2.36.0`, and 2.50.0 is installed in both.
+**4. Docs.** Updated at checkpoint 2 (§0), except **`docs/app-flow.md`**, which still describes the React app's entry points, sign-in, upgrade and cancellation, account settings and stored state. It carries an "out of date" note and is to be rewritten once the real-service run has confirmed the flows.
 
 ### Medium
 
@@ -381,6 +430,8 @@ before this work.
 **22. No application-type picker on the web dashboard.** Job is the only live type, as in the backend. Bringing the others back needs a picker there as well as in the popup.
 
 **23. The landing's "signed in?" check reads Supabase's default storage key** (`sb-<ref>-auth-token`), in `web/src/app/backend.js`. A custom `storageKey` would break it.
+
+**24. The website never installs the client logger's global handlers.** Only `src/popup.jsx` calls `installGlobalErrorHandlers()` (`src/logger.js`), so on the landing page and the dashboard, uncaught errors and unhandled rejections skip the logger, and `__onextapIssues()` does not exist in the console. One call in `web/dashboard/js/main.js` (and `web/src/main.js`) would fix it. Found at checkpoint 2.
 
 ### Found and fixed along the way (for the record)
 

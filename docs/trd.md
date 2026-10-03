@@ -1,5 +1,12 @@
 # Onextap — Technical Requirements Document
 
+> **Since this was written:** the React landing page and dashboard were
+> replaced by the plain-JS website under `web/`, on one origin with the API
+> (the website merge, September 2026); the extension popup is unchanged, and
+> the server gained account deletion, a billing portal and end-of-period
+> cancellation. What changed and what is still open:
+> [`HANDOVER.md`](../HANDOVER.md).
+
 **Scope:** the system as built at commit `9b01adb` (2026-09-09). Layout and
 import rules live in [`repo-structure.md`](repo-structure.md) and are not
 repeated here; this document covers runtimes, contracts, data flow, security

@@ -1,5 +1,12 @@
 # Onextap — Backend & Data Schema
 
+> **Since this was written:** the server gained `POST /api/resume-subscription`,
+> `POST /api/create-portal-session` and `DELETE /api/account`, and
+> `verify-premium` now reports the renewal date and a scheduled cancellation
+> (README.md has the current route table); the React dashboard named below
+> was replaced by the plain-JS website under `web/`. No schema changes. What
+> changed: [`HANDOVER.md`](../HANDOVER.md).
+
 The database, the row shapes, the local stores, and every API contract that
 touches them. Describes the system at commit `9b01adb` (2026-09-09).
 

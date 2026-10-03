@@ -7,13 +7,14 @@ It should stay short. Use it as a map, not as an encyclopedia.
 ## Mission
 
 Onextap autofills job applications. A Chrome MV3 extension fills forms on
-any site from a locally stored profile; a web dashboard manages those
-profiles, a saved-answer vault, and AI answer generation; an Express backend
-guards credits, premium status, and the AI providers.
+any site from a locally stored profile; a website (a landing page, and a
+dashboard at `/dashboard/`) manages those profiles, saved answers, cover
+letters, job matches and AI answer generation; an Express backend guards
+credits, premium status, and the AI providers.
 
 Correctness here means: the user's personal data stays local, credits cannot
-be manipulated from the client, and a change to the shared React source
-works both inside the extension and on the plain web dashboard.
+be manipulated from the client, and a change to a module in `src/` that both
+front ends import works inside the extension and on the website.
 
 ## How to work here
 
@@ -21,15 +22,18 @@ works both inside the extension and on the plain web dashboard.
 2. Prefer small, reviewable changes over large rewrites.
 3. Follow the documented architecture instead of inventing new structure
    during implementation.
-4. Verify by building and exercising the path. This repo has **no test
-   suite and no linter** — verification is manual, so say what you actually
-   ran.
+4. Verify by building and exercising the path. `npm test` covers the pure
+   and store modules, the server modules and the worker's profile sync;
+   `npm run test:e2e` covers the landing page against stubs. There is no
+   linter, and nothing automated drives the dashboard, the popup or real
+   services — there, verification is manual, so say what you actually ran.
 5. Escalate when an action is destructive, ambiguous, or requires judgment
    beyond the written rules.
 
 ## Start here
 
 - Hot rules, commands, escalation list: `CLAUDE.md`
+- Where the website merge stands, and what is still open: `HANDOVER.md`
 - Repo structure and import rules: `docs/repo-structure.md`
 - Setup, environment variables, troubleshooting: `README.md`
 - Database schema, RLS, triggers: `supabase/schema.sql`
@@ -74,15 +78,19 @@ stubs for missing filenames — put content where it already belongs.
 2. Find the relevant docs and code.
 3. Make the smallest coherent change.
 4. Build the surfaces you touched (`npm run build`, `npm run build:dashboard`,
-   `npm run server:dev`) and exercise the path.
+   `npm run server:dev`), run `npm test` (and `npm run test:e2e` for the
+   landing page), and exercise the path.
 5. Summarize what changed and any remaining risks.
 
-## Two surfaces, one source
+## Two front ends, shared modules
 
-The single most common way to get this repo wrong: `src/` ships to both the
-extension and the web dashboard. Code that assumes `chrome.*` exists breaks
-the dashboard; code that assumes it does not breaks the extension. Guard
-with `typeof chrome !== 'undefined'` and check both before finishing.
+The single most common way to get this repo wrong: the modules in `src/` that
+the website imports (stores, auth, credits, matching; listed in
+`docs/repo-structure.md`) ship to both the extension and the website. Code
+that assumes `chrome.*` exists breaks the website; code that assumes it does
+not breaks the extension. Guard with `typeof chrome !== 'undefined'` and check
+both before finishing. `src/components/` is the popup's alone, and `web/` the
+website's.
 
 ## If information is missing
 
