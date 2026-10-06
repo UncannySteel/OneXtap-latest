@@ -86,7 +86,10 @@ API are plugged in from outside them:
   dashboard and the popup (`@app/auth.js`, loaded on the first attempt, so the
   landing page does not carry the SDK on first paint). Errors are put in plain
   words; a project that wants the address confirmed gets "Check your email";
-  Continue goes to the dashboard.
+  Continue goes to the dashboard. Sign-up asks an optional name (the
+  account's `full_name`). "Forgot password?" sends Supabase's reset email,
+  whose link opens `/reset-password/` (`src/pages/reset-password/`), where
+  the new password is set; `?reset=1` opens the window on that request.
 - **Feedback** (`features/feedback`, on Contact) gets `sendFeedback`:
   `POST /api/feedback`, emailed by the server and stored nowhere.
 - **The buttons** (`src/app/wire.js`): Add to Chrome opens the Web Store; Get
@@ -105,6 +108,7 @@ API are plugged in from outside them:
 ```
 index.html                  page skeleton: <head>, fonts, the stage, one [data-mount] slot per feature
 about/ contact/ privacy/    the company pages' skeletons (index.html each)
+reset-password/             where the password-reset email's link opens
 404.html                    the not-found page Vercel serves for an unknown address
                             (the HTML entries are listed in the repo root's vite.dashboard.config.js)
 src/
@@ -122,6 +126,7 @@ src/
     page-foot.html          the foot: the company pages, the way home, the mark
     about/ contact/ privacy/  ← each page's copy (<name>.html) and entry script (<name>.js)
     not-found/              the 404 page's copy and script, on the same sub-page frame
+    reset-password/         the reset page: the sign-in window's card, setting a new password
   shared/
     styles/
       tokens.css            colours, fonts, spacing (:root variables) — start here for theming
@@ -169,6 +174,7 @@ tests/
   pages.spec.js             the company pages, their nav, Back, and the feedback window
   windows.spec.js           the FAQ and sign-in windows
   dashboard.spec.js         the dashboard (signed in through the stubs): cover-letter credits
+  account.spec.js           sign-up's name, "Forgot password?", and the reset page
   stubs.js                  stand-ins for Supabase auth, /api/feedback and the dashboard's API;
                             the test server's Supabase address cannot resolve (playwright.config.js)
   tour.mjs                  steps every transition at several sizes and saves frames to look at

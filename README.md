@@ -11,6 +11,9 @@ One origin serves all of it: the landing page at `/`, the dashboard at
 
 ## Features
 
+- **Accounts** — email (with an optional name) or Google, from the landing
+  page's sign-in window. "Forgot password?" emails a link to
+  `/reset-password/`, where the new password is set.
 - **Profiles** — several application profiles, each with its own autofill
   data, saved answers and cover-letter templates. Edited on the dashboard;
   switched in the popup.
@@ -93,7 +96,8 @@ npm install && npm run server:install
 ### 2. Set up the database
 
 **A fresh project:** run `supabase/schema.sql` in the SQL Editor, then
-`supabase/migrations/002_rank_cache.sql`. `schema.sql` creates the `profiles`
+`supabase/migrations/002_rank_cache.sql` and
+`supabase/migrations/006_generation_rate_limit.sql`. `schema.sql` creates the `profiles`
 and `credit_transactions` tables, the RLS policies, the sign-up trigger that
 grants 3 free credits to each new account, and the job-listing pool (it
 already includes migrations 001, 003, 004 and 005).
@@ -134,6 +138,7 @@ go here.
 | `RESEND_API_KEY` | feedback | Sends the Contact page's feedback form by email |
 | `CRON_SECRET` | ingest | Guards `/api/jobs/ingest`; unset, the route answers 503 |
 | `ALLOW_CACHE_SOURCE` | no | Keep `false` in any env that points at a real project |
+| `GENERATE_LIMIT_PER_HOUR` | no | AI drafts per account per hour, Premium included (default `30`; needs migration 006) |
 | `PORT` | no | Server port (default: `3001`) |
 
 `server/.env.example` documents the rest: model choices and fallbacks, the
@@ -146,6 +151,8 @@ In Supabase → Authentication → URL Configuration, add to the Redirect URLs:
 
 - `https://www.onextap.com/dashboard/` and `http://localhost:5173/dashboard/`
   (Google sign-in and email confirmation land on the dashboard);
+- `https://www.onextap.com/reset-password/` and
+  `http://localhost:5173/reset-password/` (the password-reset email's link);
 - `https://<extension-id>.chromiumapp.org/` (Google sign-in from the popup).
 
 The Site URL can stay the site's root: the landing page forwards a session
@@ -255,7 +262,7 @@ takes the cron secret).
 | GET | `/api/credits` | Current credit balance and premium flag |
 | POST | `/api/credits/deduct` | Deduct 1 credit; no-op for premium |
 | GET | `/api/verify-premium` | Premium status, re-checked against Dodo, with the renewal date and any scheduled cancellation |
-| POST | `/api/answer-vault/generate` | Answer and cover-letter generation (Groq) |
+| POST | `/api/answer-vault/generate` | Answer and cover-letter generation (Groq); 429 past the hourly ceiling (`GENERATE_LIMIT_PER_HOUR`) |
 | POST | `/api/parse-resume` | Resume → structured profile JSON (Gemini) |
 | GET | `/api/jobs` | Browse the job pool, unranked |
 | GET | `/api/jobs/locations` | Location facets for the pool |
@@ -302,6 +309,8 @@ The webhook resolves the account by `metadata.supabaseUserId`, then
 | Dashboard sends you to sign in every time | Check the Supabase redirect URLs (setup step 4) and that `VITE_SUPABASE_URL` is the same project the API uses |
 | Data not syncing to the extension | Open the dashboard from the popup (it passes the extension ID), or set `EXTENSION_ID_FALLBACK`; the site must be on `localhost:5173` or the production origin |
 | Answer generation fails | Check `GROQ_API_KEY` and its model ids (see `server/.env.example`), and that the server is running |
+| "That's the limit of N AI drafts an hour" | The per-account ceiling (`GENERATE_LIMIT_PER_HOUR`, default 30); it lifts within the hour |
+| The reset email's link opens the dashboard or the landing page | Add `<site>/reset-password/` to Supabase's Redirect URLs (setup step 4); the site forwards a stray reset link to the reset page meanwhile |
 | Resume parsing fails | Check `GEMINI_API_KEY`; only PDF and image uploads are supported |
 | Job Matches is empty | The pool is filled by the daily ingest (`/api/jobs/ingest`); check `/api/jobs/meta` |
 | Feedback form fails | Check `RESEND_API_KEY` (and the sandbox limit noted in `server/.env.example`) |

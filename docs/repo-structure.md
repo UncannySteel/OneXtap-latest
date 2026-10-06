@@ -110,6 +110,7 @@ the Vercel project needs no change.
 ├── web/                       # The website (Vite root of vite.dashboard.config.js)
 │   ├── index.html             # Landing page; its <head> forwards old dashboard links
 │   ├── about/ contact/ privacy/   # Company pages (index.html each)
+│   ├── reset-password/        # Where the password-reset email's link opens
 │   ├── 404.html               # What Vercel serves for an unknown address
 │   ├── src/                   # The landing page (from DEMO_WEB)
 │   │   ├── main.js            #   entry: mounts every feature, then the stage
@@ -143,6 +144,7 @@ the Vercel project needs no change.
 │   ├── supabase.js            # Service-role admin client + requireAuth middleware
 │   ├── load-env.js            # Loads server/.env regardless of cwd
 │   ├── cronAuth.js            # requireCronSecret — fail-closed, timing-safe
+│   ├── generateLimit.js       # Hourly ceiling on AI drafts per account — fail-open
 │   ├── llmJson.js             # Lenient JSON extraction from model output
 │   ├── groqClient.js          # Groq client + model fallback chain
 │   ├── observability/opik.js  # Tracing wrapper; no-ops with no OPIK_API_KEY
@@ -377,6 +379,8 @@ public/content.js         — standalone. Imports nothing at all.
 | A workspace on the web dashboard | `web/dashboard/js/ws/` (styles in `web/dashboard/css/workspaces.css`) |
 | The dashboard's shell: session, settings, plan panel, tour | `web/dashboard/js/{main,services,settings,subscription,tour}.js` |
 | What the landing page's buttons and sign-in do | `web/src/app/{backend,wire}.js` |
+| The new-password rule (sign-up and the reset page) | `web/src/features/login/password-rule.js` |
+| The ceiling on AI drafts per hour | `server/generateLimit.js` (`GENERATE_LIMIT_PER_HOUR`) |
 | The landing page's look or content | `web/src/features/` — it keeps DEMO_WEB's design (rule 12) |
 | A screen in the extension popup | `src/components/popup/` |
 | Data or logic both front ends need | a plain module in `src/` (rule 9) |

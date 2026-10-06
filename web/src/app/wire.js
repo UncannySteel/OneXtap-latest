@@ -49,17 +49,18 @@ export function wireOffers(login) {
 }
 
 /* Arriving to sign in: the dashboard sends signed-out visitors here with
-   ?login (or ?signup), and where they were going as ?next. The window opens
-   on arrival, and the address is tidied so a reload does not open it again.
-   It opens even if a session seems to be stored: the dashboard only sends
-   someone here when that session did not work, and forwarding them straight
-   back would loop. */
+   ?login (or ?signup), and where they were going as ?next; the reset page
+   sends someone whose link has expired with ?reset, to ask for another. The
+   window opens on arrival, and the address is tidied so a reload does not
+   open it again. It opens even if a session seems to be stored: the dashboard
+   only sends someone here when that session did not work, and forwarding
+   them straight back would loop. */
 export function openOnArrival(login) {
   var params = new URLSearchParams(location.search);
-  var mode = params.has('signup') ? 'up' : params.has('login') ? 'in' : null;
+  var mode = params.has('reset') ? 'reset' : params.has('signup') ? 'up' : params.has('login') ? 'in' : null;
   if (!mode) return;
   var next = safeNext(params.get('next'));
-  ['login', 'signup', 'next'].forEach(function (k) { params.delete(k); });
+  ['login', 'signup', 'reset', 'next'].forEach(function (k) { params.delete(k); });
   var rest = params.toString();
   history.replaceState(history.state, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
   login.openAs(mode, next || undefined);

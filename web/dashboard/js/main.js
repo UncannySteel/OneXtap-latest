@@ -291,6 +291,14 @@ function bootNote({ title, body, action }) {
 }
 
 async function boot() {
+  // A password-reset link belongs to the reset page. Checked before the
+  // account's modules load: Supabase's client would otherwise take the link
+  // as an ordinary sign-in, and the new password would never be asked for.
+  if (/[#&]type=recovery/.test(location.hash)) {
+    location.replace(`/reset-password/${location.search}${location.hash}`);
+    return;
+  }
+
   hydrateIcons();
   renderNav();
 

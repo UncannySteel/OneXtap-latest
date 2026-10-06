@@ -53,14 +53,22 @@ export function openChromeWebStore() {
 }
 
 /* --- signing in --------------------------------------------------------------
-   `signIn` for features/login: takes { method, mode, email, password } and
-   resolves with what the window says next — { title?, text, next } — where
-   `next` is where its Continue button goes (null: it just closes). Rejects
-   with an Error whose `userMessage`, when present, is shown as it is. */
+   `signIn` for features/login: takes { method, mode, email, password, name }
+   (mode 'in', 'up' or 'reset') and resolves with what the window says next —
+   { title?, text, next } — where `next` is where its Continue button goes
+   (null: it just closes). Rejects with an Error whose `userMessage`, when
+   present, is shown as it is. */
+
+// Where the email's reset link opens: the page that sets the new password
+// (web/reset-password/). It has to be on Supabase's redirect allowlist.
+var RESET_PATH = '/reset-password/';
+
 var WORDS = [
   [/invalid login credentials/i, 'That email and password don’t match an account.'],
   [/email not confirmed/i, 'Confirm your email first — the link is in your inbox.'],
   [/already registered|already exists/i, 'There’s already an account with that email. Sign in instead.'],
+  // Supabase: "For security purposes, you can only request this after N seconds."
+  [/only request this/i, 'Wait a minute before asking for another link.'],
   [/rate limit|too many/i, 'Too many attempts. Wait a minute, then try again.'],
   [/password should be|weak password/i, 'Use a longer password: at least 8 characters, with upper and lower case letters and a number.'],
   [/failed to fetch|network/i, 'We couldn’t reach Onextap. Check your connection and try again.']
@@ -92,8 +100,24 @@ export function signInAttempt(details, next) {
         });
     }
 
+    if (details.mode === 'reset') {
+      // The link in the email opens the reset page, already signed in by the
+      // link, to set the new password there. Supabase says the same whether
+      // or not the address has an account, and so does this.
+      return auth.requestPasswordReset(details.email, { redirectTo: location.origin + RESET_PATH }).then(function (res) {
+        if (res.error) throw refusal(res.error);
+        return {
+          title: 'Check your email.',
+          text: 'If an account uses ' + details.email + ', a link to set a new password is on its way to it.',
+          next: null
+        };
+      });
+    }
+
     if (details.mode === 'up') {
-      return auth.signUp(details.email, details.password, '').then(function (res) {
+      // The name (optional) becomes the account's full_name, which the
+      // dashboard greets you by.
+      return auth.signUp(details.email, details.password, details.name || '').then(function (res) {
         if (res.error) throw refusal(res.error);
         // No session back means the project wants the address confirmed first.
         if (!res.session) {

@@ -21,6 +21,7 @@ One origin serves the site and the API (`vercel.json`):
 |---|---|---|
 | `/` | Landing page | `web/index.html`, `web/src/main.js` |
 | `/about/` `/contact/` `/privacy/` | Its company pages | `web/src/pages/` |
+| `/reset-password/` | Where the password-reset email's link opens | `web/reset-password/`, `web/src/pages/reset-password/` |
 | `/dashboard/` | Dashboard | `web/dashboard/index.html`, `web/dashboard/js/main.js` |
 | `/dashboard/contact/` `/dashboard/privacy/` | The dashboard's company pages | `web/dashboard/site/` |
 | `/api/*` | Express app | `api/index.js` → `server/index.js` |
@@ -37,9 +38,12 @@ before anything paints): `?extensionId=`, `?view=`, `?payment=`, `?code=` or
 `#access_token=` is forwarded to `/dashboard/` with the rest of the address.
 That covers the published extension (it opens the site root), a checkout
 started before the dashboard moved, and a Supabase redirect to the site root.
-`?login=1` or `?signup`, with `?next=/dashboard/…`, opens the sign-in window
-(`openOnArrival` in `web/src/app/wire.js`); `next` may only point inside
-`/dashboard/`.
+A password-reset link (`#…type=recovery`) that lands on the root goes to
+`/reset-password/` instead, and the dashboard sends one on there too, before
+its Supabase client can take it as a plain sign-in. `?login=1` or `?signup`,
+with `?next=/dashboard/…`, opens the sign-in window, and `?reset=1` opens it
+on the reset request (`openOnArrival` in `web/src/app/wire.js`); `next` may
+only point inside `/dashboard/`.
 
 **Arriving at the dashboard** (`web/dashboard/js/main.js`):
 
@@ -97,17 +101,32 @@ Sign-in window
         │
         ├─ Email + password
         │   ├─ checked first: an email, and on sign-up 8+ characters with
-        │   │  upper and lower case and a number
+        │   │  upper and lower case and a number (features/login/password-rule.js)
         │   ├─ sign in:  supabase.auth.signInWithPassword
         │   │      └─ "Signed in as <email>."  ── Continue ──► /dashboard/ (or ?next)
-        │   └─ sign up:  supabase.auth.signUp
+        │   └─ sign up (+ an optional name → user_metadata.full_name):
+        │          supabase.auth.signUp
         │          ├─ session back   ──► "Account created for <email>." ── Continue ──► dashboard
         │          └─ no session     ──► "Check your email." (Continue just closes)
+        │
+        ├─ Forgot password? ──► the email alone ──► supabase.auth.resetPasswordForEmail,
+        │                        redirectTo = <site>/reset-password/
+        │      └─ "Check your email." — the same words whether or not the address
+        │         has an account; too soon after the last → "Wait a minute…"
         │
         └─ Google ──► supabase.auth.signInWithOAuth, redirectTo = <site>/dashboard/
                       (off the redirect allowlist, Supabase falls back to the
                        site root, and the forwarding script passes it on)
 ```
+
+**The reset page** (`/reset-password/`) reads its address before Supabase's
+client loads: the email's link carries the recovery session in the hash
+(`#access_token=…&type=recovery`, the implicit flow), which the client then
+takes, signing the page in. The page asks for the new password, held to the
+sign-up rule, and `supabase.auth.updateUser({ password })` sets it: "Password
+set." and on to the dashboard. Opened without a link, with one Supabase
+refused (`#error=…`, e.g. expired), or with one whose session did not take,
+it says so and offers a new link (`/?reset=1`).
 
 Refusals are put in plain words (`WORDS` in `backend.js`): a wrong password,
 an unconfirmed email, an existing account, a rate limit, a weak password, no
@@ -299,6 +318,11 @@ POST /api/answer-vault/generate (question, draft, job context ≤6000 chars, pro
                        → saved on the answer being edited
 ```
 
+**Hourly ceiling:** the generate route refuses an account's drafts past
+`GENERATE_LIMIT_PER_HOUR` (default 30, Premium included) with a 429 and when
+to try again, before the model is called (`server/generateLimit.js`; it fails
+open if its table is missing). Cover letters count against the same ceiling.
+
 **Credit rule:** one credit buys an answer plus three improvements of it.
 The page charges after the fact; see `HANDOVER.md` §7 item 25 and
 `docs/plans/active/server-side-generation-charging.md`. The dashboard has no
@@ -442,8 +466,8 @@ The settings menu (`web/dashboard/js/settings.js`, actions in `main.js`):
 - **Delete account** — type `DELETE`, then `DELETE /api/account`: a billable
   subscription is cancelled at Dodo first (the deletion stops if Dodo cannot
   confirm), then the Supabase auth user is deleted, and `profiles`,
-  `credit_transactions`, `rank_cache` and `rank_rate_limit` go with it by
-  cascade. Only then is this browser's storage cleared and the session
+  `credit_transactions`, `rank_cache`, `rank_rate_limit` and
+  `generation_rate_limit` go with it by cascade. Only then is this browser's storage cleared and the session
   dropped. The extension's copy and other browsers keep their local data, and
   the dialog says so.
 
@@ -470,6 +494,8 @@ reads as Job.
 | Answer Studio, cover letters | Generation fails | Inline error; no credit spent |
 | Answer Studio, cover letters | Generation succeeds, deduct fails | The text kept, a warning, no free follow-ups |
 | Answer Studio, cover letters | No credits | Refused before the AI call |
+| Answer Studio, cover letters | Past the hourly ceiling | 429: "That's the limit of N AI drafts an hour. Try again in M minutes." |
+| Reset page | No link, an expired or refused link | "Open the link from your email." / "This link can't be used." and a new link |
 | Explain my fit | No credits / a failure after the charge | 403 refusal / the credit refunded by the server |
 | Profile save | Extension did not confirm | "Saved here — the extension didn't confirm the sync" |
 | Feedback form | `/api/feedback` fails | "That didn't go through. Try again in a moment." |
@@ -494,3 +520,4 @@ reads as Job.
 | `sb-<project ref>-auth-token` | web: `localStorage`; extension: `chrome.storage.local` | The Supabase session |
 | `profiles` row | Postgres | Account, credits, premium and Dodo ids — **never profile content** |
 | `credit_transactions` | Postgres | Every credit movement, written by the server only |
+| `generation_rate_limit` | Postgres | Drafts counted in the account's current hour (migration 006) |

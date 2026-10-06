@@ -43,14 +43,27 @@ function cors(request) {
   };
 }
 
+/* The hash Supabase's password-reset email opens a page with: the recovery
+   session, as the implicit flow (its client's default) sends it. */
+export function recoveryHash(email = 'reader@example.com') {
+  const s = sessionFor(email);
+  return `#access_token=${s.access_token}&expires_in=3600&refresh_token=${s.refresh_token}&token_type=bearer&type=recovery`;
+}
+
 /* Supabase auth. `answers` sets how the project behaves:
      password: 'ok' (default) | 'wrong'     POST /token?grant_type=password
      signup:   'session' (default) | 'confirm'
                POST /signup; 'confirm' is a project that wants the address
                confirmed first, so no session comes back
-   Resolves with the calls made, in order ({ path, grant, body }), to assert
-   what was sent. Google's hand-over (/authorize) is a page load: it gets a
-   blank page, and the test reads the address. */
+     recover:  'ok' (default) | 'wait'      POST /recover (the reset email);
+               'wait' is Supabase's "only request this after N seconds"
+     update:   'ok' (default) | 'same'      PUT /user (a new password);
+               'same' is "should be different from the old password"
+   GET /user answers with the user (a recovery link's session is checked
+   that way). Resolves with the calls made, in order ({ method, path, grant,
+   redirectTo, body }), to assert what was sent. Google's hand-over
+   (/authorize) is a page load: it gets a blank page, and the test reads the
+   address. */
 export async function stubAuth(page, answers = {}) {
   const calls = [];
   await page.route('**/auth/v1/**', async route => {
@@ -60,7 +73,26 @@ export async function stubAuth(page, answers = {}) {
     const url = new URL(request.url());
     const path = url.pathname.replace(/^.*\/auth\/v1/, '');
     const body = request.postData() ? request.postDataJSON() : null;
-    calls.push({ path, grant: url.searchParams.get('grant_type'), body });
+    calls.push({
+      method: request.method(), path, grant: url.searchParams.get('grant_type'),
+      redirectTo: url.searchParams.get('redirect_to'), body
+    });
+
+    if (path === '/recover') {
+      if (answers.recover === 'wait') {
+        return route.fulfill({ status: 429, headers, json: { code: 429, error_code: 'over_email_send_rate_limit', msg: 'For security purposes, you can only request this after 42 seconds.' } });
+      }
+      return route.fulfill({ headers, json: {} });
+    }
+    if (path === '/user' && request.method() === 'GET') {
+      return route.fulfill({ headers, json: sessionFor('reader@example.com').user });
+    }
+    if (path === '/user' && request.method() === 'PUT') {
+      if (answers.update === 'same') {
+        return route.fulfill({ status: 422, headers, json: { code: 422, error_code: 'same_password', msg: 'New password should be different from the old password.' } });
+      }
+      return route.fulfill({ headers, json: sessionFor('reader@example.com').user });
+    }
 
     if (path === '/authorize') {
       return route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Google (stub)</title>' });

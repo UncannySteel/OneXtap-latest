@@ -13,7 +13,11 @@
      belongs to the dashboard, so it goes there before this page paints. */
   (function () {
     var q = location.search, h = location.hash;
-    if (/[?&](extensionId|view|payment|code)=/.test(q) || /[#&]access_token=/.test(h)) {
+    // A password-reset link that fell back to the root goes to the page that
+    // sets the new password, not into the dashboard.
+    if (/[#&]type=recovery/.test(h)) {
+      location.replace('/reset-password/' + q + h);
+    } else if (/[?&](extensionId|view|payment|code)=/.test(q) || /[#&]access_token=/.test(h)) {
       location.replace('/dashboard/' + q + h);
     }
   })();

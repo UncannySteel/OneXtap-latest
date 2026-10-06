@@ -127,9 +127,11 @@ Stop and ask before:
 
 ## Unverified — confirm before relying on these
 
-- **Branching.** History is on `main`; the website merge is on the local
-  branch `merge/web-dashboard` (not pushed). No "never commit to main" rule is
-  written here. Add one if that is the intent.
+- **Branching.** History is on `main`; the website merge is on
+  `merge/web-dashboard`, pushed to `github.com/UncannySteel/OneXtap-latest`
+  (remote `latest`, where it is the default branch); `origin` is the backend's
+  repo. No "never commit to main" rule is written here. Add one if that is the
+  intent.
 - **Node version.** README says Node 18+ (21+ for `npm test`'s glob); there
   is no `engines` field.
 

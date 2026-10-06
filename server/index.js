@@ -13,6 +13,7 @@ import {
 // Imported after ./load-env.js on purpose: logger.js reads LOG_LEVEL at module load.
 import { log, requestLogger, errorLogger, installProcessHandlers } from './logger.js';
 import { requireCronSecret } from './cronAuth.js';
+import { createGenerateLimitStore, consumeGeneration, limitMessage } from './generateLimit.js';
 import { runIngest } from './jobs/ingest.js';
 // Lifted out of this file so the ranking graph can share them without
 // importing an Express app that calls app.listen(). Behaviour unchanged.
@@ -698,6 +699,19 @@ ${draft || 'None'}
       });
     }
 
+    // The hourly ceiling on drafts per account (server/generateLimit.js),
+    // counted once the request is known to be well formed and before the
+    // model is called. It fails open: if the count cannot be kept, the draft
+    // goes ahead.
+    const gate = await consumeGeneration(createGenerateLimitStore({ client: supabaseAdmin }), req.userId);
+    if (!gate.allowed) {
+      const retrySeconds = gate.resetAt
+        ? Math.max(1, Math.ceil((new Date(gate.resetAt).getTime() - Date.now()) / 1000))
+        : 3600;
+      res.set('Retry-After', String(retrySeconds));
+      return res.status(429).json({ error: limitMessage(gate.resetAt, gate.limit), resetAt: gate.resetAt });
+    }
+
     const modelChain = [...new Set([selectedModel, GROQ_FALLBACK_MODEL].filter(Boolean))];
 
     const systemInstruction = buildGroqAnswerSystemInstruction(taskHint, styleHint);
@@ -1144,7 +1158,8 @@ app.post('/api/create-portal-session', requireAuth, async (req, res) => {
 //
 // Then the Supabase auth user goes, and everything keyed to it with it:
 // `profiles` references auth.users ON DELETE CASCADE, and credit_transactions,
-// rank_cache and rank_rate_limit all cascade from `profiles`. Profile content
+// rank_cache, rank_rate_limit and generation_rate_limit (migration 006) all
+// cascade from `profiles`. Profile content
 // (personal details, answers, cover letters, resumes) was never on the server
 // (rule 8); the dashboard clears the browser's copy after this returns.
 const BILLABLE_SUBSCRIPTION_STATUSES = new Set(['pending', 'active', 'trialing', 'on_hold', 'paused', 'past_due']);

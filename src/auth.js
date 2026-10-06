@@ -138,6 +138,33 @@ export async function signOut() {
 }
 
 /**
+ * Email a link to set a new password (Supabase's recovery email).
+ * Supabase answers the same whether or not an account uses the address, so
+ * this does not reveal who has one.
+ * @param {string} email
+ * @param {{ redirectTo?: string }} [options] Where the link opens: the
+ *   website's reset page. It must be on the project's redirect allowlist, or
+ *   Supabase falls back to the site URL (whose forwarding script sends a
+ *   recovery link on to the reset page).
+ * @returns {Promise<{error: object|null}>}
+ */
+export async function requestPasswordReset(email, { redirectTo } = {}) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : {});
+  return { error };
+}
+
+/**
+ * Set a new password for whoever is signed in: on the reset page, the
+ * session the recovery link opened.
+ * @param {string} password
+ * @returns {Promise<{user: object|null, error: object|null}>}
+ */
+export async function updatePassword(password) {
+  const { data, error } = await supabase.auth.updateUser({ password });
+  return { user: data?.user ?? null, error };
+}
+
+/**
  * Get the current user from the session.
  * @returns {Promise<object|null>}
  */

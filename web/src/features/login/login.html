@@ -1,7 +1,8 @@
 <!-- The sign-in window. Any [data-login] button opens it (the header's Log
      in). Forest-black like the stage, rather than the other windows' paper:
      a serif welcome over a raised moss card holding the form. "Sign up"
-     turns the same window into the sign-up form. -->
+     turns the same window into the sign-up form, and "Forgot password?"
+     into a request for a reset link. -->
 <div class="dlg login" id="login" data-lenis-prevent inert>
   <div class="dlg__scrim" data-dlg-close></div>
 
@@ -25,9 +26,17 @@
           <span>Continue with Google</span>
         </button>
 
-        <p class="login__or" aria-hidden="true"><span>or</span></p>
+        <p class="login__or" id="loginOr" aria-hidden="true"><span>or</span></p>
 
         <form class="login__form" id="loginForm" novalidate>
+          <!-- Sign-up only: the name the dashboard greets you by (optional). -->
+          <div class="login__field" id="loginNameField" hidden>
+            <input class="login__inp" id="loginName" name="name" type="text" autocomplete="name"
+                   maxlength="64" aria-label="Your name (optional)"
+                   aria-describedby="loginNameErr" placeholder="Your name (optional)">
+            <p class="login__err" id="loginNameErr"></p>
+          </div>
+
           <div class="login__field">
             <input class="login__inp" id="loginEmail" name="email" type="email" autocomplete="email"
                    inputmode="email" required aria-label="Email address"
@@ -35,7 +44,7 @@
             <p class="login__err" id="loginEmailErr"></p>
           </div>
 
-          <div class="login__field">
+          <div class="login__field" id="loginPasswordField">
             <div class="login__pw">
               <input class="login__inp" id="loginPassword" name="password" type="password"
                      autocomplete="current-password" required aria-label="Password"
@@ -45,6 +54,11 @@
             </div>
             <p class="login__err" id="loginPasswordErr"></p>
           </div>
+
+          <!-- Sign-in only: turns the window into "send me a reset link". -->
+          <p class="login__forgot" id="loginForgotRow">
+            <button class="login__link" type="button" id="loginForgot">Forgot password?</button>
+          </p>
 
           <p class="login__err login__err--send" id="loginSendErr" role="alert"></p>
           <button class="login__submit" type="submit" id="loginSubmit">Sign In</button>

@@ -1,12 +1,13 @@
 # Handover: Onextap backend plugged into the new landing page and dashboard
 
-**State on 2026-10-03:** built, and exercised against stubs and a local mock
+**State on 2026-10-06:** built, and exercised against stubs and a local mock
 of the API and of Supabase auth. **Not yet run against real keys**: there are
-none on this machine, and the owner will add them on another one (§9 lists
-everything that machine needs). **Committed locally**, on the branch
-`merge/web-dashboard`, off `main` (`bae4abc`) of `github.com/Aiko002/Onextap`:
-the first session's work is `81e1c01`, and each checkpoint since (§0) is its
-own commit.
+none on this machine, and the owner will clone the repo on another one, add
+only the files §9 lists, and deploy it as it is. **Committed and pushed**: the
+branch `merge/web-dashboard`, off `main` (`bae4abc`) of
+`github.com/Aiko002/Onextap`, is on `github.com/UncannySteel/OneXtap-latest`
+(its default branch). The first session's work is `81e1c01`, and each
+checkpoint since (§0) is its own commit.
 
 Section 7 lists every problem found that is still open. Read it before
 deploying. Section 0 is the log of the sessions since, newest last: start
@@ -209,6 +210,65 @@ Done:
 - `HANDOVER.md` §9 gained the deploy section (Vercel variables, the
   extension's allowed domains, Supabase and Dodo URLs, the order).
 - `npm test`: 564 pass, 0 fail, 2 skipped.
+
+Committed as `ab55683`, and pushed.
+
+### Checkpoint 5 (2026-10-06, session 2): password reset, sign-up name, draft ceiling — handed over
+
+The owner's answers at checkpoint 4:
+
+- **Item 25** (server-side charging): **not now**. The design stays in
+  `docs/plans/active/`, and the item stays open.
+- **Build before deploying:** forgot password (item 15), a generation rate
+  limit, a name on sign-up (item 16).
+- **Then hand over.** This is the last checkpoint of this session; the next
+  starts on the other machine (§9).
+
+Done:
+
+- **Forgot password (§7 item 15 fixed):**
+  - The sign-in window has "Forgot password?" under the password, which turns
+    it into a request for a reset link (the email alone). `src/auth.js`'s new
+    `requestPasswordReset()` calls Supabase's `resetPasswordForEmail` with
+    `redirectTo = <site>/reset-password/`. The window says the same whether
+    or not the address has an account, and puts Supabase's "only request
+    this after N seconds" as "Wait a minute before asking for another link."
+  - `/reset-password/` (new; `web/reset-password/`,
+    `web/src/pages/reset-password/`, on the company pages' frame with the
+    sign-in window's card) reads the recovery hash before Supabase's client
+    takes it, asks for the new password held to the sign-up rule (now shared:
+    `web/src/features/login/password-rule.js`), and sets it with the new
+    `updatePassword()`. No link, a refused link or a dead session: it says so
+    and offers `/?reset=1`, which opens the window on the reset request.
+  - A reset link that lands on the site root or the dashboard is sent to the
+    reset page (the forwarding script in `web/index.html`; the dashboard's
+    boot), so it never becomes a plain sign-in that skips the new password.
+  - Supabase needs `<site>/reset-password/` on its Redirect URLs (§9).
+- **A name on sign-up (§7 item 16 fixed):** optional, in sign-up mode only;
+  it becomes the account's `full_name`, which the dashboard greets by.
+- **The hourly ceiling on AI drafts** (new; it softens the quota side of §7
+  item 25, not the charging): `server/generateLimit.js`, counted in the
+  generate route after validation and before the model;
+  `GENERATE_LIMIT_PER_HOUR` (default 30, Premium included); a 429 with
+  `Retry-After` and "That's the limit of N AI drafts an hour. Try again in M
+  minutes." It needs `supabase/migrations/006_generation_rate_limit.sql`
+  (written, applied nowhere; ledger updated). **It fails open**: without the
+  table it lets drafts through and logs one warning per instance, so the code
+  can ship before the migration.
+- **Verified:** 8 unit tests for the limiter; the real Express route run in
+  a throwaway harness against local stubs of Supabase and Groq (with the limit
+  at 2: 200, 200, then 429 with Retry-After and no model call; then, with the
+  table missing, 200 and one warning); 9 e2e tests for the account flows
+  (`web/tests/account.spec.js`; one of them first passed on words already in
+  the markup and raced on the phone profile, fixed to wait for the card to
+  show, then 108 of 108 over four repeats); screenshots of every new state at
+  desktop and phone width.
+- `npm test`: 572 pass, 0 fail. `npm run test:e2e`: 188 pass, 10 skipped,
+  0 fail. Both builds pass.
+- `CLAUDE.md`'s branching note no longer says "not pushed".
+
+Still not verified anywhere: everything against real services (§7 item 2,
+and §9's "check by hand"), now including the reset email itself.
 
 ---
 
@@ -419,23 +479,26 @@ Behaviour only; the design is untouched.
   that survived `--no-experimental-webstorage` fail the same way on the
   untouched original clone (§7, item 11).
 - Checkpoint 1: 541 pass, 3 fail (the missing fixture file).
-- Checkpoint 3: 562 pass, 0 fail, 2 skipped.
-- **Checkpoint 4: 564 pass, 0 fail, 2 skipped**, with
+- Checkpoint 3: 562 pass; checkpoint 4: 564 pass.
+- **Checkpoint 5: 572 pass, 0 fail, 2 skipped**, with
   `server/data/cached_jobs.json` in place (untracked; without it, 3 fail).
 
-**E2E (`npm run test:e2e`)**, at checkpoint 4: 161 pass, 10 skipped
+**E2E (`npm run test:e2e`)**, at checkpoint 5: 188 pass, 10 skipped
 (keyboard and wheel tests on the phone profile), 0 fail, across desktop
 Chromium, phone Chromium and WebKit. It covers the landing page, its company
-pages, the 404 page, and one dashboard flow (cover-letter credits, signed in
-through the stubs). WebKit on Windows is slow enough to catch a page
-mid-transition; two such flakes were fixed at checkpoint 1.
+pages, the 404 page, the account flows (sign-up's name, forgot password, the
+reset page) and one dashboard flow (cover-letter credits, signed in through
+the stubs). WebKit on Windows is slow enough to catch a page mid-transition;
+two such flakes were fixed at checkpoint 1. A lesson from checkpoint 5: assert
+that a card is *visible* before trusting its words, since words already in
+the markup pass `toHaveText` while the card is hidden.
 
 ---
 
 ## 6. Before going live
 
 1. **Run everything against dev keys** (checklist in §7, item 2).
-2. **Supabase → Authentication → URL Configuration**: add `https://www.onextap.com/dashboard/` (and `http://localhost:5173/dashboard/` for development) to the Redirect URLs.
+2. **Supabase → Authentication → URL Configuration**: add `https://www.onextap.com/dashboard/` and `https://www.onextap.com/reset-password/` (and their `http://localhost:5173/...` twins for development) to the Redirect URLs. Apply migration 006 (§9).
    - The Site URL can stay the root: the landing forwards tokens that land there.
    - Keep the extension's `https://<extension-id>.chromiumapp.org/` entry.
 3. **Dodo**:
@@ -515,9 +578,9 @@ before this work.
 - **The FAQ** says a new field is "flagged, never guessed".
 - **"Priority support and early access"** is not something code can verify.
 
-**15. No "forgot password" flow.** The backend never had one.
+**15. ~~No "forgot password" flow.~~ Fixed at checkpoint 5:** "Forgot password?" in the sign-in window, and the `/reset-password/` page (§0). Needs `<site>/reset-password/` on Supabase's Redirect URLs. Not yet tried with a real email.
 
-**16. The landing's sign-up form has no name field.** The dashboard's name falls back from the account's display name, to the profile's first and last name, to the email's local part.
+**16. ~~The landing's sign-up form has no name field.~~ Fixed at checkpoint 5:** an optional name, stored as the account's `full_name`. Without one, the dashboard's name still falls back to the profile's, then the email's local part.
 
 **17. The web dashboard can't read the open job page or fill a form.** It has no tab access, so job descriptions are pasted. The popup keeps both abilities.
 - This also fixes a bug: the old dashboard's "scrape the active tab" scraped the dashboard itself, and for cover letters that overrode what the user pasted.
@@ -539,7 +602,7 @@ before this work.
 
 **24. ~~The website never installs the client logger's global handlers.~~ Fixed at checkpoint 3:** every website entry calls `installGlobalErrorHandlers()`, so uncaught errors go through the logger and `__onextapIssues()` works in the console there too.
 
-**25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3. **Design written at checkpoint 4, awaiting approval:** `docs/plans/active/server-side-generation-charging.md`.
+**25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3. **Design written at checkpoint 4:** `docs/plans/active/server-side-generation-charging.md`. **The owner chose "not now" at checkpoint 5**; the hourly ceiling added then (`server/generateLimit.js`) bounds the quota damage, not the free drafts.
 
 ### Found and fixed along the way (for the record)
 
@@ -596,11 +659,14 @@ Never commit either `.env` (both are gitignored; CLAUDE.md rule 10).
 - **Supabase**, a dev project, not production (CLAUDE.md asks first for
   anything against production):
   - SQL Editor: `supabase/schema.sql`, then
-    `supabase/migrations/002_rank_cache.sql` (`schema.sql` already includes
-    001, 003, 004 and 005). Record it in `supabase/migrations/README.md`.
+    `supabase/migrations/002_rank_cache.sql` and
+    `supabase/migrations/006_generation_rate_limit.sql` (`schema.sql` already
+    includes 001, 003, 004 and 005). Record it in
+    `supabase/migrations/README.md`.
   - Authentication: the email provider (decide whether addresses must be
     confirmed), and Google if Google sign-in is to be tested.
-  - URL Configuration → Redirect URLs: `http://localhost:5173/dashboard/`, and
+  - URL Configuration → Redirect URLs: `http://localhost:5173/dashboard/`,
+    `http://localhost:5173/reset-password/` (the reset email's link), and
     `https://<extension-id>.chromiumapp.org/` with the unpacked extension's ID
     (shown at `chrome://extensions`) for Google sign-in from the popup.
 - **Dodo Payments**, test mode: a subscription product, an API key, a webhook
@@ -620,7 +686,7 @@ Never commit either `.env` (both are gitignored; CLAUDE.md rule 10).
 ```bash
 npm install && npm run server:install
 # put .env, server/.env and server/data/cached_jobs.json in place
-npm test              # expect 562 pass, 0 fail
+npm test              # expect 572 pass, 0 fail
 npm run test:e2e      # expect every test to pass
 npm run build         # after .env: then Load unpacked → dist/ at chrome://extensions
 npm run server:dev    # API on :3001
@@ -641,6 +707,15 @@ session added:
 - **Cover-letter credits** (§7 item 8), in the popup and on the dashboard:
   the first personalisation spends a credit, its re-run is free, and a new
   job description spends again.
+- **Forgot password, with a real inbox** (§7 item 15): ask for a link, open
+  it, set a new password, sign in with it. Also an expired link (use one
+  twice) and the "wait a minute" answer (ask twice quickly).
+- **A name on sign-up** (§7 item 16): the dashboard greets the new account by
+  it.
+- **The draft ceiling**: with `GENERATE_LIMIT_PER_HOUR=2` on the dev server,
+  the third draft in Answer Studio says to try again later, and no credit is
+  spent on it. Then check the server log has no "generation limit
+  unavailable" warning (the migration is in).
 - `__onextapIssues()` answers in the dashboard's console.
 
 ### Deploying (Vercel)
@@ -664,10 +739,14 @@ ingest cron daily at 06:00 UTC. What the Vercel project needs:
   dashboard still works, but cannot sync profiles to the extension. Serving
   it elsewhere means widening `externally_connectable` and a new extension
   release (CLAUDE.md: ask first).
-- **Supabase** (the production project, this time): Redirect URLs for
-  `https://<domain>/dashboard/` (the Site URL can stay the root), and any
-  migration the production project lacks: it has 001–005 already
-  (`supabase/migrations/README.md`); this work adds none.
+- **Supabase** (the production project, this time; CLAUDE.md: ask first):
+  Redirect URLs for `https://<domain>/dashboard/` and
+  `https://<domain>/reset-password/` (the Site URL can stay the root), and
+  migration **006** (`generation_rate_limit`): production has 001–005
+  (`supabase/migrations/README.md`). Apply 006 before or with the deploy; if
+  it lags, drafts are simply not limited until it lands (the ceiling fails
+  open). Record the apply in the ledger.
+- **Optional server variable**: `GENERATE_LIMIT_PER_HOUR` (default 30).
 - **Dodo**: the webhook pointed at `https://<domain>/api/webhook`, and the
   customer portal enabled.
 - **The extension**: build it with `.env` holding the production values
