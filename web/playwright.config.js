@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   testDir: './tests',
   testMatch: /.*\.spec\.js/,
+  // Needs the extension loaded: playwright.extension.config.js runs it.
+  testIgnore: /extension\.spec\.js/,
   timeout: 60000,
   fullyParallel: false,
   workers: 2,

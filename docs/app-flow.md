@@ -143,10 +143,14 @@ account; a 401 there is the same trip to sign in, and an unreachable server
 leaves a session-only view with a toast saying credits and plan may be out of
 date.
 
-**In the popup**, the session lives in `chrome.storage.local` (the adapter in
-`src/supabaseClient.js`). Google there uses `chrome.identity.launchWebAuthFlow`
-and parses the tokens from the redirect (`src/auth.js`), which needs
-`https://<extension-id>.chromiumapp.org/` on Supabase's allowlist.
+**In the popup**, the session would live in `chrome.storage.local` (the
+adapter in `src/supabaseClient.js`), but **nothing in the popup signs in**
+(HANDOVER.md §7 item 27): signing in on the website leaves the extension
+signed out, so the popup's Cover Letter "Personalize" stays disabled.
+`src/auth.js` keeps an extension Google flow
+(`chrome.identity.launchWebAuthFlow`, needing
+`https://<extension-id>.chromiumapp.org/` on Supabase's allowlist) that no
+screen calls; its last caller was the old in-extension dashboard.
 
 **On the database side**, `on_auth_user_created` inserts a `profiles` row
 with 3 credits and an `initial` credit transaction. If that trigger is
@@ -366,9 +370,10 @@ Result beside the original
 
 Beside the button, the next press's cost is spelled out: a free re-run,
 "Uses 1 credit, which includes one free re-run", or no credits left.
-Personalising stamps `lastUsed` on the template. The published extension
-(v1.0.3) predates this rule: its popup personalises for free until the next
-release.
+Personalising stamps `lastUsed` on the template. In the popup this whole
+path needs a session the popup cannot get yet (§2, HANDOVER.md §7 item 27),
+so today only the dashboard personalises; the popup's half is exercised by
+`npm run test:e2e:extension` with a session put in place.
 
 ---
 

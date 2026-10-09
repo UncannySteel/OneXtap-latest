@@ -1,7 +1,8 @@
 # Handover: Onextap backend plugged into the new landing page and dashboard
 
 **State on 2026-10-09:** built, and exercised against stubs and a local mock
-of the API and of Supabase auth. **Not yet run against real keys**: the keys
+of the API and of Supabase auth, the extension included (loaded unpacked,
+checkpoint 7). **Not yet run against real keys**: the keys
 now on this machine are production's, and the owner chose to test against a
 dev Supabase project and Dodo in test mode first (§0, checkpoint 6), which
 are not in place yet. **Committed and pushed**: the
@@ -336,6 +337,58 @@ generation, test resumes included (CLAUDE.md rule 8). After that: bootstrap
 the dev project (`schema.sql`, `002`, `006`, recorded in the ledger), then
 §9's "check by hand".
 
+### Checkpoint 7 (2026-10-09, session 4): the extension, loaded, against stubs
+
+Picked up from checkpoint 6. `.env` and `server/.env` are unchanged (still
+production's, dated 27 Sept) and nothing new is on `latest`, so the
+real-service run is still waiting on the dev project. Nothing ran against a
+real service this session either.
+
+Done, offline:
+
+- **`npm run test:e2e:extension`** (new): the extension built with addresses
+  that cannot resolve (`web/tests/extension-build.js`, into a temp folder,
+  never `dist/`), loaded unpacked in Chromium, beside the website on
+  `localhost:5173` (`web/playwright.extension.config.js`, which refuses to
+  reuse a server already there, since that one is probably `npm run dev` on
+  the real `.env`). The account and the API are the existing stubs, set on
+  the whole browser context. Two tests (`web/tests/extension.spec.js`):
+  - **Profile sync and autofill (§7 item 1):** save on the dashboard opened
+    with `?extensionId=`; "Saved and synced to the extension"; the worker's
+    store holds it; the popup opens and makes its own store; a second edit
+    on the dashboard; the popup's "Autofill Application" fills a form with
+    the edit. **Against the old worker** (writing `user_profile` only), the
+    same steps fill the stale first name ("Ada", not "Augusta"): the
+    original bug, through the product. It passes with the fix.
+  - **The popup's cover-letter credits (§7 item 8):** paid, free re-run at
+    zero credits, then refused before any AI call, and the allowance kept
+    on the template in `chrome.storage.local`. It needs a session put in
+    place by hand, because of the next point.
+  - 10 of 10 over five repeats.
+- **Found: the popup has no way to sign in (new §7 item 27).** After a
+  sign-in on the website, the extension's storage holds no Supabase session,
+  and the popup's "Personalize" button is greyed out with no word of why
+  (probed, with a screenshot). Nothing in the popup calls `signIn` or
+  `signInWithOAuth`; the website's session is in the website's
+  `localStorage`. Pre-existing: at `bae4abc` the only caller was the old
+  dashboard rendered inside the extension at `?mode=dashboard`, which no
+  button opened. So checkpoint 3's popup credit rule works but no user can
+  reach it. And if the published v1.0.3 matches `bae4abc`, its popup cannot
+  personalise at all, rather than for free as §6 said (corrected there and
+  in `docs/app-flow.md`).
+- Playwright's full Chromium (extensions do not load in the headless shell
+  the other suites use) would not start from its install folder on this
+  machine: Windows' "side-by-side configuration is incorrect", though the
+  folder is complete. A copy of the folder elsewhere ran, so the spec takes
+  `E2E_CHROMIUM_PATH` (§9).
+- `npm test`: 572 pass, 0 fail, 2 skipped. `npm run test:e2e`: 188 pass,
+  10 skipped, 0 fail (it skips the new spec, which needs the extension).
+- Stale lines fixed: §8 said nothing was pushed; §6 and §9 described the
+  popup's credits as live.
+
+Waiting on the owner: item 27 (what the popup should do), and still the dev
+project for the real-service run.
+
 ---
 
 ## 1. What was asked, and what was decided
@@ -527,6 +580,13 @@ Behaviour only; the design is untouched.
     - plan panel: upgrade → checkout return → Pro; renewal date; switch → pending → "Keep Pro"; billing portal in a new tab;
     - avatar; delete account; phone-width layouts.
 
+- With the extension loaded unpacked in Chromium, against the same stubs
+  (`npm run test:e2e:extension`, checkpoint 7):
+  - dashboard save → the extension's profile store → the popup → autofill
+    of a form with the dashboard's latest edit (§7 item 1);
+  - the popup's cover-letter credits, with a session put in place by hand
+    (§7 items 8 and 27).
+
 **Not verified**
 
 - **Anything against real services**:
@@ -535,8 +595,10 @@ Behaviour only; the design is untouched.
   - ranking and explain on the real pool;
   - Dodo checkout, webhook, portal, end-of-period cancellation and resume;
   - real account deletion.
-- **Extension messaging with the extension actually loaded** (profile sync from the dashboard, with checkpoint 2's fix).
-- **The popup's cover-letter credits** (checkpoint 3).
+- **The extension with a real sign-in**: the sync above was signed in
+  through the stubs.
+- **The popup's cover-letter credits for a real user**: no user can reach
+  them yet (§7 item 27).
 - Safari and Firefox.
 
 **Unit tests (`npm test`) on this machine** (Node 25, Windows):
@@ -559,6 +621,13 @@ two such flakes were fixed at checkpoint 1. A lesson from checkpoint 5: assert
 that a card is *visible* before trusting its words, since words already in
 the markup pass `toHaveText` while the card is hidden.
 
+**E2E with the extension (`npm run test:e2e:extension`)**, from checkpoint 7:
+2 tests, 10 of 10 over five repeats, in Chromium with the extension loaded
+unpacked. It builds its own copy of the extension with unresolvable
+addresses, runs the website on 5173 (it stops if something is already
+there), and uses the same stubs. A sign-in to the popup is put in place by
+hand, since the popup has none (§7 item 27).
+
 ---
 
 ## 6. Before going live
@@ -572,7 +641,7 @@ the markup pass `toHaveText` while the card is hidden.
    - in test mode, confirm that cancelling at period end keeps Premium until the date and that `subscription.cancelled` then arrives.
 4. **Vercel**: same env var names; `VITE_DASHBOARD_URL` and `CLIENT_URL` stay the site origin.
 5. **Chrome Web Store**:
-   - **a new extension release is now needed**, for checkpoint 2's profile-sync fix and checkpoint 3's cover-letter credits in the popup. Until it ships, the published popup (v1.0.3) still personalises cover letters for free while the website charges, and still misses dashboard edits;
+   - **a new extension release is now needed**, for checkpoint 2's profile-sync fix. Until it ships, the published popup (v1.0.3) still misses dashboard edits made after it first opened. Decide §7 item 27 (the popup cannot sign in) before building it: checkpoint 3's cover-letter credits in the popup reach no one until then;
    - it also links straight to `/dashboard/` (the landing forwards the old link meanwhile);
    - point the listing's privacy URL at `/privacy/` (the old URL redirects).
 6. **Check `docs/app-flow.md` against the real run** (§7, item 4), and fix it where they disagree.
@@ -593,7 +662,7 @@ before this work.
   - The popup reads the profile store, `onextap_profiles`, through `loadProfileStore()`.
   - `onextap_profiles` is created the first time the popup opens, and `user_profile` is ignored from then on.
 - **Result:** autofill keeps using the popup's own copy, and the dashboard's "Saved and synced" does not reach it.
-- **Fixed in code at checkpoint 2** (§0), with the owner's go-ahead: the handler files the payload into `onextap_profiles` and makes it active (`extension/profileSync.js`, unit-tested against `src/profileStore.js`). **Still to do:** try it with the extension loaded (needs keys), and ship a new extension release (the owner's call).
+- **Fixed in code at checkpoint 2** (§0), with the owner's go-ahead: the handler files the payload into `onextap_profiles` and makes it active (`extension/profileSync.js`, unit-tested against `src/profileStore.js`). **Checked at checkpoint 7 with the extension loaded**, against stubs (`npm run test:e2e:extension`): the dashboard's second edit is what the popup's autofill fills, and with the old worker it is not. **Still to do:** once with a real sign-in, and ship a new extension release (the owner's call).
 
 **2. Never run against real services.** Every server-backed flow was exercised only against a mock. With dev keys, run each of these once:
 - email sign-up with confirmation;
@@ -622,7 +691,15 @@ before this work.
 
 **7. Supabase redirect allowlist.** Google sign-in and email confirmation depend on the configuration in §6. Without `/dashboard/` on the allowlist, Supabase falls back to the site root and the landing forwards the tokens. This path was tested only against the mock.
 
-**8. ~~Cover-letter personalisation never spends a credit.~~ Done at checkpoint 3**, by the owner's decision: 1 credit buys a personalisation plus 1 free re-run, on the dashboard and in the popup (§0). The popup's half reaches users only with a new extension release (§6).
+**8. ~~Cover-letter personalisation never spends a credit.~~ Done at checkpoint 3**, by the owner's decision: 1 credit buys a personalisation plus 1 free re-run, on the dashboard and in the popup (§0). The popup's half is checked with the extension loaded (checkpoint 7), but no user reaches it until item 27 is settled, and then only with a new extension release (§6).
+
+**27. The popup cannot sign in, so its cover-letter AI is unreachable.** Pre-existing. Found at checkpoint 7.
+- **Cause:** the popup keeps its own Supabase session in `chrome.storage.local` (`src/supabaseClient.js`), and nothing in it signs in: `signIn` and the extension's Google flow in `src/auth.js` (`chrome.identity.launchWebAuthFlow`) have no caller. Signing in on the website stores the session in the website's `localStorage`, which the extension cannot read. At `bae4abc` the only caller was the old dashboard rendered inside the extension at `?mode=dashboard`, which no button opened; this branch sends that address to the website.
+- **Result:** in the popup's Cover Letter tab, "Personalize" stays greyed out, with no word of why. Templates, saved versions and "Fill page" still work. Autofill needs no session and is unaffected.
+- **Options (the owner's call):**
+  - **a)** Say so in the popup and send the user to the dashboard's Cover Letter workspace (`?view=cover`) to personalise. Smallest; honest; the popup's AI path stays dormant.
+  - **b)** A sign-in in the popup: email and password, plus Google through the existing `launchWebAuthFlow` path (needs `https://<extension-id>.chromiumapp.org/` on Supabase's Redirect URLs, §9). The user signs in twice, once per surface; logging out of one leaves the other signed in.
+  - **c)** Hand the website's session to the extension over `externally_connectable`. One sign-in, but both clients would then hold one refresh token, and Supabase rotates refresh tokens and can revoke the whole session when a used one comes back, signing out both. It also puts tokens on the extension's message channel. Not recommended without a design of its own.
 
 **9. Logging out deletes this browser's profiles** (`user_profile` and `onextap_profiles`). Resumes and the avatar stay. **Decided at checkpoint 2: keep it** (the backend's behaviour).
 
@@ -682,7 +759,7 @@ before this work.
 ## 8. Housekeeping
 
 - The mock servers and scratch builds lived outside the repo, and their `.claude/launch.json` entries were removed. `.claude/launch.json` now has `web` (the site on 5173), `api` (the server on 3001) and `web-preview`.
-- Committed on the local branch `merge/web-dashboard` (from checkpoint 1 on). Nothing has been pushed, and nothing has been deployed.
+- Committed on the branch `merge/web-dashboard`, one commit per checkpoint, and pushed to `latest` (`github.com/UncannySteel/OneXtap-latest`) from checkpoint 4 on. Nothing has been deployed.
 
 ---
 
@@ -708,7 +785,11 @@ needs them before anything can be tested against real services.
   `node --test`.
 - Google Chrome, to load the unpacked extension.
 - For `npm run test:e2e`, Playwright's browsers, once:
-  `npx playwright install chromium webkit`.
+  `npx playwright install chromium webkit`. That also installs the full
+  Chromium that `npm run test:e2e:extension` needs (extensions do not load in
+  the headless shell). If it fails to start with "side-by-side configuration
+  is incorrect", as on the first machine, copy its `chrome-win64` folder
+  somewhere else and set `E2E_CHROMIUM_PATH` to the copy's `chrome.exe`.
 
 ### Files that are not in git
 
@@ -734,7 +815,8 @@ Never commit either `.env` (both are gitignored; CLAUDE.md rule 10).
   - URL Configuration → Redirect URLs: `http://localhost:5173/dashboard/`,
     `http://localhost:5173/reset-password/` (the reset email's link), and
     `https://<extension-id>.chromiumapp.org/` with the unpacked extension's ID
-    (shown at `chrome://extensions`) for Google sign-in from the popup.
+    (shown at `chrome://extensions`), for Google sign-in from the popup if
+    §7 item 27 gives it one (nothing in the popup signs in today).
 - **Dodo Payments**, test mode: a subscription product, an API key, a webhook
   secret, and the customer portal enabled. For webhooks to reach a local
   server, point the webhook at a tunnel to `http://localhost:3001/api/webhook`.
@@ -754,6 +836,7 @@ npm install && npm run server:install
 # put .env, server/.env and server/data/cached_jobs.json in place
 npm test              # expect 572 pass, 0 fail
 npm run test:e2e      # expect every test to pass
+npm run test:e2e:extension   # 2 tests; needs port 5173 free
 npm run build         # after .env: then Load unpacked → dist/ at chrome://extensions
 npm run server:dev    # API on :3001
 npm run dev           # the site on :5173
@@ -769,10 +852,11 @@ session added:
 
 - **Profile sync, with the extension loaded** (§7 item 1): save a profile on
   the dashboard, open the popup: the dashboard's profile is the active one,
-  and autofill uses it.
-- **Cover-letter credits** (§7 item 8), in the popup and on the dashboard:
-  the first personalisation spends a credit, its re-run is free, and a new
-  job description spends again.
+  and autofill uses it. Automated against stubs since checkpoint 7; by hand,
+  it adds a real sign-in.
+- **Cover-letter credits** (§7 item 8), on the dashboard: the first
+  personalisation spends a credit, its re-run is free, and a new job
+  description spends again. Not in the popup: it cannot sign in (item 27).
 - **Forgot password, with a real inbox** (§7 item 15): ask for a link, open
   it, set a new password, sign in with it. Also an expired link (use one
   twice) and the "wait a minute" answer (ask twice quickly).

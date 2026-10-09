@@ -71,11 +71,14 @@ status: `HANDOVER.md`.
   credit rules, server modules, the worker's profile sync.
 - **E2E: `npm run test:e2e`** — landing + company pages, and the dashboard's
   cover-letter credits, against stubs.
+- **E2E, extension loaded: `npm run test:e2e:extension`** — dashboard →
+  extension profile sync, popup autofill, popup cover-letter credits, against
+  stubs. Needs port 5173 free.
 - **Lint: none.** There is no ESLint or Prettier config.
 
-Nothing else automated drives the dashboard, nor the popup, the content
-script or real services. There, "verified" means you built it and exercised
-the path in the browser. Say so plainly when you have not.
+Nothing else automated drives the dashboard or the popup, nor real
+services. There, "verified" means you built it and exercised the path in the
+browser. Say so plainly when you have not.
 
 ## Key facts
 

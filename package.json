@@ -13,7 +13,8 @@
     "server:install": "npm install --prefix server",
     "test": "node --test \"test/**/*.test.js\"",
     "evals": "node --test \"test/evals/**/*.test.js\"",
-    "test:e2e": "playwright test --config web/playwright.config.js"
+    "test:e2e": "playwright test --config web/playwright.config.js",
+    "test:e2e:extension": "playwright test --config web/playwright.extension.config.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",

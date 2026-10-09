@@ -175,6 +175,9 @@ tests/
   windows.spec.js           the FAQ and sign-in windows
   dashboard.spec.js         the dashboard (signed in through the stubs): cover-letter credits
   account.spec.js           sign-up's name, "Forgot password?", and the reset page
+  extension.spec.js         the extension loaded: profile sync, popup autofill, popup cover letters
+                            (npm run test:e2e:extension; playwright.extension.config.js)
+  extension-build.js        builds the extension for it, into a temp folder, with unresolvable addresses
   stubs.js                  stand-ins for Supabase auth, /api/feedback and the dashboard's API;
                             the test server's Supabase address cannot resolve (playwright.config.js)
   tour.mjs                  steps every transition at several sizes and saves frames to look at

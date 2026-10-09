@@ -10,7 +10,9 @@ function fakeJwt(claims) {
   return `${part({ alg: 'HS256', typ: 'JWT' })}.${part(claims)}.e2e`;
 }
 
-function sessionFor(email) {
+/* The session Supabase's client keeps, for `email`. Exported for a client
+   whose session has to be put in place rather than signed in (the popup). */
+export function sessionFor(email) {
   const now = Math.floor(Date.now() / 1000);
   const user = {
     id: '00000000-0000-4000-8000-00000000e2e0',

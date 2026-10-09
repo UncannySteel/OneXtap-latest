@@ -201,6 +201,7 @@ npm run build            # Extension → dist/
 npm run build:dashboard  # Website → dist-dashboard/ (what Vercel builds)
 npm test                 # Unit tests (node --test)
 npm run test:e2e         # Landing page e2e (Playwright), against stubs
+npm run test:e2e:extension  # The extension loaded in Chromium, against stubs
 npm run evals            # Model-quality evals (opt-in; some spend real requests)
 ```
 
@@ -224,8 +225,15 @@ serves the Express app as a serverless function.
   WebKit. Sign-in, the feedback form and the API are answered by
   `web/tests/stubs.js`, and the test server's Supabase address cannot
   resolve, so a run never reaches a real project.
-- Nothing automated covers the rest of the dashboard, the popup, the content
-  script or the real services: check those by hand.
+- `npm run test:e2e:extension` — the extension, built into a temp folder
+  with unresolvable addresses and loaded unpacked in Playwright's full
+  Chromium, beside the website on `localhost:5173` (the one local origin the
+  manifest lets message it; the run stops if 5173 is taken). It checks the
+  dashboard → extension profile sync through to the popup's autofill, and
+  the popup's cover-letter credits. `E2E_CHROMIUM_PATH` points it at another
+  `chrome.exe`.
+- Nothing automated covers the rest of the dashboard and the popup, or the
+  real services: check those by hand.
 
 ### Logging
 
