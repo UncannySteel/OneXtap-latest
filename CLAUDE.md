@@ -72,8 +72,9 @@ status: `HANDOVER.md`.
 - **E2E: `npm run test:e2e`** — landing + company pages, and the dashboard's
   cover-letter credits, against stubs.
 - **E2E, extension loaded: `npm run test:e2e:extension`** — dashboard →
-  extension profile sync, popup autofill, popup cover-letter credits, against
-  stubs. Needs port 5173 free.
+  extension profile sync, popup autofill, popup cover letters (signed out:
+  to the dashboard and back; signed in: credits), against stubs. Needs port
+  5173 free.
 - **Lint: none.** There is no ESLint or Prettier config.
 
 Nothing else automated drives the dashboard or the popup, nor real

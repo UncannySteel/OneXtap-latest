@@ -389,6 +389,56 @@ Done, offline:
 Waiting on the owner: item 27 (what the popup should do), and still the dev
 project for the real-service run.
 
+### Checkpoint 8 (2026-10-09, session 4): the popup sends cover letters to the dashboard
+
+The owner's answers at checkpoint 7:
+
+- **Item 27:** option a), done below.
+- **Keys:** asked where they go. The answer, as given: back up the
+  production `.env` and `server/.env` outside the repo, then in `.env` the
+  dev project's URL and anon key, `VITE_API_URL=http://localhost:3001`,
+  `VITE_DASHBOARD_URL=http://localhost:5173`; in `server/.env` the dev
+  project's URL and service-role key, Dodo's test-mode key, webhook secret
+  and product id, `DODO_PAYMENTS_ENVIRONMENT=test_mode`, and a new
+  `CLIENT_URL=http://localhost:5173` (checkpoint 6 has the reasons). Not in
+  place yet when this checkpoint closed.
+
+Done:
+
+- **The popup's Cover Letter tab, signed out** (which is everyone, item 27):
+  in place of the target fields and "Personalize", it says personalising is
+  on the dashboard, with "Personalize on the dashboard", which opens
+  `/dashboard/?extensionId=<id>&view=cover`. Versions saved there sync back
+  and show under "Saved versions" with "Fill". Shown with or without
+  templates. The signed-in path is unchanged and kept for a later sign-in.
+  `src/components/shared/CoverLetterPanel.jsx` (whose header no longer
+  claims the dashboard uses it), `PopupView.jsx` (the user is `undefined`
+  while the session is checked, so a signed-in popup does not flash the
+  notice), `OnextapDashboard.jsx`.
+- **A new test** in `web/tests/extension.spec.js`: website sign-in, a
+  profile, the popup's notice and no "Personalize", its button opening the
+  dashboard's Cover Letter workspace with the extension's ID, a paid
+  personalisation and "Save version" there, then the popup's saved version
+  filling a form's cover-letter field.
+- **Found (new §7 item 28):** a template made in the popup is replaced at
+  the next dashboard save, since the sync files the dashboard's list over
+  the extension's. A side effect of checkpoint 2's fix, unreleased. Options
+  for the owner there; the sync was not touched (CLAUDE.md asks first).
+- **A flake fixed in the checkpoint 7 test:** it filed a profile while the
+  freshly opened popup was still in its first-run setup, which writes an
+  empty store from an earlier read and could undo it (2 of 36 runs). It now
+  waits for the popup to settle: 24 of 24 runs of that test after.
+- `dist/` rebuilt (still with the production `.env`); the new button is in
+  the popup bundle, and none of the 9 server secrets are.
+- `npm test`: 572 pass, 0 fail, 2 skipped. `npm run test:e2e:extension`:
+  15 of 15 over five repeats. One Chromium launch in about a hundred this
+  session hung until the test timed out, before any test code ran: the copy
+  of Chromium on this machine, not the tests.
+- Docs: `docs/app-flow.md` §2 and §6 (a flow chart of the round trip),
+  CLAUDE.md, AGENTS.md, README.md.
+
+Waiting on the owner: item 28, and the dev keys.
+
 ---
 
 ## 1. What was asked, and what was decided
@@ -585,7 +635,9 @@ Behaviour only; the design is untouched.
   - dashboard save → the extension's profile store → the popup → autofill
     of a form with the dashboard's latest edit (§7 item 1);
   - the popup's cover-letter credits, with a session put in place by hand
-    (§7 items 8 and 27).
+    (§7 items 8 and 27);
+  - signed out, the popup's Cover Letter tab → the dashboard's workspace →
+    a saved version → back in the popup, filled into a form (checkpoint 8).
 
 **Not verified**
 
@@ -622,8 +674,8 @@ that a card is *visible* before trusting its words, since words already in
 the markup pass `toHaveText` while the card is hidden.
 
 **E2E with the extension (`npm run test:e2e:extension`)**, from checkpoint 7:
-2 tests, 10 of 10 over five repeats, in Chromium with the extension loaded
-unpacked. It builds its own copy of the extension with unresolvable
+3 tests since checkpoint 8, 15 of 15 over five repeats, in Chromium with the
+extension loaded unpacked. It builds its own copy of the extension with unresolvable
 addresses, runs the website on 5173 (it stops if something is already
 there), and uses the same stubs. A sign-in to the popup is put in place by
 hand, since the popup has none (§7 item 27).
@@ -641,7 +693,7 @@ hand, since the popup has none (§7 item 27).
    - in test mode, confirm that cancelling at period end keeps Premium until the date and that `subscription.cancelled` then arrives.
 4. **Vercel**: same env var names; `VITE_DASHBOARD_URL` and `CLIENT_URL` stay the site origin.
 5. **Chrome Web Store**:
-   - **a new extension release is now needed**, for checkpoint 2's profile-sync fix. Until it ships, the published popup (v1.0.3) still misses dashboard edits made after it first opened. Decide §7 item 27 (the popup cannot sign in) before building it: checkpoint 3's cover-letter credits in the popup reach no one until then;
+   - **a new extension release is now needed**, for checkpoint 2's profile-sync fix and checkpoint 8's dashboard link in the popup's Cover Letter tab (§7 item 27). Until it ships, the published popup (v1.0.3) still misses dashboard edits made after it first opened. Decide §7 item 28 (popup-made templates lost at the next dashboard save) before building it;
    - it also links straight to `/dashboard/` (the landing forwards the old link meanwhile);
    - point the listing's privacy URL at `/privacy/` (the old URL redirects).
 6. **Check `docs/app-flow.md` against the real run** (§7, item 4), and fix it where they disagree.
@@ -693,13 +745,21 @@ before this work.
 
 **8. ~~Cover-letter personalisation never spends a credit.~~ Done at checkpoint 3**, by the owner's decision: 1 credit buys a personalisation plus 1 free re-run, on the dashboard and in the popup (§0). The popup's half is checked with the extension loaded (checkpoint 7), but no user reaches it until item 27 is settled, and then only with a new extension release (§6).
 
-**27. The popup cannot sign in, so its cover-letter AI is unreachable.** Pre-existing. Found at checkpoint 7.
+**27. The popup cannot sign in, so its cover-letter AI is unreachable.** Pre-existing. Found at checkpoint 7. **The owner chose a) at checkpoint 8, and it is done:** signed out, the popup's Cover Letter tab says personalising is on the dashboard and opens its Cover Letter workspace (with `?extensionId=`, so versions saved there sync back to the popup's "Saved versions", ready to fill). The signed-in path is kept, dormant, for a sign-in later (option b). Reaches users with the next extension release.
 - **Cause:** the popup keeps its own Supabase session in `chrome.storage.local` (`src/supabaseClient.js`), and nothing in it signs in: `signIn` and the extension's Google flow in `src/auth.js` (`chrome.identity.launchWebAuthFlow`) have no caller. Signing in on the website stores the session in the website's `localStorage`, which the extension cannot read. At `bae4abc` the only caller was the old dashboard rendered inside the extension at `?mode=dashboard`, which no button opened; this branch sends that address to the website.
 - **Result:** in the popup's Cover Letter tab, "Personalize" stays greyed out, with no word of why. Templates, saved versions and "Fill page" still work. Autofill needs no session and is unaffected.
 - **Options (the owner's call):**
   - **a)** Say so in the popup and send the user to the dashboard's Cover Letter workspace (`?view=cover`) to personalise. Smallest; honest; the popup's AI path stays dormant.
   - **b)** A sign-in in the popup: email and password, plus Google through the existing `launchWebAuthFlow` path (needs `https://<extension-id>.chromiumapp.org/` on Supabase's Redirect URLs, §9). The user signs in twice, once per surface; logging out of one leaves the other signed in.
   - **c)** Hand the website's session to the extension over `externally_connectable`. One sign-in, but both clients would then hold one refresh token, and Supabase rotates refresh tokens and can revoke the whole session when a used one comes back, signing out both. It also puts tokens on the extension's message channel. Not recommended without a design of its own.
+
+**28. A cover-letter template made in the popup is lost at the next dashboard save.** Found at checkpoint 8. A side effect of checkpoint 2's sync fix (item 1); not released yet.
+- **Cause:** `fileSyncedProfile()` (`extension/profileSync.js`) replaces the extension profile's `coverLetters` with the dashboard's list, and the dashboard's list never holds the popup's templates: nothing syncs from the extension to the website.
+- **Result:** a template added or uploaded in the popup, or an edit made to one there, disappears the next time the user saves on the dashboard (profile, answers or cover letters) with the extension connected. Templates and versions made on the dashboard are fine, and that is now where item 27 sends people.
+- **Options (the owner's call; CLAUDE.md asks first for changes to the sync):**
+  - **a)** Make the popup's templates read-only: no Upload, Add or editing there, and a pointer to the dashboard to manage them. Fits the popup's stance of not being a profile editor (`docs/app-flow.md` §1). Small; no change to the sync.
+  - **b)** Merge by id in `fileSyncedProfile()`, keeping templates the dashboard does not have. But then a template deleted on the dashboard would live on in the extension, unless deletions are recorded (tombstones): more design than it looks.
+  - **c)** Leave it, and say in the popup that templates made there are not kept.
 
 **9. Logging out deletes this browser's profiles** (`user_profile` and `onextap_profiles`). Resumes and the avatar stay. **Decided at checkpoint 2: keep it** (the backend's behaviour).
 
@@ -856,7 +916,9 @@ session added:
   it adds a real sign-in.
 - **Cover-letter credits** (§7 item 8), on the dashboard: the first
   personalisation spends a credit, its re-run is free, and a new job
-  description spends again. Not in the popup: it cannot sign in (item 27).
+  description spends again. In the popup (item 27): "Personalize on the
+  dashboard" opens that workspace; save a version there, and the popup's
+  "Saved versions" offers it to fill on a real job page.
 - **Forgot password, with a real inbox** (§7 item 15): ask for a link, open
   it, set a new password, sign in with it. Also an expired link (use one
   twice) and the "wait a minute" answer (ask twice quickly).

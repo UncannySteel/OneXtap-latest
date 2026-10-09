@@ -230,7 +230,8 @@ serves the Express app as a serverless function.
   Chromium, beside the website on `localhost:5173` (the one local origin the
   manifest lets message it; the run stops if 5173 is taken). It checks the
   dashboard → extension profile sync through to the popup's autofill, and
-  the popup's cover-letter credits. `E2E_CHROMIUM_PATH` points it at another
+  the popup's cover letters: signed out, sent to the dashboard and back to
+  fill; signed in (a session put in place), the credit rule. `E2E_CHROMIUM_PATH` points it at another
   `chrome.exe`.
 - Nothing automated covers the rest of the dashboard and the popup, or the
   real services: check those by hand.

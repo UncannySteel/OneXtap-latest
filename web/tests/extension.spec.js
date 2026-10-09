@@ -1,6 +1,7 @@
 // End-to-end checks with the extension loaded unpacked: the dashboard's
 // profile sync into it (ONEXTAP_SYNC_DATA), autofill from the popup, and the
-// popup's cover-letter credits. playwright.extension.config.js runs this file
+// popup's cover letters, signed out (sent to the dashboard) and signed in
+// (credits). playwright.extension.config.js runs this file
 // (`npm run test:e2e:extension`), after tests/extension-build.js has built the
 // extension with unresolvable addresses. The account and the API are stubbed
 // on the whole browser context, so the same stubs answer the website and the
@@ -64,6 +65,7 @@ const FORM = `<!doctype html><title>Apply</title>
     <label for="fn">First name</label><input id="fn" name="first_name">
     <label for="ln">Last name</label><input id="ln" name="last_name">
     <label for="em">Email</label><input id="em" name="email" type="email">
+    <label for="cl">Cover letter</label><textarea id="cl" name="cover_letter"></textarea>
   </form>`;
 
 test.describe('the extension, loaded', () => {
@@ -118,7 +120,12 @@ test.describe('the extension, loaded', () => {
     await popup.goto(`chrome-extension://${extensionId}/index.html`);
 
     // A profile, filed by the worker's own sync handler, and a session put in
-    // place: the popup has no sign-in of its own (HANDOVER.md §7 item 27).
+    // place: the popup has no sign-in of its own (HANDOVER.md §7 item 27), so
+    // this path is dormant until it gets one. Signed out, see the next test.
+    // First, the popup's first-run setup has to finish: it writes an empty
+    // store from what it read before, which would undo a profile filed
+    // meanwhile.
+    await expect(popup.getByRole('button', { name: 'Open Dashboard' })).toBeVisible();
     await popup.evaluate((payload) => chrome.runtime.sendMessage({ type: 'ONEXTAP_SYNC_DATA', payload }),
       { firstName: 'Ada', email: 'ada@example.com' });
     await serviceWorker.evaluate((session) => chrome.storage.local.set({ 'sb-e2e-auth-token': JSON.stringify(session) }),
@@ -163,5 +170,61 @@ test.describe('the extension, loaded', () => {
     // The allowance is kept on the template, in the extension's store.
     const stored = await extensionStorage(serviceWorker, ['onextap_profiles']);
     expect(activeProfile(stored).coverLetters[0]).toMatchObject({ name: 'Formal', aiRerunsLeft: 0 });
+  });
+
+  test('signed out, the popup sends cover letters to the dashboard, and versions saved there come back to fill', async ({ context, page, serviceWorker, extensionId }) => {
+    await stubAuth(context);
+    const api = await stubApi(context, { credits: 2 });
+    await context.route(FORM_URL, (route) => route.fulfill({ contentType: 'text/html', body: FORM }));
+    await signIn(page);
+
+    // A profile from the dashboard, so the popup has its tabs.
+    await page.goto(`${SITE}/dashboard/?extensionId=${extensionId}&view=profiles`);
+    await page.getByLabel('First name').fill('Ada');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.locator('.savebar-status')).toHaveText('Saved and synced to the extension');
+
+    // Signed in on the website, the popup is still signed out: no AI in it.
+    const popup = await context.newPage();
+    await popup.goto(`chrome-extension://${extensionId}/index.html`);
+    await popup.getByRole('button', { name: 'Cover Letter' }).click();
+    await expect(popup.getByText('AI personalization is on the dashboard. Versions you save there appear here, ready to fill.')).toBeVisible();
+    await expect(popup.getByRole('button', { name: /^Personalize for this/ })).toHaveCount(0);
+
+    // Its button opens the dashboard's Cover Letter workspace, with the
+    // extension's ID, so what is saved there syncs back.
+    const [dashboard] = await Promise.all([
+      context.waitForEvent('page'),
+      popup.getByRole('button', { name: 'Personalize on the dashboard' }).click()
+    ]);
+    await dashboard.waitForURL(/\/dashboard\/.*#\/cover-letter$/);
+    expect(new URL(dashboard.url()).searchParams.get('extensionId')).toBe(extensionId);
+
+    await dashboard.getByRole('button', { name: 'Add a template' }).click();
+    await dashboard.getByPlaceholder('Template name (e.g. Formal)').fill('Formal');
+    await dashboard.getByRole('button', { name: 'Create', exact: true }).click();
+    await dashboard.getByPlaceholder('Paste your base cover letter…').fill('Dear team, I build payment systems that stay up.');
+    await dashboard.getByPlaceholder('Company or organisation').fill('Norwick Labs');
+    await dashboard.getByPlaceholder('Paste the job description — the letter is rewritten around what it asks for.')
+      .fill('Senior Backend Engineer at Norwick Labs. Requirements: Python, PostgreSQL, Docker.');
+    await dashboard.getByRole('button', { name: 'Personalise for this job' }).click();
+    await expect(dashboard.getByRole('textbox', { name: 'Personalised version' })).toHaveValue('Dear Norwick Labs team, letter number 1.');
+    expect(api.state.credits).toBe(1);
+    await dashboard.getByRole('button', { name: 'Save version' }).click();
+    await expect.poll(async () => {
+      const stored = await extensionStorage(serviceWorker, ['onextap_profiles']);
+      return activeProfile(stored).coverLetters?.[0]?.variants?.length || 0;
+    }).toBe(1);
+
+    // Back in the popup: the version, ready to fill the page in front.
+    await popup.reload();
+    await popup.getByRole('button', { name: 'Cover Letter' }).click();
+    await expect(popup.getByText('Saved versions')).toBeVisible();
+    await expect(popup.getByText('Norwick Labs', { exact: true })).toBeVisible();
+    const form = await context.newPage();
+    await form.goto(FORM_URL);
+    await form.bringToFront();
+    await popup.getByRole('button', { name: 'Fill', exact: true }).click();
+    await expect(form.locator('#cl')).toHaveValue('Dear Norwick Labs team, letter number 1.');
   });
 });

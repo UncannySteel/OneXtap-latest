@@ -146,7 +146,8 @@ date.
 **In the popup**, the session would live in `chrome.storage.local` (the
 adapter in `src/supabaseClient.js`), but **nothing in the popup signs in**
 (HANDOVER.md §7 item 27): signing in on the website leaves the extension
-signed out, so the popup's Cover Letter "Personalize" stays disabled.
+signed out. So the popup's Cover Letter tab sends people to the dashboard to
+personalise (§6).
 `src/auth.js` keeps an extension Google flow
 (`chrome.identity.launchWebAuthFlow`, needing
 `https://<extension-id>.chromiumapp.org/` on Supabase's allowlist) that no
@@ -370,10 +371,30 @@ Result beside the original
 
 Beside the button, the next press's cost is spelled out: a free re-run,
 "Uses 1 credit, which includes one free re-run", or no credits left.
-Personalising stamps `lastUsed` on the template. In the popup this whole
-path needs a session the popup cannot get yet (§2, HANDOVER.md §7 item 27),
-so today only the dashboard personalises; the popup's half is exercised by
-`npm run test:e2e:extension` with a session put in place.
+Personalising stamps `lastUsed` on the template.
+
+**In the popup**, all of this needs a session the popup cannot get yet (§2,
+HANDOVER.md §7 item 27). Signed out, which today is everyone, the tab keeps
+its templates and saved versions but, in place of the target fields and the
+button, says personalising is on the dashboard:
+
+```text
+Popup ▸ Cover Letter (signed out)
+        │
+        ▼
+"Personalize on the dashboard" ──► <site>/dashboard/?extensionId=<id>&view=cover
+        │
+        ▼
+Dashboard: personalise ─► Save version ─► ONEXTAP_SYNC_DATA (coverLetters)
+        │
+        ▼
+Popup ▸ Saved versions ─► Fill ─► FILL_COVER_LETTER into the open page
+```
+
+A template made in the popup is replaced at the next dashboard save
+(HANDOVER.md §7 item 28). The signed-in path above is kept for when the
+popup gets a sign-in; `npm run test:e2e:extension` drives both, the signed-in
+one with a session put in place.
 
 ---
 

@@ -27,7 +27,7 @@ front ends import works inside the extension and on the website.
    profile sync; `npm run test:e2e` covers the landing page and the
    dashboard's cover-letter credits against stubs, and
    `npm run test:e2e:extension` the extension loaded (profile sync, popup
-   autofill, popup cover-letter credits). There is no linter, and nothing
+   autofill, popup cover letters). There is no linter, and nothing
    else automated drives the dashboard or the popup, nor real services —
    there, verification is manual, so say what you actually ran.
 5. Escalate when an action is destructive, ambiguous, or requires judgment

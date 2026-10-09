@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FileText, Plus, Save, Trash2, Copy, RotateCcw } from 'lucide-react';
+import { ExternalLink, FileText, Plus, Save, Trash2, Copy, RotateCcw } from 'lucide-react';
 import { loadProfileStore, updateActiveProfileData, MAX_COVER_LETTERS_PER_PROFILE } from '../../profileStore';
 import { getAccessToken } from '../../auth';
 import { getApplicationTypeConfig } from '../../applicationTypes';
@@ -21,7 +21,8 @@ const normalizeCoverLetterTemplates = (templates = []) =>
   }));
 
 /**
- * Cover-letter manager, shared by the dashboard tab and the popup.
+ * The popup's cover-letter tab. (The dashboard's is the website's Cover
+ * Letter workspace, web/dashboard/js/ws/cover-letter.js.)
  *
  * Holds the templates for the active profile, generates per-application
  * variants against scraped job context, and pushes the chosen text into the
@@ -32,15 +33,23 @@ const normalizeCoverLetterTemplates = (templates = []) =>
  * before the call, deducted through the server after a successful one, as in
  * Answer Studio. The web dashboard's Cover Letter workspace does the same.
  *
+ * Personalising needs a session, and the popup has no sign-in of its own
+ * (HANDOVER.md §7 item 27): signing in on the website does not sign in the
+ * extension. Signed out, the tab sends the user to the dashboard's Cover
+ * Letter workspace instead, whose saved versions sync back here to fill.
+ *
  * @param {object} props
  * @param {(message: string, type?: 'success'|'error'|'loading') => void} props.showToast
- * @param {object|null} props.user
+ * @param {object|null|undefined} props.user The signed-in user; null when
+ *   signed out, undefined while that is still being checked.
+ * @param {() => void} [props.onOpenDashboard] Opens the dashboard's Cover
+ *   Letter workspace, for a signed-out user.
  * @param {boolean} [props.compact=false] Denser styling for the popup.
  * @param {string} [props.applicationType='job'] Application type id; selects wording.
  * @param {string} [props.documentLabel='Cover letter'] Display noun — becomes
  *   "Personal Statement" or "Scholarship Essay" for other application types.
  */
-const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 'job', documentLabel = 'Cover letter' }) => {
+const CoverLetterPanel = ({ showToast, user, onOpenDashboard, compact = false, applicationType = 'job', documentLabel = 'Cover letter' }) => {
   const appTypeConfig = getApplicationTypeConfig(applicationType);
   const [coverLetters, setCoverLetters] = useState([]);
   const [activeTemplateId, setActiveTemplateId] = useState(null);
@@ -517,28 +526,32 @@ const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 
             </div>
           )}
 
-          <div className="rounded-xl border border-onextap-primary/15 bg-white/70 p-3 space-y-2 dark:bg-onextap-night-card">
-            <p className="text-xs font-semibold uppercase tracking-wide text-onextap-dark/50">Target application (optional)</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <input value={manualCompany} onChange={(e) => setManualCompany(e.target.value)} placeholder="Company / school / organization" className="rounded-lg border border-onextap-primary/20 px-2 py-1.5 text-sm" />
-              <input value={manualRole} onChange={(e) => setManualRole(e.target.value)} placeholder="Role / program / scholarship name" className="rounded-lg border border-onextap-primary/20 px-2 py-1.5 text-sm" />
-            </div>
-            <textarea value={manualDescription} onChange={(e) => { setManualDescription(e.target.value); setHasJobDescription(e.target.value.trim().length > 100); }} placeholder="Paste job description, program details, or scholarship prompt…" className="w-full rounded-lg border border-onextap-primary/20 px-2 py-2 text-sm h-20 resize-none" />
-          </div>
+          {user && (
+            <>
+              <div className="rounded-xl border border-onextap-primary/15 bg-white/70 p-3 space-y-2 dark:bg-onextap-night-card">
+                <p className="text-xs font-semibold uppercase tracking-wide text-onextap-dark/50">Target application (optional)</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input value={manualCompany} onChange={(e) => setManualCompany(e.target.value)} placeholder="Company / school / organization" className="rounded-lg border border-onextap-primary/20 px-2 py-1.5 text-sm" />
+                  <input value={manualRole} onChange={(e) => setManualRole(e.target.value)} placeholder="Role / program / scholarship name" className="rounded-lg border border-onextap-primary/20 px-2 py-1.5 text-sm" />
+                </div>
+                <textarea value={manualDescription} onChange={(e) => { setManualDescription(e.target.value); setHasJobDescription(e.target.value.trim().length > 100); }} placeholder="Paste job description, program details, or scholarship prompt…" className="w-full rounded-lg border border-onextap-primary/20 px-2 py-2 text-sm h-20 resize-none" />
+              </div>
 
-          <div className="relative">
-            <button
-              type="button"
-              disabled={!canPersonalize || isGenerating}
-              onClick={handlePersonalize}
-              className="w-full rounded-xl bg-gradient-to-br from-onextap-primary to-onextap-primary-dark py-3 text-sm font-bold text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isGenerating ? 'Personalizing…' : `Personalize for this ${appTypeConfig.shortLabel.toLowerCase()} application`}
-            </button>
-            {personalizeCost && (
-              <p className="mt-1 text-center text-[11px] text-onextap-dark/50 dark:text-[#9AB07A]">{personalizeCost}</p>
-            )}
-          </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  disabled={!canPersonalize || isGenerating}
+                  onClick={handlePersonalize}
+                  className="w-full rounded-xl bg-gradient-to-br from-onextap-primary to-onextap-primary-dark py-3 text-sm font-bold text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGenerating ? 'Personalizing…' : `Personalize for this ${appTypeConfig.shortLabel.toLowerCase()} application`}
+                </button>
+                {personalizeCost && (
+                  <p className="mt-1 text-center text-[11px] text-onextap-dark/50 dark:text-[#9AB07A]">{personalizeCost}</p>
+                )}
+              </div>
+            </>
+          )}
 
           {(suggestionText || isGenerating) && (
             <div className={`grid gap-3 ${compact ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
@@ -575,6 +588,26 @@ const CoverLetterPanel = ({ showToast, user, compact = false, applicationType = 
             </div>
           )}
         </>
+      )}
+
+      {/* Signed out (always, until the popup has a sign-in): personalising
+          happens on the dashboard, and its saved versions sync back here. */}
+      {user === null && (
+        <div className="rounded-xl border border-onextap-primary/15 bg-white/70 p-3 space-y-3 text-center dark:bg-onextap-night-card">
+          <p className="text-sm text-onextap-dark/70 dark:text-[#9AB07A]">
+            AI personalization is on the dashboard. Versions you save there appear here, ready to fill.
+          </p>
+          {onOpenDashboard && (
+            <button
+              type="button"
+              onClick={onOpenDashboard}
+              className="w-full rounded-xl bg-gradient-to-br from-onextap-primary to-onextap-primary-dark py-3 text-sm font-bold text-white shadow-md flex items-center justify-center gap-2"
+            >
+              <ExternalLink size={16} className="shrink-0" />
+              Personalize on the dashboard
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

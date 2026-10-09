@@ -18,7 +18,7 @@ export default function App() {
   /**
    * Opens the web dashboard in a tab. `?extensionId=` tells the dashboard
    * which extension to sync profiles to, and `?view=` which workspace to open
-   * (vault → Answer Studio, jobs → Job Matches, cover, profiles).
+   * (vault → Answer Studio, jobs → Job Matches, cover → Cover Letter, profiles).
    */
   const openDashboardTab = (view = null) => {
     const url = new URL(DASHBOARD_URL);
@@ -33,6 +33,7 @@ export default function App() {
       onLaunchDashboard={() => openDashboardTab()}
       onLaunchAnswerStudio={() => openDashboardTab('vault')}
       onLaunchJobMatches={() => openDashboardTab('jobs')}
+      onLaunchCoverLetters={() => openDashboardTab('cover')}
     />
   );
 }

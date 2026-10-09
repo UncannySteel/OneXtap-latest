@@ -31,9 +31,12 @@ const log = baseLog.child('ui');
  *   tab. The ranked list is deliberately NOT hosted here: this popup is 400x600
  *   and closes the moment focus leaves it, which is the wrong surface for a
  *   list you read, compare and scroll. The button is an entry point only.
+ * @param {() => void} [props.onLaunchCoverLetters] Same, deep-linked to the
+ *   Cover Letter workspace: where a signed-out user personalises.
  */
-const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches }) => {
-  const [popupUser, setPopupUser] = useState(null);
+const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches, onLaunchCoverLetters }) => {
+  // undefined until the session check answers, then the user or null.
+  const [popupUser, setPopupUser] = useState(undefined);
   const [popupTab, setPopupTab] = useState('autofill');
   const [status, setStatus] = useState('Autofill Application');
   const [hasProfile, setHasProfile] = useState(false);
@@ -328,6 +331,7 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches
                 key={coverPanelKey}
                 showToast={showPopupToast}
                 user={popupUser}
+                onOpenDashboard={onLaunchCoverLetters}
                 compact
                 applicationType={applicationType}
                 documentLabel={popupAppConfig.coverLetterLabel}
