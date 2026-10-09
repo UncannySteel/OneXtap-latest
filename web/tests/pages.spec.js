@@ -296,10 +296,15 @@ test.describe('the feedback window', () => {
     test.skip(isMobile, 'wheel');
     await openPage(page, '/contact/');
     await page.click('.sub-hero [data-feedback]');
+    await expect(fb(page)).toHaveClass(/is-open/);
+    // Compared with where the page stood once the window opened, not with 0:
+    // a click on the button while it is still rising in is retried, and the
+    // retry scrolls it into view first (Playwright's doing, not the page's).
+    const held = await page.evaluate(() => scrollY);
     await page.mouse.move(5, 450);
     await page.mouse.wheel(0, 800);
     await page.waitForTimeout(400);
-    expect(await page.evaluate(() => scrollY)).toBe(0);
+    expect(await page.evaluate(() => scrollY)).toBe(held);
   });
 });
 

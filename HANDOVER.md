@@ -1,9 +1,10 @@
 # Handover: Onextap backend plugged into the new landing page and dashboard
 
-**State on 2026-10-06:** built, and exercised against stubs and a local mock
-of the API and of Supabase auth. **Not yet run against real keys**: there are
-none on this machine, and the owner will clone the repo on another one, add
-only the files §9 lists, and deploy it as it is. **Committed and pushed**: the
+**State on 2026-10-09:** built, and exercised against stubs and a local mock
+of the API and of Supabase auth. **Not yet run against real keys**: the keys
+now on this machine are production's, and the owner chose to test against a
+dev Supabase project and Dodo in test mode first (§0, checkpoint 6), which
+are not in place yet. **Committed and pushed**: the
 branch `merge/web-dashboard`, off `main` (`bae4abc`) of
 `github.com/Aiko002/Onextap`, is on `github.com/UncannySteel/OneXtap-latest`
 (its default branch). The first session's work is `81e1c01`, and each
@@ -269,6 +270,71 @@ Done:
 
 Still not verified anywhere: everything against real services (§7 item 2,
 and §9's "check by hand"), now including the reset email itself.
+
+### Checkpoint 6 (2026-10-09, session 3): the keys arrive, and they are production's
+
+The owner added `.env` and `server/.env` on **this** machine (not another
+one, as §9 expected); `server/data/cached_jobs.json` was already here.
+
+- **They are the production values**, which the owner confirmed: the client
+  `.env` sets `VITE_API_URL` and `VITE_DASHBOARD_URL` to
+  `https://www.onextap.com`, and `DODO_PAYMENTS_ENVIRONMENT` is `live_mode`.
+  No tracked file names the Supabase project, so that came from the owner,
+  not the repo.
+- **The owner's choice:** test against a **dev Supabase project with Dodo in
+  test mode**, as §9 planned. Nothing ran against production or any real
+  service this session: no sign-in, query, migration, model call or server.
+
+Done, offline:
+
+- `npm test`: 572 pass, 0 fail, 2 skipped (the opt-in LLM evals). Checked
+  first that it cannot reach a real service: nothing under `test/` loads
+  `server/.env` (only `server/index.js` imports `load-env.js`), and the evals
+  need `RUN_LLM_EVALS=1`.
+- Both builds pass with the keys in place, and neither carries a server
+  secret: each of the nine secret values in `server/.env` was searched for
+  across all 54 files of `dist/` and `dist-dashboard/`, and none was found
+  (CLAUDE.md rule 7).
+- **`dist/` is now a production-configured extension** (its API is
+  `https://www.onextap.com`). Rebuild it with the dev values before loading
+  it unpacked for testing.
+- **e2e flake fixed**: `pages.spec.js` › "holds the page still while it is
+  open" failed about once in 80 runs. Probed: the page had already scrolled
+  (653 or 227 px) when the click returned, and the wheel then moved it 0 px;
+  a DOM click never scrolled it (40 of 40). Playwright retries a click on the
+  button while it is still rising in, and the retry scrolls it into view
+  (top-aligned: 653; centred: 227). The window held the page all along. The
+  test now waits for the window to open and compares with where the page
+  stood then: 160 of 160 over 20 repeats, and it fails (moved 800–900 px)
+  with the hold disabled.
+- `npm run test:e2e`: 188 pass, 10 skipped, 0 fail.
+
+Found in the key files, for the swap to dev values:
+
+- `server/.env` has no `CLIENT_URL`. CORS is unaffected
+  (`http://localhost:5173` is always allowed), but a checkout returns to
+  `https://www.onextap.com/dashboard/`.
+- `ADZUNA_COUNTRIES` and `INGEST_SWEEP_PAGES` are each set twice; dotenv
+  keeps the last (so `INGEST_SWEEP_PAGES=2`).
+- `npm run dev` and the `web` preview configuration read `.env`, so with
+  these values the local dashboard calls the **live** API, which runs
+  `main`'s code, not this branch's.
+- Do not park the production files in the repo as `.env.production` or
+  `.env.production.local`: `vite build` runs in production mode and would
+  load them over `.env`. Keep them outside the repo.
+
+Waiting on the owner: the dev project and Dodo's test mode (§9's
+"Accounts and settings"). Then, in `.env`: the dev project's URL and anon
+key, `VITE_API_URL=http://localhost:3001`,
+`VITE_DASHBOARD_URL=http://localhost:5173`. In `server/.env`: the dev
+project's URL and service-role key; the Dodo test key, webhook secret and
+product id; `DODO_PAYMENTS_ENVIRONMENT=test_mode`;
+`CLIENT_URL=http://localhost:5173`. The Groq, Gemini, Resend and Adzuna
+keys belong to no project and can stay, but every call spends their real
+quota, and while `OPIK_API_KEY` is set Opik keeps a trace of each
+generation, test resumes included (CLAUDE.md rule 8). After that: bootstrap
+the dev project (`schema.sql`, `002`, `006`, recorded in the ledger), then
+§9's "check by hand".
 
 ---
 
