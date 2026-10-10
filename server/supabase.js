@@ -131,7 +131,13 @@ export async function updateProfile(userId, updates) {
     .eq('id', userId)
     .select()
     .single();
-  if (error) throw new Error(formatSupabaseError(error));
+  if (error) {
+    // Keep PostgREST's code: PGRST116 (no row) tells a caller the profile is
+    // gone, which a webhook arriving after account deletion has to expect.
+    const err = new Error(formatSupabaseError(error));
+    err.code = error.code;
+    throw err;
+  }
   return data;
 }
 

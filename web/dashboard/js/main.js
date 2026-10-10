@@ -246,16 +246,19 @@ function applyLegacyView() {
 function handlePaymentReturn() {
   const { payment } = takeParams(['payment', 'session_id', 'payment_id', 'status', 'email', 'license_key', 'subscription_id']);
   if (payment === 'cancelled') {
+    subscription?.clearPaymentPending();
     toast('Payment cancelled.', 'error');
     return;
   }
   if (payment !== 'success') return;
+  subscription?.markPaymentPending();
   toast('Payment received! Activating your Premium subscription…', 'loading');
   let attempts = 0;
   const check = async () => {
     attempts += 1;
     const sub = await services.getSubscription();
     if (sub?.plan === 'pro') {
+      subscription?.clearPaymentPending();
       applyChange(sub);
       toast('Premium activated! You now have unlimited AI credits.');
       return;

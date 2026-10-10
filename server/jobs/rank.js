@@ -707,7 +707,18 @@ export function createGroqModelCaller(options = {}) {
           max_tokens: Number.isFinite(maxTokens) ? maxTokens : RANK_MAX_TOKENS,
         });
 
-        const text = groqAssistantMessageText(completion.choices?.[0]?.message).trim();
+        const choice = completion.choices?.[0];
+        if (choice?.finish_reason === 'length') {
+          // Not an error here: the caller's parser decides whether a cut-off
+          // reply is salvageable. Logged because on a reasoning model the
+          // hidden reasoning shares max_tokens, so this is easy to hit.
+          rankLog.warn('groq reply hit max_tokens', {
+            model,
+            maxTokens: Number.isFinite(maxTokens) ? maxTokens : RANK_MAX_TOKENS,
+            reasoningTokens: completion.usage?.completion_tokens_details?.reasoning_tokens ?? null,
+          });
+        }
+        const text = groqAssistantMessageText(choice?.message).trim();
         if (text) return text;
 
         const empty = new Error('Groq returned no text');

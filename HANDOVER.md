@@ -1,11 +1,15 @@
 # Handover: Onextap backend plugged into the new landing page and dashboard
 
-**State on 2026-10-09:** built, and exercised against stubs and a local mock
-of the API and of Supabase auth, the extension included (loaded unpacked,
-checkpoint 7). **Not yet run against real keys**: the keys
-now on this machine are production's, and the owner chose to test against a
-dev Supabase project and Dodo in test mode first (§0, checkpoint 6), which
-are not in place yet. **Committed and pushed**: the
+**State on 2026-10-10:** built, exercised against stubs (the extension
+included, checkpoint 7), and **run against real services on a dev Supabase
+project with Dodo in test mode** (checkpoint 9): every flow in §7 item 2
+passes, except Google sign-in, not tried. Production has not been touched,
+and nothing is deployed. The site has to work with the extension already on
+the Chrome Web Store (1.0.3; no release is planned, though a minimal 1.0.4
+is an open question): it does, except profile sync from the website (§7
+item 1), which the website cannot fix alone, and resume upload on a local
+site with the store build installed (item 31). The keys on this machine are the dev
+project's now; production's are backed up outside the repo. **Committed and pushed**: the
 branch `merge/web-dashboard`, off `main` (`bae4abc`) of
 `github.com/Aiko002/Onextap`, is on `github.com/UncannySteel/OneXtap-latest`
 (its default branch). The first session's work is `81e1c01`, and each
@@ -439,6 +443,105 @@ Done:
 
 Waiting on the owner: item 28, and the dev keys.
 
+### Checkpoint 9 (2026-10-10, session 5): real services, on a dev project
+
+The owner's answers at checkpoint 8:
+
+- **The dev keys:** in place. A separate dev Supabase project and Dodo in
+  test mode, as checkpoint 8 laid out; the production files are backed up
+  outside the repo. `OPIK_API_KEY` blank, so no generation is traced.
+- **Item 28:** not answered. It concerns the unreleased extension only, and
+  the owner since said no new release is planned (below), so it waits on
+  that.
+- **New instruction:** the website has to plug into the extension already on
+  the Chrome Web Store (1.0.3). No new extension release is planned (whether
+  a minimal 1.0.4 is ever published is left open, below). The popup
+  cover-letter check (§9) was dropped for that reason.
+
+Done:
+
+- **Keys checked without printing them** (parsed with `server/node_modules/dotenv`,
+  pass/fail only): both files point at the same project, which is not the one
+  built into the production bundle; anon key in `.env`, service-role key in
+  `server/.env`; `test_mode`; `CLIENT_URL` set. Groq's `openai/gpt-oss-120b`
+  and fallback, and Gemini's `gemini-2.5-flash`, all answer to these keys.
+- **Dev project bootstrapped by the owner** (`schema.sql`, `002`, `006`) and
+  probed: all seven tables answer, `job_listings` has `004`'s columns.
+  Recorded in `supabase/migrations/README.md`, "Dev project".
+- **Job pool:** one ingest (`X-Cron-Secret`), 1,751 real listings from seven
+  sources, no errors; `ALLOW_CACHE_SOURCE=false`, so no fixtures.
+- **Dodo's webhooks reach the local API through a Cloudflare quick tunnel**
+  (`cloudflared tunnel --url http://localhost:3001`; §9 has the setup). The
+  server log caught two setup slips: an endpoint URL ending `/api/webhookx`
+  (every event a 404) and a webhook secret with a stray character (every
+  event "Base64Coder: incorrect characters for decoding", which is the secret
+  failing to decode, not a bad signature).
+- **§7 item 2 run for real, against the dev project.** All pass: email
+  sign-up with confirmation (the profile row, the name, 3 credits), the
+  greeting by name, resume upload (Gemini, a fictional test resume), Answer
+  Studio generate (1 credit) and a free improvement, the hourly ceiling
+  (`GENERATE_LIMIT_PER_HOUR=2`: the third draft refused, no credit, the
+  Supabase-backed limiter, no "unavailable" warning), Job Matches rank (19
+  scored by the model), cover-letter credits (charge, free re-run, a changed
+  description charges again), `__onextapIssues()`, Dodo test checkout →
+  webhook → Premium, the billing portal, Switch to Standard → the end date →
+  Keep Pro, profile sync with the **local** build loaded (the owner), forgot
+  password with a real inbox (the owner), delete account (the auth user, the
+  profile and credit rows gone; the linked Dodo subscription cancelled
+  first). Not tried: Google sign-in.
+- **Fixed: "Explain my fit" failed every so often** with a 502 and the raw
+  "Unterminated string in JSON". Its 2,048-token cap is shared with
+  `gpt-oss-120b`'s hidden reasoning (measured: 1,061 reasoning tokens, 1,947
+  of 2,048 used), so a longer reasoning cut the JSON short. The caps are now
+  4,096 (analysis) and 3,072 (tailoring); an unparseable reply says "came
+  back incomplete … no credit was used"; a Groq reply that hits its cap is
+  logged (`server/jobs/rank.js`). Checked in the dashboard on a Pro account:
+  200 in 7.6s, no cap warning, no charge. Its one-credit charge on a free
+  account was not re-checked after the fix (the failure before it charged
+  nothing, as designed).
+- **Fixed: one account, one subscription** (new §7 item 30, the owner's
+  go-ahead). The two test checkouts made two Dodo subscriptions, because
+  checkout refuses an account only once it is Pro, and it turns Pro when the
+  first webhook lands. The second outlived the account's deletion. Now:
+  webhooks ignore events for a subscription that is not the account's own; a
+  second subscription is cancelled as it activates (its payment refunded by
+  hand, the log names both); `DELETE /api/account` cancels every billable
+  subscription of the account, not only the linked one; and the dashboard,
+  back from a paid checkout, shows "Payment received … no need to pay again"
+  in place of "Upgrade" for 15 minutes. `server/subscriptionGuard.js` with
+  `test/server/subscriptionGuard.test.js`. **Not yet tested with a real
+  double checkout** (steps in §9).
+- **Fixed: a misleading ERROR on every Pro account's deletion.** Dodo's
+  `subscription.cancelled` lands after the profile is gone, and was logged as
+  "Failed to cancel subscription"; now an info line. Checked with a real
+  webhook. `updateProfile()` keeps PostgREST's error code for this.
+- **Both test subscriptions cancelled** (one by the deletion, the stray one
+  through Dodo's API). The test account is deleted.
+- **Audited: does this branch plug into the store extension?** Read-only,
+  against `main` as the stand-in for 1.0.3 (its manifest version is unchanged
+  since `9b01adb`; the store build itself was not unpacked). Compatible:
+  every API call the extension makes, the popup's dashboard links, resume
+  upload through the worker, CORS, the extension ID. **Not compatible: item
+  1**, the profile sync, and the website cannot work around it (1.0.3's
+  worker has no message that writes the store the popup reads). Also found:
+  item 29 (`?extensionId=` trusted) and item 31 (resume upload goes through
+  the extension).
+- `dist/` rebuilt with the **dev** values: it points at `localhost` and the
+  dev project now, not production. None of the server secrets are in it.
+- `npm test`: 577 pass, 0 fail, 2 skipped. The e2e suites were not run.
+- Smaller things seen, not fixed (item 32): Answer Studio's "Improve" left a
+  draft with more unbacked claims than before (1 → 4, all flagged); Job
+  Matches lists "HTML" as missing beside a matched "HTML5"; a rank took 27s
+  where the page says 5-20.
+
+Waiting on the owner:
+
+- **Item 1 with the store extension:** the website-side options a) stop
+  claiming "synced to the extension", b) item 29, c) item 31; and whether a
+  minimal 1.0.4 (the sync fix only) is ever published.
+- **A real double checkout** (§9) to test item 30.
+- **Item 28**, if an extension release happens.
+
 ---
 
 ## 1. What was asked, and what was decided
@@ -455,7 +558,7 @@ Decisions made with the owner before starting:
 | Layout | One repo, one site: landing at `/`, dashboard at `/dashboard/`, API at `/api/`. Base is the backend repo, keeping its env var names, routes, storage keys, message types and `vercel.json` build settings, so it can replace the live folder |
 | Dashboard tooling | Vite added; still plain JS (no React) |
 | Extension popup | Left as it is (React/Tailwind), only its dashboard links repointed |
-| Testing | Against dev/staging keys the owner supplies (not yet supplied) |
+| Testing | Against dev/staging keys the owner supplies (supplied 2026-10-10: a dev Supabase project and Dodo test mode; checkpoint 9) |
 | Server additions | Real account deletion, a billing portal, the renewal date |
 | Cancelling Premium | At the end of the paid period, not immediately |
 | Avatar | Kept on the device (browser storage); Google photo, else initials |
@@ -485,7 +588,7 @@ web/                    the website (Vite root; vite.dashboard.config.js builds 
     site/                   the dashboard's variants of the landing's company pages
   tests/, playwright.config.js   landing e2e tests (tests/stubs.js stands in for Supabase and the API)
 src/                    shared client modules (auth, credits, profile/resume stores, matching…) + the popup
-server/                 Express API (four routes added, see §4)
+server/                 Express API (routes added and changed, see §4)
 extension/, public/     Chrome extension (unchanged)
 ```
 
@@ -534,10 +637,14 @@ Env values keep their meaning:
 | `POST /api/cancel-subscription` | An **active** subscription is cancelled at the end of the period (`cancel_at_next_billing_date: true`); Premium stays on until Dodo's `subscription.cancelled` webhook turns it off. On hold, pending or past due: cancelled immediately, as before |
 | `POST /api/resume-subscription` | **New.** Withdraws a scheduled cancellation ("Keep Pro") |
 | `POST /api/create-portal-session` | **New.** Returns a link to Dodo's hosted billing portal |
-| `DELETE /api/account` | **New.** Cancels any billable subscription at Dodo first (aborts if Dodo can't confirm), then deletes the Supabase auth user. `profiles`, `credit_transactions`, `rank_cache` and `rank_rate_limit` go with it by cascade |
+| `DELETE /api/account` | **New.** Cancels every billable subscription of the account at Dodo first, not only the linked one (checkpoint 9; aborts if Dodo can't confirm), then deletes the Supabase auth user. `profiles`, `credit_transactions`, `rank_cache` and `rank_rate_limit` go with it by cascade |
 | checkout | `return_url` now goes to `/dashboard/?payment=success` (`dashboardUrl()`) |
 
-No schema changes and no new migrations. The webhook handler is unchanged.
+Schema: one new migration, `006_generation_rate_limit.sql`, for the hourly
+draft ceiling (`server/generateLimit.js`, checkpoint 5; the generate route
+answers 429 past it). Webhook handler: unchanged until checkpoint 9; since
+then it acts only on the account's own subscription and cancels a second one
+as it activates (`server/subscriptionGuard.js`, §7 item 30).
 
 ### Shared client: `src/`
 
@@ -584,7 +691,7 @@ Behaviour only; the design is untouched.
   - **Cover Letter**: templates (10 per profile, from a file or pasted); personalise; saved versions per application; copy.
   - **Job Matches**: resume library; draft/applied filters; sort; ranked cards with evidence counts and matched/missing skills; every degraded-state notice; "Explain my fit" (1 credit, reopening is free); "how this run worked"; the last result survives leaving the page.
 - **Settings**: change avatar (on this device); a subscription panel with four states (Standard, Pro renewing, Pro ending with "Keep Pro", Pro without dates); billing portal; log out; delete account (the dialog copy now says what is actually deleted).
-- **Returning from checkout**: re-checks every 8 seconds for up to 2 minutes, as before.
+- **Returning from checkout**: re-checks every 8 seconds for up to 2 minutes, as before. Since checkpoint 9, the plan panel shows "Payment received … no need to pay again" in place of "Upgrade" until Pro arrives, for up to 15 minutes, in every tab of that browser.
 - **Other**:
   - The popup's old `?view=vault|cover|jobs|profiles` links open the right workspace.
   - `?upgrade=1` opens the plan panel.
@@ -639,18 +746,32 @@ Behaviour only; the design is untouched.
   - signed out, the popup's Cover Letter tab → the dashboard's workspace →
     a saved version → back in the popup, filled into a form (checkpoint 8).
 
+**Against real services, 2026-10-10** (a dev Supabase project, Dodo in test
+mode, real Groq and Gemini; checkpoint 9 has the detail):
+
+- email sign-up with confirmation, the profile row, the name, 3 credits;
+- resume upload (Gemini), Answer Studio generate and its credit, a free
+  improvement, the hourly ceiling;
+- cover-letter credits: charge, free re-run, a new description charges;
+- Job Matches on a real pool (1,751 listings) and "Explain my fit" (after
+  the checkpoint 9 fix, on a Pro account);
+- Dodo test checkout → webhook → Premium, the billing portal, Switch to
+  Standard → Keep Pro;
+- delete account: the user, the rows, the linked subscription;
+- profile sync with this branch's extension loaded and a real sign-in, and
+  forgot password with a real inbox (both by the owner, who reported them
+  working).
+
 **Not verified**
 
-- **Anything against real services**:
-  - Supabase sign-in, sign-up and Google;
-  - Gemini resume parsing and Groq generation;
-  - ranking and explain on the real pool;
-  - Dodo checkout, webhook, portal, end-of-period cancellation and resume;
-  - real account deletion.
-- **The extension with a real sign-in**: the sync above was signed in
-  through the stubs.
+- **Still open against real services**: Google sign-in; Dodo's
+  `subscription.cancelled` at the end of a real period; "Explain my fit"'s
+  one-credit charge on a free account after the checkpoint 9 fix; a real
+  double checkout (§7 item 30); anything in production.
+- **The store extension (1.0.3) itself**: never unpacked or run. What this
+  document says about it comes from reading `main` (§7 item 1).
 - **The popup's cover-letter credits for a real user**: no user can reach
-  them yet (§7 item 27).
+  them (§7 item 27), and the check was dropped at checkpoint 9.
 - Safari and Firefox.
 
 **Unit tests (`npm test`) on this machine** (Node 25, Windows):
@@ -660,8 +781,10 @@ Behaviour only; the design is untouched.
   untouched original clone (§7, item 11).
 - Checkpoint 1: 541 pass, 3 fail (the missing fixture file).
 - Checkpoint 3: 562 pass; checkpoint 4: 564 pass.
-- **Checkpoint 5: 572 pass, 0 fail, 2 skipped**, with
+- Checkpoint 5: 572 pass, 0 fail, 2 skipped, with
   `server/data/cached_jobs.json` in place (untracked; without it, 3 fail).
+- **Checkpoint 9: 577 pass, 0 fail, 2 skipped** (the 5 new ones are
+  `test/server/subscriptionGuard.test.js`). The e2e suites were not re-run.
 
 **E2E (`npm run test:e2e`)**, at checkpoint 5: 188 pass, 10 skipped
 (keyboard and wheel tests on the phone profile), 0 fail, across desktop
@@ -684,20 +807,22 @@ hand, since the popup has none (§7 item 27).
 
 ## 6. Before going live
 
-1. **Run everything against dev keys** (checklist in §7, item 2).
+1. **Finish the real-service run** (done on a dev project at checkpoint 9; §5 lists what is left): Google sign-in, the end-of-period cancellation, a real double checkout (§7 item 30), and the owner's decisions on items 1, 29 and 31.
 2. **Supabase → Authentication → URL Configuration**: add `https://www.onextap.com/dashboard/` and `https://www.onextap.com/reset-password/` (and their `http://localhost:5173/...` twins for development) to the Redirect URLs. Apply migration 006 (§9).
    - The Site URL can stay the root: the landing forwards tokens that land there.
    - Keep the extension's `https://<extension-id>.chromiumapp.org/` entry.
 3. **Dodo**:
-   - confirm the customer portal is enabled for the account;
-   - in test mode, confirm that cancelling at period end keeps Premium until the date and that `subscription.cancelled` then arrives.
+   - confirm the customer portal is enabled for the live account (done in test mode);
+   - in test mode, confirm that cancelling at period end keeps Premium until the date and that `subscription.cancelled` then arrives;
+   - the live webhook endpoint is `https://www.onextap.com/api/webhook`, and `DODO_PAYMENTS_WEBHOOK_KEY` in Vercel is the live endpoint's secret, copied with Dodo's button (§9 lists the two ways this broke on dev).
 4. **Vercel**: same env var names; `VITE_DASHBOARD_URL` and `CLIENT_URL` stay the site origin.
 5. **Chrome Web Store**:
-   - **a new extension release is now needed**, for checkpoint 2's profile-sync fix and checkpoint 8's dashboard link in the popup's Cover Letter tab (§7 item 27). Until it ships, the published popup (v1.0.3) still misses dashboard edits made after it first opened. Decide §7 item 28 (popup-made templates lost at the next dashboard save) before building it;
+   - **the owner said at checkpoint 9 that the site must work with the published 1.0.3, and no release is planned.** Whether a minimal 1.0.4 (the sync fix only) ships is open (§7 item 1). What follows describes what a release would carry. A new release would be needed for checkpoint 2's profile-sync fix and checkpoint 8's dashboard link in the popup's Cover Letter tab (§7 item 27). Until it ships, the published popup (v1.0.3) still misses dashboard edits made after it first opened. Decide §7 item 28 (popup-made templates lost at the next dashboard save) before building it;
    - it also links straight to `/dashboard/` (the landing forwards the old link meanwhile);
    - point the listing's privacy URL at `/privacy/` (the old URL redirects).
-6. **Check `docs/app-flow.md` against the real run** (§7, item 4), and fix it where they disagree.
-7. **Merge and push.** Everything is committed on the branch `merge/web-dashboard`.
+6. **Check `docs/app-flow.md` against the real run** (§7, item 4; the run happened at checkpoint 9), and fix it where they disagree.
+7. **Production Supabase**: apply migration 006 (ask first, CLAUDE.md) and record it in `supabase/migrations/README.md`. Confirm the store build's Supabase project is the one the production server verifies tokens against (unpack the CRX; compare hosts, never keys).
+8. **Merge and push.** Each checkpoint is committed on the branch `merge/web-dashboard`.
 
 ---
 
@@ -714,15 +839,16 @@ before this work.
   - The popup reads the profile store, `onextap_profiles`, through `loadProfileStore()`.
   - `onextap_profiles` is created the first time the popup opens, and `user_profile` is ignored from then on.
 - **Result:** autofill keeps using the popup's own copy, and the dashboard's "Saved and synced" does not reach it.
-- **Fixed in code at checkpoint 2** (§0), with the owner's go-ahead: the handler files the payload into `onextap_profiles` and makes it active (`extension/profileSync.js`, unit-tested against `src/profileStore.js`). **Checked at checkpoint 7 with the extension loaded**, against stubs (`npm run test:e2e:extension`): the dashboard's second edit is what the popup's autofill fills, and with the old worker it is not. **Still to do:** once with a real sign-in, and ship a new extension release (the owner's call).
+- **Fixed in code at checkpoint 2** (§0), with the owner's go-ahead: the handler files the payload into `onextap_profiles` and makes it active (`extension/profileSync.js`, unit-tested against `src/profileStore.js`). **Checked at checkpoint 7 with the extension loaded**, against stubs (`npm run test:e2e:extension`): the dashboard's second edit is what the popup's autofill fills, and with the old worker it is not. **Checked at checkpoint 9 with a real sign-in**, the local build loaded: passes.
+- **But the owner said at checkpoint 9 that the site has to plug into the store extension, 1.0.3, with no release planned.** That build has the old worker, so for its users this item stays open, and the website cannot work around it: 1.0.3's worker accepts `ONEXTAP_SYNC_DATA`, `PARSE_RESUME`, `SCRAPE_ACTIVE_TAB` and `GENERATE_IMPROVED_ANSWER`, and none of them writes `onextap_profiles`. In practice: install, click the icon (the store is created, empty), set up the profile on the website, and the popup still says "Welcome to Onextap". The website meanwhile says "Saved and synced to the extension", because the old worker answers `success: true` regardless. Production, if it runs `main`'s website, has the same today. **Options:** a minimal 1.0.4 with only this fix (`extension/background.js` + `extension/profileSync.js`, a version bump); and in any case, the website's copy should stop claiming the sync (§0 checkpoint 9, option a).
 
-**2. Never run against real services.** Every server-backed flow was exercised only against a mock. With dev keys, run each of these once:
+**2. ~~Never run against real services.~~ Run at checkpoint 9**, against a dev Supabase project and Dodo in test mode: every line below passes (§0 has the detail), except Google sign-in, not tried, and the extension one, which passes with this branch's build only (item 1). Production itself has not been touched. The list, for the next real-service run:
 - email sign-up with confirmation;
 - email sign-in and Google sign-in (after adding the redirect URL, §6);
 - resume upload (Gemini);
 - Answer Studio generate (Groq), including a credit deduction;
 - cover letter personalise;
-- Job Matches rank and "Explain my fit" (with its credit);
+- Job Matches rank and "Explain my fit" (with its credit; at checkpoint 9 checked on a Pro account only);
 - Dodo test checkout → webhook → Premium in the dashboard;
 - billing portal;
 - switch to Standard → the panel shows the end date → "Keep Pro";
@@ -731,7 +857,14 @@ before this work.
 
 **3. ~~The landing's Playwright suite is broken by the wiring.~~ Fixed at checkpoint 1** (§0). The four tests that expected the old `onextap:login` / `onextap:feedback` stubs now stub the network (`web/tests/stubs.js`) and assert the request bodies. Playwright 1.63 and its browsers are installed on this machine.
 
-**4. ~~Docs.~~ Done:** updated at checkpoint 2, and `docs/app-flow.md` rewritten from the code at checkpoint 4. It is traced and stub-tested, not yet confirmed against real services; fix it where the real run disagrees.
+**4. ~~Docs.~~ Done:** updated at checkpoint 2, and `docs/app-flow.md` rewritten from the code at checkpoint 4. It is traced and stub-tested; the real run (checkpoint 9) has happened but the doc has not been checked against it yet (§6 item 6).
+
+**29. The dashboard trusts `?extensionId=` from the link.** Pre-existing (`src/extensionClient.js`, the same on `main`). Whatever ID the link names gets the active profile, and through `PARSE_RESUME` the resume file and the Supabase access token (`web/dashboard/js/services.js`, `src/resumeParse.js`). Chrome delivers only if that extension lists the site's origin in its own `externally_connectable`, so an attack needs an installed extension that does, plus a crafted link. Found at checkpoint 9. **Proposed:** in production, send only to the store ID (`EXTENSION_ID_FALLBACK`), keeping the override on `localhost` for unpacked builds. Waiting on the owner (option b).
+
+**30. One account could end up with two Dodo subscriptions. Fixed in code at checkpoint 9, not yet tested with a real double checkout.** Checkout refuses an account that is already Pro, but an account becomes Pro only when the first `subscription.active` lands, so two checkouts in that window (two tabs, a slow or failing webhook) made two subscriptions, and the app tracks one. It was worse than double billing: every webhook acted on the account whatever subscription it named, so cancelling the stray one switched Pro off, and deleting the account cancelled only the linked one. The fix (`server/subscriptionGuard.js`, the webhook and `DELETE /api/account` in `server/index.js`, `web/dashboard/js/subscription.js`) is in §0, checkpoint 9. **Left open:**
+- the cancelled duplicate's payment is refunded by hand in Dodo (the log names both subscriptions); automating it needs the payment id from `payment.succeeded`;
+- two activations processed in the same instant can both link; account deletion cleans that up;
+- a linked subscription on hold is not cancelled when a new one replaces it.
 
 **26. Any account could mint credits through `POST /api/credits/refund`. Fixed at checkpoint 4 on this branch; production keeps the hole until this branch is deployed.** Pre-existing since the first commit (Feb 2026): the route added a credit for any signed-in, non-Premium account, with no check that a charge had happened, no limit, and no caller anywhere in the product. Removed, with `test/server/routes.test.js` to keep it out (§0).
 
@@ -741,11 +874,11 @@ before this work.
 
 **6. Account deletion can fail halfway.** If Dodo cancels the subscription and then Supabase `deleteUser` fails, the user has no subscription but still has an account. The user is told to try again, and a retry completes it (the subscription is no longer billable, so the Dodo step is skipped).
 
-**7. Supabase redirect allowlist.** Google sign-in and email confirmation depend on the configuration in §6. Without `/dashboard/` on the allowlist, Supabase falls back to the site root and the landing forwards the tokens. This path was tested only against the mock.
+**7. Supabase redirect allowlist.** Google sign-in and email confirmation depend on the configuration in §6. Without `/dashboard/` on the allowlist, Supabase falls back to the site root and the landing forwards the tokens. At checkpoint 9, email confirmation and the reset link worked on the dev project with the `localhost` entries; Google and the production allowlist are untested. This path was tested only against the mock.
 
-**8. ~~Cover-letter personalisation never spends a credit.~~ Done at checkpoint 3**, by the owner's decision: 1 credit buys a personalisation plus 1 free re-run, on the dashboard and in the popup (§0). The popup's half is checked with the extension loaded (checkpoint 7), but no user reaches it until item 27 is settled, and then only with a new extension release (§6).
+**8. ~~Cover-letter personalisation never spends a credit.~~ Done at checkpoint 3**, by the owner's decision: 1 credit buys a personalisation plus 1 free re-run, on the dashboard and in the popup (§0). The dashboard's half passed against real services at checkpoint 9; the popup's half reaches no store user (item 27). The popup's half is checked with the extension loaded (checkpoint 7), but no user reaches it until item 27 is settled, and then only with a new extension release (§6).
 
-**27. The popup cannot sign in, so its cover-letter AI is unreachable.** Pre-existing. Found at checkpoint 7. **The owner chose a) at checkpoint 8, and it is done:** signed out, the popup's Cover Letter tab says personalising is on the dashboard and opens its Cover Letter workspace (with `?extensionId=`, so versions saved there sync back to the popup's "Saved versions", ready to fill). The signed-in path is kept, dormant, for a sign-in later (option b). Reaches users with the next extension release.
+**27. The popup cannot sign in, so its cover-letter AI is unreachable.** Pre-existing. Found at checkpoint 7. (Since checkpoint 9, with no release planned, the fix below reaches no store user; the same goes for item 28.) **The owner chose a) at checkpoint 8, and it is done:** signed out, the popup's Cover Letter tab says personalising is on the dashboard and opens its Cover Letter workspace (with `?extensionId=`, so versions saved there sync back to the popup's "Saved versions", ready to fill). The signed-in path is kept, dormant, for a sign-in later (option b). Reaches users with the next extension release.
 - **Cause:** the popup keeps its own Supabase session in `chrome.storage.local` (`src/supabaseClient.js`), and nothing in it signs in: `signIn` and the extension's Google flow in `src/auth.js` (`chrome.identity.launchWebAuthFlow`) have no caller. Signing in on the website stores the session in the website's `localStorage`, which the extension cannot read. At `bae4abc` the only caller was the old dashboard rendered inside the extension at `?mode=dashboard`, which no button opened; this branch sends that address to the website.
 - **Result:** in the popup's Cover Letter tab, "Personalize" stays greyed out, with no word of why. Templates, saved versions and "Fill page" still work. Autofill needs no session and is unaffected.
 - **Options (the owner's call):**
@@ -772,7 +905,7 @@ before this work.
 
 **12. The published extension (v1.0.3) still opens `onextap.com/?extensionId=…`.** The landing forwards it to the dashboard (tested). A new release links straight to `/dashboard/`. Publishing is the owner's call.
 
-**13. `dist/` has only ever been built here without a `.env`** (checkpoints 1 to 3). That build has no Supabase address, so its Supabase client cannot start (the dev dashboard without a `.env` stops on `supabaseUrl is required`; the popup uses the same `src/supabaseClient.js`). Run `npm run build` again once `.env` is in place, before loading the unpacked extension.
+**13. `dist/` was built here without a `.env`** at checkpoints 1 to 3; since checkpoint 6 with a `.env`, the production one until checkpoint 8 and the dev one since checkpoint 9. The rule below stands: build after the `.env` you mean. That build has no Supabase address, so its Supabase client cannot start (the dev dashboard without a `.env` stops on `supabaseUrl is required`; the popup uses the same `src/supabaseClient.js`). Run `npm run build` again once `.env` is in place, before loading the unpacked extension.
 
 ### Low
 
@@ -781,7 +914,7 @@ before this work.
 - **The FAQ** says a new field is "flagged, never guessed".
 - **"Priority support and early access"** is not something code can verify.
 
-**15. ~~No "forgot password" flow.~~ Fixed at checkpoint 5:** "Forgot password?" in the sign-in window, and the `/reset-password/` page (§0). Needs `<site>/reset-password/` on Supabase's Redirect URLs. Not yet tried with a real email.
+**15. ~~No "forgot password" flow.~~ Fixed at checkpoint 5:** "Forgot password?" in the sign-in window, and the `/reset-password/` page (§0). Needs `<site>/reset-password/` on Supabase's Redirect URLs. Tried with a real inbox on the dev project at checkpoint 9 (the owner reported it working).
 
 **16. ~~The landing's sign-up form has no name field.~~ Fixed at checkpoint 5:** an optional name, stored as the account's `full_name`. Without one, the dashboard's name still falls back to the profile's, then the email's local part.
 
@@ -805,6 +938,13 @@ before this work.
 
 **24. ~~The website never installs the client logger's global handlers.~~ Fixed at checkpoint 3:** every website entry calls `installGlobalErrorHandlers()`, so uncaught errors go through the logger and `__onextapIssues()` works in the console there too.
 
+**31. Resume upload goes through the extension when it is installed.** `src/resumeParse.js` sends `PARSE_RESUME` to the service worker, which posts to the API address built into the extension. With the store build on a local site, that is production's API with a dev token: a 401. In production it works, but it ties the website to the old worker (1.0.3 builds before `45e9b13` drop the resume text, and the page falls back to a rougher parse). `parseResumeViaApi()` already does the same without the extension. Found at checkpoint 9. **Proposed:** always call the API directly. Waiting on the owner (option c).
+
+**32. Seen during the real-service run, not fixed.** From one run each, so impressions, not measurements:
+- Answer Studio's "Improve" left a draft with more claims the resume does not back (1 → 4). The claim check flagged all four; the improvement prompt invents figures.
+- Job Matches lists "HTML · required" as not in the resume beside a matched "HTML5".
+- A rank took 27s; the page says "usually 5-20 seconds".
+
 **25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3. **Design written at checkpoint 4:** `docs/plans/active/server-side-generation-charging.md`. **The owner chose "not now" at checkpoint 5**; the hourly ceiling added then (`server/generateLimit.js`) bounds the quota damage, not the free drafts.
 
 ### Found and fixed along the way (for the record)
@@ -813,6 +953,8 @@ before this work.
 - The popup's Dashboard button passed its click event as the `?view=` value.
 - A redirect loop between the landing and the dashboard when a stored session is dead is prevented: the dashboard drops the session before redirecting, and the landing always opens the sign-in window.
 - Cover-letter edits no longer get lost when leaving the workspace or switching profile mid-save.
+- "Explain my fit" cut off mid-JSON by a token cap that `gpt-oss-120b`'s reasoning shares (checkpoint 9).
+- An ERROR logged on every Pro account's deletion, for a webhook that arrives after the profile is gone (checkpoint 9).
 
 ---
 
@@ -880,6 +1022,22 @@ Never commit either `.env` (both are gitignored; CLAUDE.md rule 10).
 - **Dodo Payments**, test mode: a subscription product, an API key, a webhook
   secret, and the customer portal enabled. For webhooks to reach a local
   server, point the webhook at a tunnel to `http://localhost:3001/api/webhook`.
+  What worked at checkpoint 9, on Windows:
+  - `winget install --id Cloudflare.cloudflared`, then, in a **new** terminal
+    (the old one keeps its PATH; the binary is in
+    `C:\Program Files (x86)\cloudflared\`),
+    `cloudflared tunnel --url http://localhost:3001`. No account needed. It
+    prints a `https://<words>.trycloudflare.com` address; the first request
+    can time out, so run it again.
+  - Dodo's endpoint is that address **plus `/api/webhook`**. The address
+    changes every time the tunnel restarts, so update the endpoint then.
+  - Copy the signing secret with Dodo's copy button into
+    `DODO_PAYMENTS_WEBHOOK_KEY`: `whsec_` and then base64. Restart the API
+    after changing `server/.env` (`node --watch` does not watch it).
+  - If Premium does not arrive, read the API log: a 404 on the webhook path
+    is the endpoint URL; "Base64Coder: incorrect characters for decoding" is
+    the secret itself, not the signature. Then resend from Dodo's delivery
+    log.
 - **Groq** and **Gemini** keys. Check which Groq model ids the key can reach
   (`server/.env.example` says how).
 - **Resend**, to test the feedback form (mind its sandbox limit, in
@@ -894,9 +1052,9 @@ Never commit either `.env` (both are gitignored; CLAUDE.md rule 10).
 ```bash
 npm install && npm run server:install
 # put .env, server/.env and server/data/cached_jobs.json in place
-npm test              # expect 572 pass, 0 fail
+npm test              # expect 577 pass, 0 fail
 npm run test:e2e      # expect every test to pass
-npm run test:e2e:extension   # 2 tests; needs port 5173 free
+npm run test:e2e:extension   # 3 tests; needs port 5173 free
 npm run build         # after .env: then Load unpacked → dist/ at chrome://extensions
 npm run server:dev    # API on :3001
 npm run dev           # the site on :5173
@@ -907,8 +1065,13 @@ extension's ID, which the sync needs.
 
 ### Then check by hand
 
-Nothing automated covers these. The list in §7 item 2, plus what this
-session added:
+Nothing automated covers these. The list in §7 item 2, plus what later
+sessions added. At checkpoint 9 all of it passed except where marked
+(profile sync and forgot password on the owner's word; the sub-checks
+inside forgot password were not reported one by one).
+
+Keep test data fictional: a made-up resume and job description go to Gemini
+and Groq like real ones would (CLAUDE.md rule 8).
 
 - **Profile sync, with the extension loaded** (§7 item 1): save a profile on
   the dashboard, open the popup: the dashboard's profile is the active one,
@@ -918,7 +1081,8 @@ session added:
   personalisation spends a credit, its re-run is free, and a new job
   description spends again. In the popup (item 27): "Personalize on the
   dashboard" opens that workspace; save a version there, and the popup's
-  "Saved versions" offers it to fill on a real job page.
+  "Saved versions" offers it to fill on a real job page. (The popup half
+  was dropped at checkpoint 9: it exists only in this branch's extension.)
 - **Forgot password, with a real inbox** (§7 item 15): ask for a link, open
   it, set a new password, sign in with it. Also an expired link (use one
   twice) and the "wait a minute" answer (ask twice quickly).
@@ -927,8 +1091,22 @@ session added:
 - **The draft ceiling**: with `GENERATE_LIMIT_PER_HOUR=2` on the dev server,
   the third draft in Answer Studio says to try again later, and no credit is
   spent on it. Then check the server log has no "generation limit
-  unavailable" warning (the migration is in).
+  unavailable" warning (the migration is in). Remove the setting and restart
+  the API afterwards.
 - `__onextapIssues()` answers in the dashboard's console.
+- **One account, one subscription** (§7 item 30). **Not yet run.** Open the
+  dashboard in two tabs, Manage subscription in both. Tab 1: Upgrade, pay
+  with the test card, come back. Tab 2, not refreshed: Upgrade and pay
+  again. Expect: Pro on the account; a warning in the API log that the
+  second subscription was cancelled, naming both; Dodo showing one active
+  and one cancelled. Refund the second payment in Dodo's test dashboard.
+  Back in tab 1, Manage subscription should say "Payment received" until
+  Pro arrives, not "Upgrade".
+- **With the store extension (1.0.3)**, if you want to see §7 item 1 for
+  yourself. **Not yet run.** Install it from the store, open its popup once,
+  save a profile on `localhost:5173/dashboard/` (`main`'s manifest allows
+  that origin; the store build itself was not checked), and reopen the
+  popup. Expected, from the code: still "Welcome to Onextap".
 
 ### Deploying (Vercel)
 
@@ -966,7 +1144,8 @@ ingest cron daily at 06:00 UTC. What the Vercel project needs:
   origin) for the Web Store release (§6).
 - **Order**: deploying fixes the credit-minting route (§7 item 26) on the
   website's API at once. The extension's changes (profile sync, cover-letter
-  credits in the popup) reach users only with the new extension release.
+  credits in the popup) reach users only with a new extension release, and
+  none is planned (§0 checkpoint 9).
 
 ### For Claude on that machine
 

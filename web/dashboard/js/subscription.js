@@ -1,6 +1,19 @@
 import { plans } from './config.js';
 import * as services from './services.js';
-import { toast } from './util.js';
+import { storage, toast } from './util.js';
+
+// Back from a paid checkout, the account turns Pro only when Dodo's webhook
+// lands. Until then "Upgrade to Pro" would start a second checkout, and a
+// second subscription (server/subscriptionGuard.js cancels that one, but the
+// customer has still paid twice). So for a while, in every tab of this
+// browser, the panel says the payment is being confirmed instead.
+const PAYMENT_PENDING_KEY = 'onextap_payment_pending';
+const PAYMENT_PENDING_MS = 15 * 60 * 1000;
+
+function paymentPending(user) {
+  const pending = storage.get(PAYMENT_PENDING_KEY, null);
+  return Boolean(pending && user?.id && pending.userId === user.id && Date.now() - pending.at < PAYMENT_PENDING_MS);
+}
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 const formatDate = (iso) => dateFormat.format(new Date(`${iso}T00:00`));
@@ -41,6 +54,9 @@ export function initSubscription({ dialog, getUser, onChange }) {
         : '';
     }
     if (i > rank) {
+      if (paymentPending(user)) {
+        return `<p class="plan-note">Payment received. ${plan.name} turns on in a moment, so there’s no need to pay again.</p>`;
+      }
       return `<button type="button" class="btn btn-solid plan-cta" data-plan="${plan.id}">Upgrade to ${plan.name} <span class="btn-arrow" aria-hidden="true">→</span></button>`;
     }
     // A move down that is already scheduled has nothing left to press.
@@ -115,6 +131,16 @@ export function initSubscription({ dialog, getUser, onChange }) {
     },
     /** Re-renders an open panel (the plan changed underneath it). */
     refresh() {
+      if (dialog.open) render();
+    },
+    /** Back from checkout with a payment: hold "Upgrade" until Pro shows up. */
+    markPaymentPending() {
+      storage.set(PAYMENT_PENDING_KEY, { userId: getUser()?.id, at: Date.now() });
+      if (dialog.open) render();
+    },
+    /** Pro arrived, or the payment was cancelled: "Upgrade" is back. */
+    clearPaymentPending() {
+      storage.set(PAYMENT_PENDING_KEY, null);
       if (dialog.open) render();
     },
   };

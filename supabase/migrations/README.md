@@ -27,6 +27,24 @@ answers `42703` does not exist; check constraints read with
 | `005_keyless_sources.sql` | nothing — widens `job_listings_source_check` | **applied 2026-09-19** | Additive and re-runnable. Applied without being recorded; confirmed 2026-09-19 by `pg_get_constraintdef`, which returns all nine source values. Not the reason the four keyless sources hold 0 rows — ingest has not run since they were registered. |
 | `006_generation_rate_limit.sql` | `generation_rate_limit` | **not applied** (written 2026-10-06, on `merge/web-dashboard`) | Additive and re-runnable. Apply before or with the deploy that brings `server/generateLimit.js`. Until then the generate route works without its hourly ceiling and logs "generation limit unavailable" once per instance (it fails open). Not in `schema.sql`: a fresh project runs it after `002`. |
 
+## Dev project
+
+A second, separate project for local testing, created 2026-10-10. Its URL and
+keys live only in the local `.env` and `server/.env`; like production, no
+tracked file names it.
+
+| Migration | Dev project | Notes |
+|---|---|---|
+| `supabase/schema.sql` (whole file) | **applied 2026-10-10** | Fresh project, so batch 2 ran too. That block already carries what `001`, `003`, `004` and `005` add; do not run those here. |
+| `002_rank_cache.sql` | **applied 2026-10-10** | |
+| `006_generation_rate_limit.sql` | **applied 2026-10-10** | |
+
+Verified the same day by a read-only PostgREST probe: all seven tables answer
+(`profiles`, `credit_transactions`, `job_listings`, `job_ingest_state`,
+`rank_cache`, `rank_rate_limit`, `generation_rate_limit`), and `job_listings`
+has `004`'s location columns. The `on_auth_user_created` trigger is not
+visible to PostgREST; the first sign-up shows it, by getting a `profiles` row.
+
 ## Ledger drift — 2026-09-19
 
 `004` and `005` were both applied to production and neither was recorded here.

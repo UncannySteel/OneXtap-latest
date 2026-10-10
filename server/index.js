@@ -14,6 +14,7 @@ import {
 import { log, requestLogger, errorLogger, installProcessHandlers } from './logger.js';
 import { requireCronSecret } from './cronAuth.js';
 import { createGenerateLimitStore, consumeGeneration, limitMessage } from './generateLimit.js';
+import { isForeignSubscription, activationDecision, subscriptionsToCancel } from './subscriptionGuard.js';
 import { runIngest } from './jobs/ingest.js';
 // Lifted out of this file so the ranking graph can share them without
 // importing an Express app that calls app.listen(). Behaviour unchanged.
@@ -1150,11 +1151,14 @@ app.post('/api/create-portal-session', requireAuth, async (req, res) => {
 //
 // ═══ BILLING FIRST, THEN THE ACCOUNT ═══
 //
-// A deleted account must never go on being charged, so a subscription that
-// can still bill (anything short of cancelled / failed / expired) is
-// cancelled at Dodo first — immediately, not at the period's end, because
-// there will be no account left to run it out on. If Dodo cannot confirm
-// that, nothing is deleted and the user is told to try again.
+// A deleted account must never go on being charged, so every subscription of
+// its own that can still bill (anything short of cancelled / failed /
+// expired) is cancelled at Dodo first — immediately, not at the period's end,
+// because there will be no account left to run it out on. "Of its own" means
+// the linked one plus any other the checkout tagged with this user id: a
+// second, unlinked subscription once outlived its account this way
+// (server/subscriptionGuard.js). If Dodo cannot confirm all of that, nothing
+// is deleted and the user is told to try again.
 //
 // Then the Supabase auth user goes, and everything keyed to it with it:
 // `profiles` references auth.users ON DELETE CASCADE, and credit_transactions,
@@ -1162,25 +1166,36 @@ app.post('/api/create-portal-session', requireAuth, async (req, res) => {
 // cascade from `profiles`. Profile content
 // (personal details, answers, cover letters, resumes) was never on the server
 // (rule 8); the dashboard clears the browser's copy after this returns.
-const BILLABLE_SUBSCRIPTION_STATUSES = new Set(['pending', 'active', 'trialing', 'on_hold', 'paused', 'past_due']);
-
 app.delete('/api/account', requireAuth, async (req, res) => {
   try {
     const profile = await getProfile(req.userId, req.userEmail);
 
-    if (profile.dodo_subscription_id) {
-      let sub = null;
+    const subscriptions = [];
+    if (profile.dodo_customer_id) {
+      // Errors propagate: if Dodo cannot list them, we cannot be sure.
+      for await (const sub of dodo.subscriptions.list({ customer_id: profile.dodo_customer_id, page_size: 100 })) {
+        subscriptions.push(sub);
+      }
+    }
+    if (profile.dodo_subscription_id && !subscriptions.some((s) => s.subscription_id === profile.dodo_subscription_id)) {
       try {
-        sub = await dodo.subscriptions.retrieve(profile.dodo_subscription_id);
+        subscriptions.push(await dodo.subscriptions.retrieve(profile.dodo_subscription_id));
       } catch (err) {
         // A subscription Dodo has no record of cannot bill; anything else
         // (Dodo down, bad key) means we cannot be sure, so stop here.
         if (err?.status !== 404) throw err;
       }
-      if (sub && BILLABLE_SUBSCRIPTION_STATUSES.has(sub.status)) {
-        await dodo.subscriptions.update(profile.dodo_subscription_id, { status: 'cancelled' });
-        log.info(`[Account] Subscription cancelled ahead of deleting user: ${req.userId}`);
-      }
+    }
+
+    const toCancel = subscriptionsToCancel(subscriptions, {
+      userId: req.userId,
+      linkedId: profile.dodo_subscription_id,
+    });
+    for (const subscriptionId of toCancel) {
+      await dodo.subscriptions.update(subscriptionId, { status: 'cancelled' });
+    }
+    if (toCancel.length) {
+      log.info(`[Account] ${toCancel.length} subscription(s) cancelled ahead of deleting user: ${req.userId}`);
     }
 
     const { error } = await supabaseAdmin.auth.admin.deleteUser(req.userId);
@@ -1197,6 +1212,87 @@ app.delete('/api/account', requireAuth, async (req, res) => {
 // ==================================================================
 // DODO PAYMENTS WEBHOOK (unauthenticated — verified via signature)
 // ==================================================================
+
+/**
+ * Log a webhook's failed profile update.
+ *
+ * A webhook can outlive its account: DELETE /api/account cancels the
+ * subscription first, and Dodo's `subscription.cancelled` lands a moment after
+ * the profile is gone. Logging that as "Failed to cancel subscription" was
+ * wrong twice over — the cancellation succeeded, and nothing is left to update.
+ */
+function logWebhookUpdateFailure(what, userId, err) {
+  if (err?.code === 'PGRST116') {
+    log.info(`[Dodo] ${what}: no profile for user ${userId}, account already deleted`);
+    return;
+  }
+  log.error(`[Dodo] Failed to ${what}:`, err);
+}
+
+/**
+ * The subscription id the account is linked to, or null. Reads only: unlike
+ * getProfile(), it never creates a profile for a user who has none — a
+ * webhook can arrive after the account was deleted.
+ */
+async function linkedSubscriptionId(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('dodo_subscription_id')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw new Error(formatSupabaseError(error));
+  return data?.dodo_subscription_id || null;
+}
+
+/**
+ * True, and logged, when the event is about a subscription other than the
+ * account's own (server/subscriptionGuard.js). When the account cannot be
+ * read, false: the event is handled as it was before this check existed.
+ */
+async function isAboutAnotherSubscription(type, userId, data) {
+  let linkedId;
+  try {
+    linkedId = await linkedSubscriptionId(userId);
+  } catch (err) {
+    log.warn(`[Dodo] ${type}: could not read the linked subscription, handling as before`, { errName: err?.name });
+    return false;
+  }
+  if (!isForeignSubscription(linkedId, data?.subscription_id)) return false;
+  log.info(`[Dodo] ${type} ignored: ${data.subscription_id} is not the subscription user ${userId} is linked to (${linkedId})`);
+  return true;
+}
+
+/**
+ * For `subscription.active`: if the account already has a different
+ * subscription in force, cancel this new one at Dodo and return true. Its
+ * first payment is refunded by hand in Dodo's dashboard — the warning names
+ * both subscriptions. Any doubt (Dodo or the profile cannot be read) returns
+ * false, and the new subscription is linked as it always was.
+ */
+async function cancelIfDuplicate(userId, newId) {
+  let linkedId;
+  let linkedStatus = null;
+  try {
+    linkedId = await linkedSubscriptionId(userId);
+    if (linkedId && linkedId !== newId) {
+      linkedStatus = (await dodo.subscriptions.retrieve(linkedId)).status;
+    }
+  } catch (err) {
+    log.warn('[Dodo] subscription.active: could not check for a duplicate, linking the new subscription', { errName: err?.name });
+    return false;
+  }
+  if (activationDecision({ linkedId, linkedStatus, newId }) !== 'duplicate') return false;
+
+  try {
+    await dodo.subscriptions.update(newId, { status: 'cancelled' });
+  } catch (err) {
+    log.error(`[Dodo] Second subscription ${newId} for user ${userId} (already on ${linkedId}) could not be cancelled; cancel and refund it in Dodo:`, err);
+    return true;
+  }
+  log.warn(`[Dodo] Second subscription ${newId} for user ${userId} cancelled (already on ${linkedId}); refund its payment in Dodo`);
+  return true;
+}
+
 async function handleWebhook(req, res) {
   let event;
 
@@ -1220,6 +1316,7 @@ async function handleWebhook(req, res) {
     case 'subscription.active': {
       const userId = await resolveUserId(data);
       if (userId) {
+        if (await cancelIfDuplicate(userId, data.subscription_id)) break;
         try {
           await updateProfile(userId, {
             is_premium: true,
@@ -1230,7 +1327,7 @@ async function handleWebhook(req, res) {
           });
           log.info(`[Dodo] Premium activated for user: ${userId}`);
         } catch (err) {
-          log.error('[Dodo] Failed to activate premium:', err);
+          logWebhookUpdateFailure('activate premium', userId, err);
         }
       }
       break;
@@ -1240,6 +1337,7 @@ async function handleWebhook(req, res) {
     case 'subscription.renewed': {
       const userId = await resolveUserId(data);
       if (userId) {
+        if (await isAboutAnotherSubscription(event.type, userId, data)) break;
         try {
           await updateProfile(userId, {
             is_premium: true,
@@ -1247,7 +1345,7 @@ async function handleWebhook(req, res) {
           });
           log.info(`[Dodo] Subscription renewed for user: ${userId}`);
         } catch (err) {
-          log.error('[Dodo] Failed to update renewal:', err);
+          logWebhookUpdateFailure('update renewal', userId, err);
         }
       }
       break;
@@ -1257,6 +1355,7 @@ async function handleWebhook(req, res) {
     case 'subscription.on_hold': {
       const userId = await resolveUserId(data);
       if (userId) {
+        if (await isAboutAnotherSubscription(event.type, userId, data)) break;
         try {
           await updateProfile(userId, {
             subscription_status: 'on_hold',
@@ -1265,7 +1364,7 @@ async function handleWebhook(req, res) {
           });
           log.info(`[Dodo] Subscription on hold for user: ${userId}`);
         } catch (err) {
-          log.error('[Dodo] Failed to update on_hold:', err);
+          logWebhookUpdateFailure('update on_hold', userId, err);
         }
       }
       break;
@@ -1275,6 +1374,7 @@ async function handleWebhook(req, res) {
     case 'subscription.cancelled': {
       const userId = await resolveUserId(data);
       if (userId) {
+        if (await isAboutAnotherSubscription(event.type, userId, data)) break;
         try {
           await updateProfile(userId, {
             is_premium: false,
@@ -1283,7 +1383,7 @@ async function handleWebhook(req, res) {
           });
           log.info(`[Dodo] Subscription cancelled for user: ${userId}`);
         } catch (err) {
-          log.error('[Dodo] Failed to cancel subscription:', err);
+          logWebhookUpdateFailure('record the cancellation', userId, err);
         }
       }
       break;
@@ -1293,6 +1393,7 @@ async function handleWebhook(req, res) {
     case 'subscription.failed': {
       const userId = await resolveUserId(data);
       if (userId) {
+        if (await isAboutAnotherSubscription(event.type, userId, data)) break;
         try {
           await updateProfile(userId, {
             is_premium: false,
@@ -1300,7 +1401,7 @@ async function handleWebhook(req, res) {
           });
           log.info(`[Dodo] Subscription failed for user: ${userId}`);
         } catch (err) {
-          log.error('[Dodo] Failed to update failure:', err);
+          logWebhookUpdateFailure('update failure', userId, err);
         }
       }
       break;
@@ -1310,6 +1411,7 @@ async function handleWebhook(req, res) {
     case 'payment.failed': {
       const userId = await resolveUserId(data);
       if (userId) {
+        if (await isAboutAnotherSubscription(event.type, userId, data)) break;
         try {
           await updateProfile(userId, {
             payment_failed: true,
@@ -1317,7 +1419,7 @@ async function handleWebhook(req, res) {
           });
           log.info(`[Dodo] Payment failed for user: ${userId}`);
         } catch (err) {
-          log.error('[Dodo] Failed to process payment failure:', err);
+          logWebhookUpdateFailure('process payment failure', userId, err);
         }
       }
       break;
@@ -2261,10 +2363,16 @@ const EXPLAIN_PROFILE_SKILLS = 60;
  * arrays; tailoring returns short structured notes. Both run cooler than a
  * writing task would — this is assessment, and a user who re-runs it on the
  * same job should not get a different verdict.
+ *
+ * The budgets cover hidden reasoning too. On a reasoning model
+ * (`openai/gpt-oss-120b`, the Groq default here) reasoning tokens count
+ * against `max_tokens`: one analysis measured 1,061 reasoning + ~890 answer
+ * tokens, 1,947 of the old 2,048 cap, and a slightly longer one was cut off
+ * mid-JSON and failed to parse. A cap is not a spend, so headroom is free.
  */
-const EXPLAIN_MAX_TOKENS = 2048;
+const EXPLAIN_MAX_TOKENS = 4096;
 const EXPLAIN_TEMPERATURE = 0.25;
-const TAILOR_MAX_TOKENS = 1500;
+const TAILOR_MAX_TOKENS = 3072;
 const TAILOR_TEMPERATURE = 0.2;
 
 /**
@@ -2446,7 +2554,19 @@ app.post('/api/jobs/explain', requireAuth, async (req, res) => {
       maxTokens: EXPLAIN_MAX_TOKENS,
       temperature: EXPLAIN_TEMPERATURE,
     });
-    const explained = parseJsonLenient(explainRaw);
+    let explained;
+    try {
+      explained = parseJsonLenient(explainRaw);
+    } catch (parseError) {
+      // Usually a reply cut off at the token cap. The parser's own message
+      // ("Unterminated string in JSON at position …") means nothing to the
+      // user, and nothing has been charged yet.
+      jobsLog.warn('explain response did not parse', { errName: parseError?.name, chars: explainRaw.length });
+      explainSpan?.update?.({ output: { error: 'unparseable' } }).end?.();
+      const incomplete = new Error('The fit analysis came back incomplete. Try again; no credit was used.');
+      incomplete.statusCode = 502;
+      throw incomplete;
+    }
     explainSpan?.update?.({ output: { ok: true } }).end?.();
 
     // Tailoring is a SECOND prompt, not a field of the first, because the two
