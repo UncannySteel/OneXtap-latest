@@ -542,6 +542,24 @@ Waiting on the owner:
 - **A real double checkout** (§9) to test item 30.
 - **Item 28**, if an extension release happens.
 
+### Planning (2026-10-16, session 6): the rest, in batches
+
+No code changed. The owner was interviewed on everything still open, and the
+answers became `docs/plans/active/completion-plan.md`: seven batches (B0 to
+B6), one session each, ending deploy-ready. Its §1 is now the decision
+record. It supersedes the "Waiting on the owner" list above: a 1.0.4 is built
+and tested, and submitting it is decided later; items 1a, 28a, 29b and 31c
+are in; item 25 is in, as designed; production, `main` and the store are not
+touched.
+
+- **Found: the live store version is 1.0.2, not 1.0.3.** Google's update
+  service and the copy installed in the owner's Chrome agree. Its worker
+  behaves as item 1 describes, and answers unknown messages with "Unknown
+  action". Everything this file says about "store 1.0.3" means 1.0.2; batch
+  B0 corrects those lines (plan §2).
+- **Next:** batch B0. Open a new session and paste: `Run batch B0 of
+  docs/plans/active/completion-plan.md.`
+
 ---
 
 ## 1. What was asked, and what was decided
