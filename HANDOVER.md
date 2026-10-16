@@ -631,13 +631,13 @@ Accepted from the review, not fixed: `ONEXTAP_SKIP_DOTENV=1` skips
 minified bundle (checked by hand this once); the harness blocks connections
 but not DNS lookups.
 
-**Open questions for the owner:**
-- The scraper change above: `content.js` gains the five LinkedIn selectors,
-  and the tie-break moves. Keep it? (Default: yes.)
-- Lint warnings to promote to errors: there is one, and it is deliberate.
-  Default: keep `exhaustive-deps` a warning.
-- Still from planning: is there a pending 1.0.3 draft in the Chrome Web
-  Store developer dashboard?
+**Owner's answers at the checkpoint** (asked as open questions):
+- The scraper change above (`content.js` gains the five LinkedIn selectors,
+  and the tie-break moves): **kept**.
+- Lint warnings to promote to errors: **none**; `exhaustive-deps` stays a
+  warning.
+- A pending 1.0.3 draft in the Chrome Web Store developer dashboard:
+  **there is none**.
 
 **Next:** batch B1. Open a new session and paste: `Run batch B1 of
 docs/plans/active/completion-plan.md.`

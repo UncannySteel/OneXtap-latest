@@ -52,6 +52,10 @@ know) go here, newest last:
   or `test/rules/rule5-*` fails. `scrapeJobPage()` sits inside an
   `eslint-disable no-undef` pair (it runs in the page); rule 9's test lints it
   standalone instead.
+- **B0, owner's answers at checkpoint 10:** the scraper change is kept
+  (`content.js` gains the LinkedIn selectors); no lint warning is promoted
+  (`exhaustive-deps` stays a warning); there is no 1.0.3 draft in the
+  developer dashboard.
 
 ---
 
@@ -269,7 +273,8 @@ Defaults taken without asking. Veto any of them at review:
   comes.
 - The release is **1.0.4**: the store has 1.0.2, and the repo's 1.0.3 was
   never published. Using 1.0.4 can't clash with a 1.0.3 draft in the
-  developer dashboard.
+  developer dashboard (the owner confirmed at checkpoint 10 that there is
+  none; 1.0.4 stays the number).
 - Each batch is one checkpoint commit on `merge/web-dashboard`, pushed to
   `latest`.
 - The e2e caches (the Chromium copy, the store 1.0.2 copy) live in
@@ -285,7 +290,8 @@ Defaults taken without asking. Veto any of them at review:
   `fpleipjggoiolomkcnchnlelbjcnoklj`, and Chrome Profile 1 has `1.0.2_0`
   installed. The repo's manifest says 1.0.3, never published. HANDOVER's
   "store 1.0.3" is wrong; B0 corrects it. The owner should check the
-  developer dashboard for a pending 1.0.3 draft.
+  developer dashboard for a pending 1.0.3 draft. (Checked at checkpoint 10:
+  there is none.)
 - **1.0.2's service worker** (`assets/background.js-*.js`, 2.6 KB) handles
   exactly four messages, internal and external alike:
   `GENERATE_IMPROVED_ANSWER`; `PARSE_RESUME`, whose reply carries `data` but
