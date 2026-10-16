@@ -215,15 +215,22 @@ test.describe('stage', () => {
   test('pricing, the FAQ and the paperwork promise only what the product does', async ({ page }) => {
     await page.goto('/');
     const premium = page.locator('#price .plan', { has: page.locator('.plan__badge') }).locator('.plan__list');
-    await expect(premium).toContainText('The same AI models as Free');
-    await expect(premium).not.toContainText(/priority support|early access/i);
+    await expect(premium.locator('li')).toHaveText([
+      'Everything in Free',
+      'Unlimited AI answers and cover letters',
+      'Unlimited fit explanations on job matches',
+      'No credits to count or run out of',
+      'Cancel anytime, it runs to the end of your month',
+    ].map((t) => new RegExp(`${t}$`)));
+    // The owner's call at checkpoint 11: no line about the AI models either.
+    await expect(premium).not.toContainText(/priority support|early access|AI models/i);
 
     // The FAQ window is in the page from the start, closed; its words are read
     // without opening it (tests/windows.spec.js drives the window itself).
     const faq = page.locator('#faq .acc');
     await expect(faq).toContainText('recognise is left empty for you; add it to your profile once and it fills from then on.');
     await expect(faq).toContainText('Everything else, autofill included, is free either way.');
-    await expect(faq).not.toContainText(/flagged|never guessed|priority support|early access/i);
+    await expect(faq).not.toContainText(/flagged|never guessed|priority support|early access|same AI as Free/i);
 
     await expect(page.locator('#form .lede').first()).toContainText('Onextap reads the labels and fills them from one profile.');
     await expect(page.locator('#form .lede').first()).not.toContainText('learns the mapping');

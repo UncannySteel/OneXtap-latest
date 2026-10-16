@@ -768,15 +768,15 @@ later full runs.
 Matches label in a browser: no e2e covers Job Matches. The content script
 sends nothing yet, so its sender kind is tested only in unit tests.
 
-**Open questions for the owner:**
-- The website copy above: keep it, or change the words? In particular "The
-  same AI models as Free" as a Premium bullet: accurate, but odd as a perk.
-- Four claims were left as they were (§7 item 14): "every field, on every
-  board", "activates automatically", the demo's "Mapped" fields, "No limits
-  on the AI". Rewrite them too?
-- The narrowed senders above: `GENERATE_IMPROVED_ANSWER` from the popup
-  only, the sync and `PARSE_RESUME` from the site only. Anything you know of
-  that sends them from elsewhere?
+**Owner's answers at the checkpoint** (asked as open questions):
+- The website copy above: **kept, except that the site no longer says
+  Premium uses the same AI as Free.** Premium's pricing card drops "The same
+  AI models as Free" (it now has five bullets, like Free's), and the FAQ's
+  Premium answer drops "It's the same AI as Free, without the credit count."
+  The stage e2e checks neither comes back.
+- The four claims left as they were (§7 item 14): **stay as they are**, the
+  owner's product call.
+- The narrowed senders: **kept.**
 
 **Next:** batches B2 and B3, in either order or both at once (the plan's B3
 note). Open a new session and paste: `Run batch B2 of
@@ -1168,7 +1168,7 @@ before this work.
 
 ### Low
 
-**14. ~~Landing copy that is still aspirational.~~ Rewritten at checkpoint 11 (B1)**, words only, after checking each claim against the code: an unknown field is left empty (nothing is flagged or bound), a profile custom field named the way forms print it fills it from then on, and Premium only skips the credit charge (same models, no support tier). The before → after list is in §0, checkpoint 11. **Still not quite true, left for the owner:** "every field, on every board" (hero, About, FAQ 1); "activates automatically" (it is injected on demand); the demo's "Mapped" `work_authorization` and `years_of_experience` (no built-in match); "No limits on the AI" (every plan has an hourly ceiling). What it said before:
+**14. ~~Landing copy that is still aspirational.~~ Rewritten at checkpoint 11 (B1)**, words only, after checking each claim against the code: an unknown field is left empty (nothing is flagged or bound), a profile custom field named the way forms print it fills it from then on, and Premium only skips the credit charge (same models, no support tier). The before → after list is in §0, checkpoint 11. The site does not say Premium uses the same AI as Free (the owner's call at checkpoint 11). **Still not quite true, kept by the owner's call at checkpoint 11:** "every field, on every board" (hero, About, FAQ 1); "activates automatically" (it is injected on demand); the demo's "Mapped" `work_authorization` and `years_of_experience` (no built-in match); "No limits on the AI" and "Unlimited AI answers" (every plan has an hourly ceiling of 30 drafts). What it said before:
 - **The feature showcase's "Mapping" tab** describes flagging an unmapped field and binding it in one click. No such flow exists; custom profile fields are the closest thing.
 - **The FAQ** says a new field is "flagged, never guessed".
 - **"Priority support and early access"** is not something code can verify.

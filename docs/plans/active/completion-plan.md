@@ -90,6 +90,11 @@ know) go here, newest last:
 - **B1: `web/playwright.config.js` ignores `extension-legacy.spec.js`** as
   well as `extension.spec.js`. A new extension spec needs the same, or the
   website suite runs it without the extension.
+- **B1, owner's answers at checkpoint 11:** the new website copy is kept,
+  but the site must not say Premium uses the same AI as Free (that bullet
+  and the FAQ sentence are removed). The four remaining overstatements
+  (HANDOVER §7 item 14) stay as they are: don't rewrite them in later
+  batches. The narrowed message senders stay.
 
 ---
 
