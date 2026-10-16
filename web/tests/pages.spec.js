@@ -139,6 +139,18 @@ test.describe('company pages', () => {
     });
   }
 
+  // What autofill does with a field it does not know, as public/content.js
+  // does it: leaves it empty. A custom field in the profile, named the way
+  // forms print it, fills it from then on. Nothing is flagged.
+  test('/about/ says what autofill does with a field it does not know', async ({ page }) => {
+    await openPage(page, '/about/');
+    await expect(page.locator('#about-does')).toHaveText('Write it once. Fill it everywhere.');
+    const does = page.locator('section[aria-labelledby="about-does"] .sub-copy');
+    await expect(does).toContainText('A field it does not recognise is left empty for you');
+    await expect(does).toContainText('add it to your profile once, named the way forms print it, and it fills on every board after that.');
+    expect(await page.textContent('main')).not.toMatch(/flagged|never guessed|map it once|learn the form/i);
+  });
+
   test('the open menu holds the page still', async ({ page, isMobile }) => {
     test.skip(isMobile, 'wheel and keys');
     await openPage(page, '/about/');

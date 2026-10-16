@@ -16,20 +16,20 @@ export var FEATURES = [
     desc: 'Your profile, filled into any application form — every field, on every board, in one tap.' },
 
   { key: 'mapping',
-    desc: 'A field Onextap has not seen before gets mapped once, then fills itself everywhere after that.',
+    desc: 'Fields are matched to your profile by their labels. One it does not know waits for you, until you name it once.',
     cards: [
-      { icon: 'search', t: 'An odd field appears', m: 'unmapped: notice_period',
-        b: 'A form asks for something Onextap has not met before. It is flagged rather than quietly skipped.',
-        notes: ['Flagged, never guessed', 'Shown before anything fills'] },
-      { icon: 'link', t: 'Map it once', m: 'notice_period → 4 weeks', demo: 'map',
-        b: 'Point the field at the answer it belongs to. One click, and only the first time you see it.',
-        notes: ['One click to bind it', 'First time only'] },
-      { icon: 'db', t: 'It sticks', m: 'remembered · every board',
-        b: 'Every future application carrying that field fills itself, whichever board is asking.',
-        notes: ['Stored with your profile', 'Applies on boards you have not seen'] },
-      { icon: 'check', t: 'No repeat work', m: 'learned once',
-        b: 'The mapping list only ever grows, so the second application is always faster than the first.',
-        notes: ['The list only ever grows', 'No second setup'] }
+      { icon: 'search', t: 'An odd field appears', m: 'no match: visa_status',
+        b: 'A form asks for something your profile does not cover. Onextap leaves it empty rather than make something up.',
+        notes: ['Left for you to fill', 'What you typed stays put'] },
+      { icon: 'link', t: 'Name it once', m: 'custom field: Visa status', demo: 'map',
+        b: 'Add it to your profile as a custom field, named the way the form prints it, with your answer.',
+        notes: ['Set up on the dashboard', 'Named as forms label it'] },
+      { icon: 'db', t: 'It fills from then on', m: 'matched by label · any board',
+        b: 'Any later form whose field carries that label gets your answer, whichever board is asking.',
+        notes: ['Stored with your profile', 'Works on boards you have not seen'] },
+      { icon: 'check', t: 'No repeat work', m: 'set once',
+        b: 'Each custom field you add is one less box to type, so the next application asks less of you.',
+        notes: ['One entry per question', 'Edit or remove it any time'] }
     ] },
 
   { key: 'answers',

@@ -13,7 +13,7 @@ const log = baseLog.child('ui');
  */
 
 /**
- * Caps mirrored from server/index.js (FABRICATION_CORPUS_MAX_*). The server
+ * Caps mirrored from server/routes/generate.js (FABRICATION_CORPUS_MAX_*). The server
  * truncates again — it cannot trust a client — but THIS side is the one that
  * matters: express.json() rejects a body over 100kb with a 413 before the
  * route runs, and that would fail the whole generation, not just the check.

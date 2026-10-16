@@ -73,8 +73,10 @@ Instrument Serif for the voice, Instrument Sans for UI, DM Mono for figures.
   extension to sync with.
 - **Syncing to the extension**: saving a profile pushes it to the extension
   over `ONEXTAP_SYNC_DATA` when the page can reach one (opened from the popup,
-  or the published extension's ID); a push that fails is reported, and the
-  local save stands.
+  or the published extension's ID). The save bar says which: synced (an
+  extension that answers `ONEXTAP_HELLO`), saved but the extension is out of
+  date (1.0.2, with a link to the store), or saved on this device; the local
+  save stands either way.
 
 ## Behaviour
 

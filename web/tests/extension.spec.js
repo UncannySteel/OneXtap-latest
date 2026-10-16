@@ -115,7 +115,7 @@ test.describe('the extension, loaded', () => {
     await expect(form.locator('#em')).toHaveValue('ada@example.com');
   });
 
-  test('popup cover letters: one credit buys a personalisation and one free re-run', async ({ context, serviceWorker, extensionId }) => {
+  test('popup cover letters: one credit buys a personalisation and one free re-run', async ({ context, page, serviceWorker, extensionId }) => {
     await stubAuth(context);
     const api = await stubApi(context, { credits: 1 });
     const popup = await context.newPage();
@@ -126,10 +126,14 @@ test.describe('the extension, loaded', () => {
     // this path is dormant until it gets one. Signed out, see the next test.
     // First, the popup's first-run setup has to finish: it writes an empty
     // store from what it read before, which would undo a profile filed
-    // meanwhile.
+    // meanwhile. The sync comes from a page on the site, as the dashboard
+    // sends it: the worker takes ONEXTAP_SYNC_DATA from the site only.
     await expect(popup.getByRole('button', { name: 'Open Dashboard' })).toBeVisible();
-    await popup.evaluate((payload) => chrome.runtime.sendMessage({ type: 'ONEXTAP_SYNC_DATA', payload }),
-      { firstName: 'Ada', email: 'ada@example.com' });
+    await page.goto(`${SITE}/contact/`);
+    const synced = await page.evaluate(([id, payload]) => new Promise((resolve) =>
+      chrome.runtime.sendMessage(id, { type: 'ONEXTAP_SYNC_DATA', payload }, resolve)),
+    [extensionId, { firstName: 'Ada', email: 'ada@example.com' }]);
+    expect(synced).toEqual({ success: true });
     await serviceWorker.evaluate((session) => chrome.storage.local.set({ 'sb-e2e-auth-token': JSON.stringify(session) }),
       sessionFor('reader@example.com'));
     await popup.reload();

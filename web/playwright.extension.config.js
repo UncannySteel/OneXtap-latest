@@ -11,9 +11,14 @@ import { fileURLToPath } from 'node:url';
 // with unresolvable addresses; the tests stub the account and the API.
 // reuseExistingServer is off: a server already on 5173 is most likely
 // `npm run dev` with the repo's real .env, and the run stops instead.
+//
+// Two projects, run one after the other (workers: 1, one port 5173):
+//   extension  this build (tests/extension.spec.js);
+//   legacy     store 1.0.2 (tests/extension-legacy.spec.js), skipped unless
+//              E2E_LEGACY_EXTENSION_PATH points at an unpacked copy of it.
+// `--project legacy` runs the second alone.
 export default defineConfig({
   testDir: './tests',
-  testMatch: /extension\.spec\.js/,
   timeout: 90000,
   workers: 1,
   reporter: [['list']],
@@ -22,6 +27,10 @@ export default defineConfig({
     baseURL: 'http://localhost:5173',
     trace: 'off'
   },
+  projects: [
+    { name: 'extension', testMatch: /(^|[\\/])extension\.spec\.js$/ },
+    { name: 'legacy', testMatch: /(^|[\\/])extension-legacy\.spec\.js$/ }
+  ],
   webServer: {
     command: 'npm run dev -- --port 5173 --strictPort',
     cwd: fileURLToPath(new URL('..', import.meta.url)),

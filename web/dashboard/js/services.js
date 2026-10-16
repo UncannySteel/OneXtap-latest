@@ -14,7 +14,7 @@ import { signOut, onAuthStateChange } from '@app/auth.js';
 import { creditManager } from '@app/creditManager.js';
 import { storage } from '@app/storage.js';
 import { getActiveLegacyProfile } from '@app/profileStore.js';
-import { getExtensionId, hasExtensionRuntime } from '@app/extensionClient.js';
+import { hasExtensionRuntime, syncProfileToExtension } from '@app/extensionClient.js';
 import { log as baseLog } from '@app/logger.js';
 
 const log = baseLog.child('dashboard');
@@ -251,31 +251,21 @@ export const hasExtension = () => hasExtensionRuntime();
 
 /**
  * Pushes the active profile (the flat `user_profile` shape) to the extension
- * over ONEXTAP_SYNC_DATA. Resolves true when the extension confirmed it;
- * false when it is not installed, not reachable from this page, or refused —
- * never throws, because the local save it follows has already happened.
+ * over ONEXTAP_SYNC_DATA, after asking which extension is there
+ * (getExtensionInfo, docs/extension-protocol.md). Resolves with
+ * `{ state, synced }`:
+ *   state   'current', 'legacy' (store 1.0.2: sent anyway, but its popup
+ *           reads it only before its first open), 'absent' (not sent), or
+ *           null when there was no profile to send;
+ *   synced  true only when a current extension confirmed it.
+ * The extension's failures never throw: the local save this follows has
+ * already happened.
  */
 export async function syncToExtension(payload) {
-  if (!hasExtensionRuntime()) return false;
-  const extId = getExtensionId();
-  if (!extId) return false;
   const profile = payload || await getActiveLegacyProfile();
-  if (!profile) return false;
-  return new Promise((resolve) => {
-    try {
-      chrome.runtime.sendMessage(extId, { type: 'ONEXTAP_SYNC_DATA', payload: profile }, (response) => {
-        if (chrome.runtime.lastError) {
-          log.warn('Extension sync failed —', chrome.runtime.lastError.message);
-          resolve(false);
-        } else {
-          resolve(response?.success === true);
-        }
-      });
-    } catch (e) {
-      log.warn('Extension sync error', e);
-      resolve(false);
-    }
-  });
+  if (!profile) return { state: null, synced: false };
+  const { state, synced } = await syncProfileToExtension(profile);
+  return { state, synced };
 }
 
 // ---------- First run ----------

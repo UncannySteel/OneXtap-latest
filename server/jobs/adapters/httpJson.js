@@ -1,7 +1,7 @@
 /**
  * Shared adapter plumbing.
  *
- * fetchJson() is lifted from callGemini() in server/index.js: AbortController +
+ * fetchJson() is lifted from callGemini() in server/lib/gemini.js: AbortController +
  * setTimeout, cleared in a `finally`. Without the clearTimeout the timer keeps
  * the event loop alive for its full duration after a fast response, which on a
  * serverless function means paying for ten seconds of nothing.

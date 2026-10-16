@@ -49,16 +49,22 @@ test('every server module parses', async () => {
   assert.deepEqual(failures, [], `server modules failed to parse:\n${failures.join('\n')}`);
 });
 
-test('server/index.js declares no function name twice', () => {
-  // The specific defect that motivated this file. A duplicate `function` at
-  // module scope is a SyntaxError, so `node --check` above already catches it —
-  // this names the failure so the next person sees the cause, not just
-  // "unexpected identifier" from a 1700-line file.
-  const source = readFileSync(path.join(repoRoot, 'server', 'index.js'), 'utf8');
-
-  const names = [...source.matchAll(/^function\s+([A-Za-z0-9_$]+)\s*\(/gm)].map((m) => m[1]);
-  const seen = new Set();
-  const duplicates = names.filter((name) => (seen.has(name) ? true : (seen.add(name), false)));
+test('no server module declares a function name twice', () => {
+  // The specific defect that motivated this file, which hit server/index.js
+  // when every route lived there. A duplicate `function` at module scope is a
+  // SyntaxError, so `node --check` above already catches it — this names the
+  // failure so the next person sees the cause, not just "unexpected
+  // identifier" from a long file. Per file: two modules may each have one.
+  const duplicates = [];
+  for (const file of serverModules()) {
+    const source = readFileSync(file, 'utf8');
+    const names = [...source.matchAll(/^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/gm)].map((m) => m[1]);
+    const seen = new Set();
+    for (const name of names) {
+      if (seen.has(name)) duplicates.push(`${path.relative(repoRoot, file)}: ${name}`);
+      seen.add(name);
+    }
+  }
 
   assert.deepEqual([...new Set(duplicates)], [], 'duplicate top-level function declarations');
 });

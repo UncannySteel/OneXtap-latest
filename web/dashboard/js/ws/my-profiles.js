@@ -7,6 +7,7 @@ import {
   DEFAULT_PROFILE, RACES, VETERAN_STATUS,
   emptyCertificate, emptyCustomField, emptyEducation, emptyExperience,
 } from '@app/profileDefaults.js';
+import { CHROME_WEB_STORE_URL } from '@app/config.js';
 import { getActiveLegacyProfile, loadProfileStore, saveLegacyUserProfile } from '@app/profileStore.js';
 import { parseResumeFile, RESUME_ACCEPT_ATTR, MAX_RESUME_LABEL } from '@app/resumeParse.js';
 import { mergeParsedResumeIntoProfile } from '@app/resumeToProfile.js';
@@ -27,7 +28,10 @@ const log = baseLog.child('ui');
 // the RAW parser output, because the corpus indexes the parser's field names.
 //
 // Saving writes the local profile store and pushes the profile to the
-// extension (ONEXTAP_SYNC_DATA); a failed push is reported, never fatal.
+// extension (ONEXTAP_SYNC_DATA); a failed push is reported, never fatal. The
+// status after a save follows what is installed (getExtensionInfo in
+// src/extensionClient.js): synced to a current extension, out of date with
+// store 1.0.2, or saved on this device with none.
 
 const URL_TYPES = ['LinkedIn', 'GitHub', 'Portfolio', 'Other'].map((t) => ({ value: t, label: t }));
 
@@ -56,8 +60,10 @@ export function mount(body, ctx) {
     sectionsEl,
     savebar);
 
-  function setStatus(text, tone) {
-    statusEl.textContent = text || '';
+  /** `content`: text, or an array of text and nodes (a link). */
+  function setStatus(content, tone) {
+    if (Array.isArray(content)) fill(statusEl, content);
+    else statusEl.textContent = content || '';
     statusEl.dataset.tone = tone || '';
   }
   function touch() {
@@ -442,14 +448,20 @@ export function mount(body, ctx) {
     setBusy(saveBtn, true, 'Saving…');
     try {
       await saveLegacyUserProfile(profile);
-      const synced = await ctx.syncToExtension(profile);
+      const { state, synced } = await ctx.syncToExtension(profile);
       dirty = false;
-      if (synced) {
+      if (state === 'current' && synced) {
         setStatus('Saved and synced to the extension', 'ok');
         ctx.toast('Saved.');
-      } else if (ctx.hasExtension) {
+      } else if (state === 'current') {
         setStatus('Saved here — the extension didn’t confirm the sync', 'warn');
         ctx.toast('Saved (sync to extension failed).', 'error');
+      } else if (state === 'legacy') {
+        // Store 1.0.2 took the sync, but its popup reads it only before its
+        // first open. Short: the status is one line, cut with an ellipsis.
+        setStatus(['Saved — the extension is out of date: ',
+          h('a', { href: CHROME_WEB_STORE_URL, target: '_blank', rel: 'noopener noreferrer' }, 'update it')], 'warn');
+        ctx.toast('Saved. Update the extension to sync it.');
       } else {
         setStatus('Saved on this device', 'ok');
         ctx.toast('Saved.');

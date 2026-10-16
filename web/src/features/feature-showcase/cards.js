@@ -42,8 +42,8 @@ function buildMini(kind) {
 
   } else if (kind === 'map') {
     bar.appendChild(el('span', null, 'unrecognised field'));
-    body.appendChild(miniRow('notice_period', 'unmapped'));
-    body.appendChild(miniRow('↳ fills with', '4 weeks', '✓'));
+    body.appendChild(miniRow('visa_status', 'left empty'));
+    body.appendChild(miniRow('↳ custom field', 'Citizen', '✓'));
 
   } else if (kind === 'draft') {
     bar.appendChild(el('span', null, 'answer draft'));

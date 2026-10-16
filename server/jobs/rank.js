@@ -80,7 +80,7 @@ function envInt(name, fallback, floor, ceiling) {
  *
  * So there is no single number that is right for both, and this one is sized
  * for Gemini because Gemini leads the chain (see createRankModelCaller in
- * server/index.js) and, with model rotation, answers nearly every pass.
+ * server/routes/jobRank.js) and, with model rotation, answers nearly every pass.
  *
  * A deployment that sets RANK_PROVIDER=groq should set RANK_BATCH_SIZE=10 with
  * it. At 30 the Groq leg rejects the request outright rather than degrading

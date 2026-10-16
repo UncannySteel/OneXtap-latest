@@ -4,7 +4,7 @@
  * Answers one question: does a score mean the same thing whoever produced it?
  *
  * It matters because ranking now rotates across several Gemini models rather
- * than pinning one (see GEMINI_RANK_MODELS in server/index.js). Rotation buys
+ * than pinning one (see GEMINI_RANK_MODELS in server/routes/jobRank.js). Rotation buys
  * daily capacity — each model id carries its own free-tier bucket — and the
  * price is that two runs an hour apart can be answered by two different models.
  * If those models do not agree about what 72 means, the user sees a list that
@@ -171,8 +171,8 @@ test('RankCalibration — scores mean the same thing across models', { concurren
  * Build a `(model) => callModel` factory for one provider.
  *
  * Gemini is called with a direct fetch rather than through callGemini, because
- * callGemini lives in server/index.js, which builds the Express app and calls
- * app.listen() on import. The request shape below mirrors it — including
+ * callGemini lived in server/index.js, which built the Express app and called
+ * app.listen() on import (it is in server/lib/gemini.js since the B1 split). The request shape below mirrors it — including
  * thinkingBudget 0 on flash, without which thinking eats the output budget and
  * the JSON array comes back truncated.
  */
@@ -187,7 +187,7 @@ async function modelCallerFactory(provider) {
     async function callModel({ system, user, maxTokens, temperature }) {
       const id = model.toLowerCase();
       const generationConfig = { maxOutputTokens: maxTokens, temperature };
-      // Mirrors thinkingConfigForGeminiModel in server/index.js: flash-lite
+      // Mirrors thinkingConfigForGeminiModel in server/lib/gemini.js: flash-lite
       // rejects the field outright and does not think by default anyway.
       if (id.includes('flash') && !id.includes('flash-lite')) {
         generationConfig.thinkingConfig = { thinkingBudget: 0 };

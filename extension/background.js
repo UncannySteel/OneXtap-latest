@@ -1,23 +1,15 @@
 // Onextap background service worker (MV3)
 // Handles website↔extension sync, resume parsing, job-page scraping, and answer generation.
 //
-// Every message is accepted on both chrome.runtime.onMessage (from the popup)
-// and onMessageExternal (from the dashboard on an externally_connectable
-// origin). The message kind may be given as either `type` or `action`.
-// Every reply is { success: true, ... } or { success: false, error }:
-//
-//   ONEXTAP_SYNC_DATA        { payload }                  → {}            — files payload into storage.local.onextap_profiles
-//                                                                         as the active profile, and mirrors it to user_profile
-//   PARSE_RESUME             { data: { fileData, fileName, fileType, token } }
-//                                                         → { data }      — proxies POST /api/parse-resume
-//   SCRAPE_ACTIVE_TAB        —                            → { context: { company, description } }
-//   GENERATE_IMPROVED_ANSWER { data: { token, ...body } } → { text }      — proxies POST /api/answer-vault/generate
-//
-// `token` is the caller's Supabase JWT: the two proxied calls hit authenticated
-// endpoints, and the worker holds no session of its own.
+// Messages arrive on chrome.runtime.onMessage (the popup, the content script)
+// and onMessageExternal (the website, on an externally_connectable origin),
+// and both go to the registry in ./messages/registry.js: one module per
+// message, each naming who may send it. The contract, every message's payload
+// and reply, and what 1.0.2 answers, are in docs/extension-protocol.md.
 
 import { log, installWorkerErrorHandlers } from './logger.js';
-import { fileSyncedProfile } from './profileSync.js';
+import { dispatch } from './messages/registry.js';
+import { allowedOrigins } from './messages/senders.js';
 
 installWorkerErrorHandlers();
 
@@ -141,162 +133,28 @@ function scrapeJobPage() {
 }
 /* eslint-enable no-undef */
 
-// ─── Main message handler ─────────────────────────────────────────────────────
-async function handleMessage(msg, sendResponse) {
-  // Normalise: support both `type` and `action` fields
-  const kind = msg.type || msg.action;
-
-  try {
-    // 1) SYNC PROFILE FROM WEBSITE
-    if (kind === 'ONEXTAP_SYNC_DATA') {
-      const payload = msg.payload;
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-        sendResponse({ success: false, error: 'No profile payload' });
-        return;
-      }
-      // Into the profile store the popup reads, not only the user_profile
-      // mirror, which it ignores once the store exists: see profileSync.js.
-      const { onextap_profiles: stored } = await chrome.storage.local.get('onextap_profiles');
-      await chrome.storage.local.set(fileSyncedProfile(stored, payload));
-      sendResponse({ success: true });
-      return;
-    }
-
-    // 2) PARSE RESUME
-    if (kind === 'PARSE_RESUME') {
-      const data = msg.data || {};
-      const { fileData, fileName, fileType, token } = data;
-      try {
-        const res = await fetch(`${API_URL}/api/parse-resume`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + token,
-          },
-          body: JSON.stringify({ fileData, fileName, fileType }),
-        });
-        const body = await res.json();
-        if (res.ok && body.data) {
-          // `text` is the raw transcription alongside the structured `data`.
-          // The corpus builder and the fabrication validator both diff against
-          // it, and the file bytes are discarded after this call — so if it is
-          // dropped here, the only way to recover it is another upload. Older
-          // server builds do not return it; forwarding undefined is harmless.
-          sendResponse({ success: true, data: body.data, text: body.text });
-        } else {
-          log.error('resume parse rejected by server', {
-            status: res.status,
-            requestId: res.headers.get('X-Request-Id'),
-          });
-          sendResponse({
-            success: false,
-            error: body.error || `Resume parse failed (${res.status})`,
-            debug: { status: res.status },
-          });
-        }
-      } catch (err) {
-        log.error('resume parse request failed', err, { fileType, api: API_URL });
-        sendResponse({ success: false, error: err.message });
-      }
-      return;
-    }
-
-    // 3) SCRAPE ACTIVE TAB
-    if (kind === 'SCRAPE_ACTIVE_TAB') {
-      try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-        if (!tab || !tab.id) {
-          sendResponse({ success: false, error: 'Cannot read this page' });
-          return;
-        }
-
-        const restricted = [
-          'chrome:',
-          'chrome-extension:',
-          'edge:',
-          'about:',
-        ];
-        const url = tab.url || '';
-        const isRestricted =
-          restricted.some(scheme => url.startsWith(scheme)) ||
-          url.startsWith('https://chrome.google.com');
-
-        if (isRestricted) {
-          sendResponse({ success: false, error: 'Cannot read this page' });
-          return;
-        }
-
-        const injectionResults = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: scrapeJobPage,
-        });
-
-        const result = injectionResults?.[0]?.result || {};
-        sendResponse({
-          success: true,
-          context: {
-            company: result.company || '',
-            description: result.description || '',
-          },
-        });
-      } catch (e) {
-        log.error('active tab scrape failed', e);
-        sendResponse({ success: false, error: e.message });
-      }
-      return;
-    }
-
-    // 4) GENERATE IMPROVED ANSWER
-    if (kind === 'GENERATE_IMPROVED_ANSWER') {
-      const payload = msg.data || {};
-      const { token, ...body } = payload;
-      try {
-        const res = await fetch(`${API_URL}/api/answer-vault/generate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + token,
-          },
-          body: JSON.stringify(body),
-        });
-        const respBody = await res.json();
-        if (res.ok) {
-          sendResponse({ success: true, text: respBody.text || respBody.answer || '' });
-        } else {
-          log.error('answer generation rejected by server', {
-            status: res.status,
-            requestId: res.headers.get('X-Request-Id'),
-          });
-          sendResponse({
-            success: false,
-            error: respBody.error || `Generation failed (${res.status})`,
-          });
-        }
-      } catch (err) {
-        log.error('answer generation request failed', err, { api: API_URL });
-        sendResponse({ success: false, error: err.message });
-      }
-      return;
-    }
-
-    // 5) Unknown message
-    log.warn('unknown message kind', { kind });
-    sendResponse({ success: false, error: 'Unknown request' });
-  } catch (outerErr) {
-    // Safety net — never let an exception escape without a response
-    log.error('unhandled error in message handler', outerErr, { kind });
-    sendResponse({ success: false, error: outerErr.message });
-  }
-}
+// ─── Message routing ──────────────────────────────────────────────────────────
+// Built once: what the handlers use, and what the sender checks read. The
+// allowlist comes from this build's own manifest, so a release manifest
+// without the localhost entries narrows it.
+const context = {
+  chrome,
+  // Wrapped: a bare `fetch` called as context.fetch() is an illegal invocation.
+  fetch: (...args) => fetch(...args),
+  apiUrl: API_URL,
+  log,
+  scrapeJobPage,
+  runtimeId: chrome.runtime.id,
+  origins: allowedOrigins(chrome.runtime.getManifest()),
+};
 
 // Register on both channels; return true to keep the sendResponse port open.
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  handleMessage(msg, sendResponse);
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  dispatch(msg, sender, 'internal', context).then(sendResponse);
   return true;
 });
 
-chrome.runtime.onMessageExternal.addListener((msg, _sender, sendResponse) => {
-  handleMessage(msg, sendResponse);
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
+  dispatch(msg, sender, 'external', context).then(sendResponse);
   return true;
 });

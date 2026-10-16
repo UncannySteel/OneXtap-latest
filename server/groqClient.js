@@ -10,8 +10,9 @@
  * invisible: both copies keep working, they just stop agreeing about when a
  * provider error is worth retrying on the smaller model.
  *
- * So the definitions moved here byte-for-byte and server/index.js imports them
- * back. Nothing about their behaviour changed in the move.
+ * So the definitions moved here byte-for-byte and the server imports them back
+ * (server/routes/generate.js, server/routes/jobRank.js, server/lib/gemini.js,
+ * server/index.js). Nothing about their behaviour changed in the move.
  *
  * ═══ THE MODEL NAMES ═══
  *

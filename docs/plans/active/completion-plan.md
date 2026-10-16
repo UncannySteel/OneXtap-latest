@@ -17,7 +17,7 @@ Run batch B<N> of docs/plans/active/completion-plan.md.
 | Batch | What | Owner needed | Size | Status | Commit |
 | --- | --- | --- | --- | --- | --- |
 | B0 | Baseline and guardrails | no | M | done 2026-10-16 (checkpoint 10) | see `git log --grep "checkpoint 10"` |
-| B1 | Server split ∥ website fixes ∥ extension protocol | no | L | not started | |
+| B1 | Server split ∥ website fixes ∥ extension protocol | no | L | done 2026-10-17 (checkpoint 11) | see `git log --grep "checkpoint 11"` |
 | B2 | Server: charging, billing, AI quality | no | L | not started | |
 | B3 | Extension 1.0.4: job-page button, popup, wipe, release tooling | no | L | not started | |
 | B4 | Owner session A: real services on the dev project | yes, ~90 min | M | not started | |
@@ -56,6 +56,40 @@ know) go here, newest last:
   (`content.js` gains the LinkedIn selectors); no lint warning is promoted
   (`exhaustive-deps` stays a warning); there is no 1.0.3 draft in the
   developer dashboard.
+- **B1: baseline for B2 and B3.** `npm run lint` 0 errors, 1 warning (the
+  same); `npm test` 741/0/2; `test:e2e` 197 pass / 10 skipped;
+  `test:e2e:extension` 6 (3 `extension` + 3 `legacy`, with
+  `E2E_LEGACY_EXTENSION_PATH` set).
+- **B1, for B2: where the server code is now.** The webhook handler is
+  `server/routes/webhook.js` (registered on the app in `server/app.js`, not
+  in a Router: the rule 4 test reads the top-level stack). Credit helpers,
+  `chargeOneCredit` and `refundOneCredit` included, are in
+  `server/lib/credits.js`; the generate route and `FABRICATION_CORPUS_MAX_*`
+  in `server/routes/generate.js`; the answer-vault and Improve prompt text in
+  `server/prompts/answerVault.js`; billing in `server/routes/billing.js`;
+  `DELETE /api/account` in `server/routes/account.js`; "Explain my fit" in
+  `server/routes/jobExplain.js`. `test/server/routes.test.js` reads every
+  server module.
+- **B1, for B3: the registry.** A new message is a module in
+  `extension/messages/` and a line in `MESSAGES` (`registry.js`). Each names
+  `from` (`site`, `popup`, `content`, from `senders.js`) and optionally a
+  `capability`, which `ONEXTAP_HELLO` reports automatically. Today:
+  `ONEXTAP_HELLO` site + popup; `ONEXTAP_SYNC_DATA` and `PARSE_RESUME` site;
+  `SCRAPE_ACTIVE_TAB` site + popup; `GENERATE_IMPROVED_ANSWER` popup.
+  `scrapeJobPage()` reaches its handler through the context `background.js`
+  builds, and stays in `background.js` (rules 5 and 9). The site's
+  allowlist is the manifest's `externally_connectable`, read at run time, so
+  the release manifest narrows it with no code change.
+- **B1, for B3's wipe:** the landing works out the Supabase session key in
+  `web/src/app/session.js` (supabase-js's default; `test/web/session.test.js`
+  fails if they drift). The wipe needs the same key: consider an explicit
+  `storageKey` in `src/supabaseClient.js` from one small shared module.
+- **B1: the unit tests that load `src/`** (`test/extension/extensionClient`,
+  `resumeParse`) go through `test/extension/viteModules.js`, which needs Node
+  22.15+ (`module.registerHooks`); older Node skips them.
+- **B1: `web/playwright.config.js` ignores `extension-legacy.spec.js`** as
+  well as `extension.spec.js`. A new extension spec needs the same, or the
+  website suite runs it without the extension.
 
 ---
 

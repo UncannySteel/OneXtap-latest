@@ -12,31 +12,17 @@
    page, the dashboard and the API share one origin, so it is the same one
    the dashboard will use. */
 import { API_URL, CHROME_WEB_STORE_URL, DASHBOARD_PATH } from '@app/config.js';
+import { supabaseStorageKey, hasStoredSession } from './session.js';
 
 /* --- is anyone signed in? --------------------------------------------------
-   Supabase's browser client keeps the session under sb-<project ref>-auth-token.
-   A stored session with a refresh token counts: the access token inside it may
-   have lapsed, but the dashboard's client refreshes it on load, and if that
-   fails it sends the reader back here to sign in. */
-function sessionKey() {
-  try {
-    var host = new URL(import.meta.env.VITE_SUPABASE_URL).hostname;
-    return 'sb-' + host.split('.')[0] + '-auth-token';
-  } catch {
-    return null;
-  }
-}
-
+   Under the key the account's client (src/supabaseClient.js) keeps its
+   session, worked out without loading the SDK: see session.js for how, and
+   for the test that keeps the two in step. */
 export function hasSession() {
-  var key = sessionKey();
-  if (!key) return false;
-  try {
-    var stored = JSON.parse(localStorage.getItem(key) || 'null');
-    var session = stored && (stored.currentSession || stored);
-    return !!(session && session.refresh_token);
-  } catch {
-    return false;
-  }
+  var key = supabaseStorageKey(import.meta.env.VITE_SUPABASE_URL);
+  var storage = null;
+  try { storage = window.localStorage; } catch { /* blocked: signed out */ }
+  return hasStoredSession(storage, key);
 }
 
 /* --- where things go -------------------------------------------------------- */

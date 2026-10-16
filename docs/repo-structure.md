@@ -46,8 +46,9 @@ the Vercel project needs no change.
 ├── extension/                 # Chrome-extension-only source
 │   ├── manifest.json          # MV3 manifest: permissions, host permissions,
 │   │                          #   externally_connectable, service worker
-│   ├── background.js          # Service worker: profile sync, resume +
-│   │                          #   answer proxying, active-tab scraping
+│   ├── background.js          # Service worker: routes messages, active-tab scraping
+│   ├── messages/              # One module per message + the registry and
+│   │                          #   sender checks (docs/extension-protocol.md)
 │   ├── profileSync.js         # Files a dashboard profile into the extension's
 │   │                          #   profile store (pure; the worker writes it)
 │   ├── logger.js              # Service-worker logger (no window, no DOM)
@@ -89,11 +90,11 @@ the Vercel project needs no change.
 │   ├── coverLetterCredits.js  # What personalising a cover letter costs: 1 credit
 │   │                          #   + 1 free re-run (pure; popup and web dashboard)
 │   ├── resumeStore.js         # Local resume library (`onextap_resumes`)
-│   ├── resumeParse.js         # Upload transport: base64 → PARSE_RESUME → parse
+│   ├── resumeParse.js         # Upload transport: base64 → POST /api/parse-resume → parse
 │   ├── resumeToProfile.js     # Parsed resume → profile fields
 │   ├── jobsApi.js             # Job ranking / explain / pool API client
 │   ├── config.js              # API_URL, DASHBOARD_URL/PATH, SITE_URL, extension id, model
-│   ├── extensionClient.js     # getExtensionId / getIconUrl / openChromeWebStore
+│   ├── extensionClient.js     # resolveExtensionId / getExtensionInfo / profile sync
 │   ├── profileDefaults.js     # DEFAULT_PROFILE, RACES, VETERAN_STATUS
 │   ├── answerStudio.js        # AI style presets, timeout budgets, withTimeout
 │   ├── autofillSections.js    # Autofill section list + default toggles
@@ -139,7 +140,11 @@ the Vercel project needs no change.
 │   │                          #   stubs.js stands in for Supabase and the API
 │   └── playwright.config.js
 ├── server/                    # Express backend (own package.json + node_modules)
-│   ├── index.js               # Every API route (~2.6k lines)
+│   ├── index.js               # Entry: load-env first, the app, listen unless VERCEL
+│   ├── app.js                 # Middleware in order (webhook raw body first), routers
+│   ├── routes/                # One express.Router per area; webhook.js is a handler
+│   ├── lib/                   # Route helpers: dodo, gemini, credits, errors, jobRoutes
+│   ├── prompts/               # Prompt text: Answer Studio, resume parsing
 │   ├── logger.js              # Structured logs, request ids, error middleware
 │   ├── supabase.js            # Service-role admin client + requireAuth middleware
 │   ├── load-env.js            # Loads server/.env regardless of cwd
@@ -195,9 +200,10 @@ Arrows point from importer to imported. Anything not listed is not allowed
 without a deliberate decision.
 
 ```text
-api/index.js ──► server/index.js ──► server/supabase.js
-                        │        └──► server/{cronAuth,llmJson,groqClient}.js
-                        │        └──► server/jobs/*  ──► server/observability/opik.js
+api/index.js ──► server/index.js ──► server/app.js ──► server/routes/* ──► server/{lib,prompts}/*
+                        │                     routes/* and lib/* ──► server/supabase.js
+                        │                                         └──► server/{cronAuth,llmJson,groqClient}.js
+                        │                                         └──► server/jobs/*  ──► server/observability/opik.js
                         │
                         └──► server/load-env.js   (must be the FIRST import)
 
@@ -231,7 +237,7 @@ Leaf modules in src/:
   src/resumeStore.js  ──► src/storage.js
                      └──► src/corpus.js ──► src/matching/normalize.js
                      └──► src/matching/index.js
-  src/resumeParse.js  ──► src/extensionClient.js
+  src/resumeParse.js  ──► src/{auth,config,logger}.js
   src/resumeToProfile.js ──► extension/constants.js
   src/jobsApi.js      ──► src/{auth,config,answerStudio}.js
   src/applicationTypeStorage.js ──► src/storage.js
@@ -243,12 +249,13 @@ Leaf modules in src/:
 
 THE ONE CROSS-BOUNDARY IMPORT INTO THE SERVER:
 
-  server/index.js            ──┐
+  server/routes/{generate,jobRank,jobExplain}.js ──┐
   server/jobs/graph.js       ──┼──► src/matching/index.js
   server/jobs/rank.js        ──┤
   server/jobs/normalizeListing.js ─┘
 
-extension/background.js   — imports only extension/{logger,profileSync}.js.
+extension/background.js   — imports only extension/logger.js and extension/messages/**
+                            (which import only extension/profileSync.js).
 public/content.js         — standalone. Imports nothing at all.
 ```
 
@@ -263,7 +270,7 @@ public/content.js         — standalone. Imports nothing at all.
    unauthenticated feedback post in `web/src/app/backend.js`.
 
    The exception: **`server/` imports `src/matching/index.js`** — from
-   `server/index.js` and three files under `server/jobs/`. Keyword extraction
+   three routers in `server/routes/` and three files under `server/jobs/`. Keyword extraction
    has to produce byte-identical results on both sides or a job's stored
    keywords would not match the ones the client scores against, and two copies
    of a 570-entry lexicon would drift the way the two page scrapers do. So it
@@ -374,7 +381,7 @@ public/content.js         — standalone. Imports nothing at all.
 
 | Change | Goes in |
 |---|---|
-| New API route or server logic | `server/index.js` |
+| New API route or server logic | `server/routes/<area>.js`, mounted in `server/app.js`; shared helpers in `server/lib/`, prompt text in `server/prompts/` |
 | Auth middleware, admin DB access | `server/supabase.js` |
 | A workspace on the web dashboard | `web/dashboard/js/ws/` (styles in `web/dashboard/css/workspaces.css`) |
 | The dashboard's shell: session, settings, plan panel, tour | `web/dashboard/js/{main,services,settings,subscription,tour}.js` |
@@ -385,9 +392,9 @@ public/content.js         — standalone. Imports nothing at all.
 | A screen in the extension popup | `src/components/popup/` |
 | Data or logic both front ends need | a plain module in `src/` (rule 9) |
 | Persisted local state | `src/storage.js` + a store module in `src/` |
-| Credit / premium behavior | `server/index.js`, surfaced via `src/creditManager.js` |
+| Credit / premium behavior | `server/routes/{credits,billing}.js` and `server/lib/credits.js`, surfaced via `src/creditManager.js` |
 | Autofill or field matching on a page | `public/content.js` |
-| Service-worker proxying, tab scraping, profile sync | `extension/background.js` (+ `extension/profileSync.js`) |
+| Service-worker messages, tab scraping, profile sync | `extension/messages/` (contract: `docs/extension-protocol.md`), `extension/background.js` (+ `extension/profileSync.js`) |
 | Permissions, host permissions, worker registration | `extension/manifest.json` |
 | Tables, RLS, triggers | `supabase/schema.sql`, plus a new file in `supabase/migrations/` — that file is what gets pasted; never re-run `schema.sql` against prod |
 | Keyword extraction, scoring, the skill lexicon | `src/matching/` — shared by client *and* server, so rule 10 applies |

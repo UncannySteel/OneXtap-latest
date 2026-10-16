@@ -94,6 +94,9 @@ validated, never assumed.
 
 ### 3.1 `chrome.runtime` messaging → service worker
 
+The contract, with who may send each message, is `docs/extension-protocol.md`;
+this is a summary.
+
 Accepted on `onMessage` (popup) **and** `onMessageExternal` (dashboard, from
 an `externally_connectable` origin). The kind may arrive as `type` or
 `action`. Every reply is `{ success: true, ... }` or
@@ -101,8 +104,9 @@ an `externally_connectable` origin). The kind may arrive as `type` or
 
 | Message | Payload | Reply |
 |---|---|---|
-| `ONEXTAP_SYNC_DATA` | `{ payload }` | `{}` — writes `payload` to `storage.local.user_profile` |
-| `PARSE_RESUME` | `{ data: { fileData, fileName, fileType, token } }` | `{ data }` — proxies `POST /api/parse-resume` |
+| `ONEXTAP_HELLO` | `{}` | `{ version, protocol: 2, capabilities }` — absent in 1.0.2, which answers "Unknown action" |
+| `ONEXTAP_SYNC_DATA` | `{ payload }` | `{}` — files `payload` into `onextap_profiles` and writes `storage.local.user_profile` |
+| `PARSE_RESUME` | `{ data: { fileData, fileName, fileType, token } }` | `{ data }` — proxies `POST /api/parse-resume`; kept for old sites, the website no longer sends it |
 | `SCRAPE_ACTIVE_TAB` | — | `{ context: { company, description } }` |
 | `GENERATE_IMPROVED_ANSWER` | `{ data: { token, ...body } }` | `{ text }` — proxies `POST /api/answer-vault/generate` |
 

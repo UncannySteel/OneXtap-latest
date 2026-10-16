@@ -10,7 +10,8 @@
  * module builds the Express app and calls app.listen(), so importing it from a
  * unit test would boot a server.
  *
- * So the functions moved here unchanged and server/index.js imports them back.
+ * So the functions moved here unchanged and the routes import them back
+ * (server/routes/resume.js, server/routes/jobExplain.js).
  * There is one parser in this repo and this is it. If you are about to write a
  * `JSON.parse` with a regex in front of it, use these instead.
  *

@@ -202,8 +202,7 @@ Choose or drop a file (PDF or image, size-capped)
     ├─ getAccessToken()  ──► none → "Not authenticated. Please sign in first."
     ├─ GET /api/me       ──► rejected → "Session token rejected… sign out and sign in again."
     │
-    ├─ extension reachable? ──► PARSE_RESUME via the service worker
-    └─ otherwise            ──► POST /api/parse-resume directly
+    └─ POST /api/parse-resume, always (the website no longer sends PARSE_RESUME)
                                         │
                                  Gemini (primary → fallback model)
                                         │

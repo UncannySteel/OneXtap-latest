@@ -425,7 +425,8 @@ Event → state table: see [`app-flow.md` §7](app-flow.md#7-upgrade-to-premium)
 | `server/load-env.js` | — | **First import** in `server/index.js`; loads `server/.env` regardless of cwd |
 | `server/supabase.js` | `supabaseAdmin`, `getProfile`, `updateProfile`, `requireAuth`, `formatSupabaseError` | Reads `process.env` at module load |
 | `server/logger.js` | `log`, `requestLogger`, `errorLogger`, `installProcessHandlers` | Imported after `load-env.js`; reads `LOG_LEVEL` at module load |
-| `server/index.js` | `default` — the Express app | Every route |
+| `server/index.js` | `default` — the Express app | Entry: imports `load-env.js` first, then `app.js`; listens unless `VERCEL` |
+| `server/app.js` | `default` — the Express app | Middleware order (the webhook's `express.raw()` before `express.json()`) and the routers from `server/routes/` |
 | `api/index.js` | re-export | Bare. No routes, no middleware |
 
 `requireAuth` verifies the bearer token with

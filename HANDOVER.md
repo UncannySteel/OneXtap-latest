@@ -8,8 +8,9 @@ and nothing is deployed. The site has to work with the extension already on
 the Chrome Web Store (1.0.2, not 1.0.3 as this file said until 2026-10-16;
 a 1.0.4 is being built and tested, and submitting it is the owner's later
 call, see `docs/plans/active/completion-plan.md`): it does, except profile sync from the website (§7
-item 1), which the website cannot fix alone, and resume upload on a local
-site with the store build installed (item 31). The keys on this machine are the dev
+item 1), which the website cannot fix alone; since checkpoint 11 it says so
+after a save instead of claiming the sync. (Resume upload with the store
+build installed, item 31, is fixed since checkpoint 11.) The keys on this machine are the dev
 project's now; production's are backed up outside the repo. **Committed and pushed**: the
 branch `merge/web-dashboard`, off `main` (`bae4abc`) of
 `github.com/Aiko002/Onextap`, is on `github.com/UncannySteel/OneXtap-latest`
@@ -642,6 +643,145 @@ but not DNS lookups.
 **Next:** batch B1. Open a new session and paste: `Run batch B1 of
 docs/plans/active/completion-plan.md.`
 
+### Checkpoint 11 (2026-10-17, session 8): B1, server split, extension protocol v2, website fixes
+
+Batch B1 of the completion plan. Three builders in worktrees (B1-A the server
+split, B1-B extension protocol v2, B1-C website polish), merged A → B → C
+with no conflicts, reviewed (`code-review` at high) and audited (every
+acceptance criterion passed; item 21 partial, then fixed). The account's
+usage limit stopped all three builders midway; they were resumed from their
+transcripts.
+
+- **`server/index.js` split, a pure move.** `index.js` is the 25-line
+  entry (`load-env.js` first, the app from `./app.js`, listens unless
+  `VERCEL`). `server/app.js` holds the middleware in the old order: CORS,
+  request ids, `POST /api/webhook` with `express.raw` (registered on the app
+  itself, because the rule 4 test reads the top-level stack), the 3 MB
+  parse-resume parser, `express.json`, the routers, the error logger. Twelve
+  routers in `server/routes/` (the largest, `jobRank.js`, is 376 lines),
+  helpers in `server/lib/` (credits, dodo, gemini, errors, jobRoutes), prompt
+  text in `server/prompts/` (`answerVault.js` with the Improve block,
+  `resumeParse.js`). A line-by-line comparison with the old file, by the
+  builder and again by the Auditor, found only wiring: imports and exports,
+  `app.` → `router.`, file headers, three prompt wrappers. The route snapshot
+  is unchanged; `test/server/routes.test.js` and `parses.test.js` read every
+  server module; the logger test scans the new files (the same 15 call
+  sites). There was no 404 handler, and none was added.
+  `installProcessHandlers()` now runs after the route modules load (ESM
+  order); they only build constants and the Dodo client.
+- **Extension protocol v2** (`docs/extension-protocol.md`). The worker sends
+  both channels through `extension/messages/registry.js`: one module per
+  message, each naming who may send it. `site` is external, its origin
+  checked against the manifest's own `externally_connectable` list, read at
+  run time (so B3's release manifest narrows it). `popup` and `content` are
+  internal, `sender.id` ours. `ONEXTAP_HELLO` answers `{version, protocol:
+  2, capabilities: ['profile-sync']}` to the site and the popup. 1.0.2's four
+  messages answer exactly as before (pinned by tests written before the
+  refactor), but who may send them narrowed from anyone on either channel to:
+  `ONEXTAP_SYNC_DATA` and `PARSE_RESUME` the site only, `SCRAPE_ACTIVE_TAB`
+  the site and the popup, `GENERATE_IMPROVED_ANSWER` the popup only
+  (`main`'s website never sent it). An unknown message gets 1.0.2's words,
+  "Unknown action: <kind>" (this branch's worker said "Unknown request").
+- **The website's side**, `src/extensionClient.js`: `getExtensionInfo()`
+  (current / legacy / absent, 1.5 s), `syncProfileToExtension()`, and
+  `resolveExtensionId()` (item 29). My Profiles' status after a save:
+  current, "Saved and synced to the extension"; legacy, "Saved — the
+  extension is out of date: update it", linking to the store, and the sync
+  still sent; absent, "Saved on this device" (item 1, option a). Resume
+  parsing always goes to the API (item 31).
+- **Website copy (item 14), the scoring label (21), the session key (23),
+  `src/index.css` (19):** §7. The copy, before → after:
+  - Showcase, Mapping tab: "A field Onextap has not seen before gets mapped
+    once, then fills itself everywhere after that." → "Fields are matched to
+    your profile by their labels. One it does not know waits for you, until
+    you name it once."
+  - Its steps: "unmapped: notice_period" → "no match: visa_status"; "A form
+    asks for something Onextap has not met before. It is flagged rather than
+    quietly skipped." → "A form asks for something your profile does not
+    cover. Onextap leaves it empty rather than make something up."; notes
+    "Flagged, never guessed" / "Shown before anything fills" → "Left for you
+    to fill" / "What you typed stays put"; "Map it once" (notice_period → 4
+    weeks) → "Name it once" (custom field: Visa status); "Point the field at
+    the answer it belongs to. One click, and only the first time you see it."
+    → "Add it to your profile as a custom field, named the way the form prints
+    it, with your answer."; notes "One click to bind it" / "First time only" →
+    "Set up on the dashboard" / "Named as forms label it"; "It sticks"
+    (remembered · every board) → "It fills from then on" (matched by label ·
+    any board); "Every future application carrying that field fills itself,
+    whichever board is asking." → "Any later form whose field carries that
+    label gets your answer, whichever board is asking."; "Applies on boards you
+    have not seen" → "Works on boards you have not seen"; "learned once" →
+    "set once"; "The mapping list only ever grows, so the second application
+    is always faster than the first." → "Each custom field you add is one less
+    box to type, so the next application asks less of you."; notes "The list
+    only ever grows" / "No second setup" → "One entry per question" / "Edit or
+    remove it any time"; the small window "notice_period / unmapped, ↳ fills
+    with / 4 weeks" → "visa_status / left empty, ↳ custom field / Citizen".
+  - Showcase card: "Handles fields it has not seen" → "Leaves unknown fields
+    to you".
+  - FAQ: "A field it hasn't met before is flagged, never guessed." → "A field
+    it doesn't recognise is left empty for you; add it to your profile once
+    and it fills from then on."; "Priority support and early access come with
+    it." → "Everything else, autofill included, is free either way."
+  - Pricing, Premium: "Priority support and early access" → "The same AI
+    models as Free".
+  - About: "Learn the form once. Fill it everywhere." → "Write it once. Fill
+    it everywhere."; "A field it has not met before is flagged, never guessed
+    — map it once and it fills itself on every board after that." → "A field
+    it does not recognise is left empty for you — add it to your profile once,
+    named the way forms print it, and it fills on every board after that."
+  - Form fields: "Onextap learns the mapping once and reuses it everywhere."
+    → "Onextap reads the labels and fills them from one profile."
+  - Job Matches: "Scoring 30 of 30 jobs" → "Scoring the closest of N jobs in
+    the pool" (no filter applied) or "Scoring the closest jobs in the pool";
+    its note loses "The count is an estimate;".
+- **From the review, fixed:** a handshake that only timed out (a service
+  worker still waking) no longer skips the sync; the sync waits at most 10 s,
+  so Save can't hang; the scoring label stops quoting the pool's size while a
+  filter narrows it, and moved to a pure module with a test. **From
+  integration:** the website e2e config ignored only `extension.spec.js`, so
+  with `E2E_LEGACY_EXTENSION_PATH` set it also ran the legacy spec under its
+  own projects (6 failures); it now ignores both. **Accepted, not fixed:** the
+  session key is still derived rather than shared (a B3 candidate); the new
+  unit tests that load `src/` need Node 22.15+ (`module.registerHooks`) and
+  skip on older Node, while the README says 21+ for `npm test`.
+- **Docs:** CLAUDE.md (rule 4 now names `server/app.js`; the extension e2e
+  line), `docs/repo-structure.md`, `backend-schema.md`, `trd.md`,
+  `app-flow.md`, `web/dashboard/README.md`, and the comments that named
+  moved code.
+
+**Verified:** baseline before any change: lint 0 errors / 1 warning;
+`npm test` 660/0/2; `test:e2e` 188 / 10 skipped; `test:e2e:extension` 3.
+After: lint 0 errors / 1 warning (the same); `npm test` 741 pass, 0 fail, 2
+skipped; both builds; `test:e2e` 197 pass, 10 skipped, 0 fail (B1-C's three
+new tests on three projects); `test:e2e:extension` 6 of 6: the 3 as before,
+plus 3 `legacy` tests against the real store 1.0.2 (unpacked, stubbed API,
+the site on localhost). `npm run server:dev` answers `/api/health` 200 with
+an `X-Request-Id` (checked before the review fixes, which touched only a
+comment on the server; the harness tests import the app after them). One
+phone-Chromium failure in `dashboard.spec.js:27` in the first run after the
+merge (the tap hit a link while the sign-in button was still moving, with the
+stray legacy runs loading the machine) passed 5 of 5 on repeat and in both
+later full runs.
+
+**Not verified:** nothing against a real service (none was needed). The Job
+Matches label in a browser: no e2e covers Job Matches. The content script
+sends nothing yet, so its sender kind is tested only in unit tests.
+
+**Open questions for the owner:**
+- The website copy above: keep it, or change the words? In particular "The
+  same AI models as Free" as a Premium bullet: accurate, but odd as a perk.
+- Four claims were left as they were (§7 item 14): "every field, on every
+  board", "activates automatically", the demo's "Mapped" fields, "No limits
+  on the AI". Rewrite them too?
+- The narrowed senders above: `GENERATE_IMPROVED_ANSWER` from the popup
+  only, the sync and `PARSE_RESUME` from the site only. Anything you know of
+  that sends them from elsewhere?
+
+**Next:** batches B2 and B3, in either order or both at once (the plan's B3
+note). Open a new session and paste: `Run batch B2 of
+docs/plans/active/completion-plan.md.`
+
 ---
 
 ## 1. What was asked, and what was decided
@@ -868,7 +1008,10 @@ mode, real Groq and Gemini; checkpoint 9 has the detail):
   `subscription.cancelled` at the end of a real period; "Explain my fit"'s
   one-credit charge on a free account after the checkpoint 9 fix; a real
   double checkout (§7 item 30); anything in production.
-- **The store extension (1.0.2) itself**: never run. Its installed files were
+- **The store extension (1.0.2) itself**: never against real services. Since
+  checkpoint 11 it runs in the legacy e2e (an unpacked copy, the site on
+  localhost, the API stubbed): its "Unknown action" handshake, the sync, the
+  out-of-date copy, a resume parsed without it. Its installed files were
   read while planning (`docs/plans/active/completion-plan.md` §2: the four
   messages its worker answers, its manifest, its links); before that, this
   document's claims came from reading `main` (§7 item 1). Checkpoint 10 keeps
@@ -893,8 +1036,13 @@ mode, real Groq and Gemini; checkpoint 9 has the detail):
   through `test/server/harness.js`, which imports the real app with dummy env,
   no `server/.env` and no network. **Lint** (`npm run lint`, new): 0 errors,
   1 warning.
+- **Checkpoint 11: 741 pass, 0 fail, 2 skipped.** The 81 new ones: the
+  extension protocol (the worker's routing and sender checks, 1.0.2's four
+  messages, the website's client, resume parsing), the landing's session key
+  and the Job Matches label. The ones that load `src/` need Node 22.15+.
 
 **E2E (`npm run test:e2e`)**, at checkpoint 5, and again at checkpoint 10: 188 pass, 10 skipped
+(197 at checkpoint 11, with the new copy tests)
 (keyboard and wheel tests on the phone profile), 0 fail, across desktop
 Chromium, phone Chromium and WebKit. It covers the landing page, its company
 pages, the 404 page, the account flows (sign-up's name, forgot password, the
@@ -905,7 +1053,9 @@ that a card is *visible* before trusting its words, since words already in
 the markup pass `toHaveText` while the card is hidden.
 
 **E2E with the extension (`npm run test:e2e:extension`)**, from checkpoint 7:
-3 tests since checkpoint 8, 15 of 15 over five repeats (3 of 3 again at checkpoint 10), in Chromium with the
+3 tests since checkpoint 8, 15 of 15 over five repeats (3 of 3 again at checkpoint 10; since
+checkpoint 11 a `legacy` project adds 3 against the real store 1.0.2, skipped unless
+`E2E_LEGACY_EXTENSION_PATH` is set: 6 of 6), in Chromium with the
 extension loaded unpacked. It builds its own copy of the extension with unresolvable
 addresses, runs the website on 5173 (it stops if something is already
 there), and uses the same stubs. A sign-in to the popup is put in place by
@@ -949,6 +1099,7 @@ before this work.
 - **Result:** autofill keeps using the popup's own copy, and the dashboard's "Saved and synced" does not reach it.
 - **Fixed in code at checkpoint 2** (§0), with the owner's go-ahead: the handler files the payload into `onextap_profiles` and makes it active (`extension/profileSync.js`, unit-tested against `src/profileStore.js`). **Checked at checkpoint 7 with the extension loaded**, against stubs (`npm run test:e2e:extension`): the dashboard's second edit is what the popup's autofill fills, and with the old worker it is not. **Checked at checkpoint 9 with a real sign-in**, the local build loaded: passes.
 - **But the owner said at checkpoint 9 that the site has to plug into the store extension**, then thought to be 1.0.3 and in fact 1.0.2, with no release planned (since session 6: 1.0.4 is built and tested, submission is the owner's later call). That build has the old worker, so for its users this item stays open, and the website cannot work around it: 1.0.2's worker accepts `ONEXTAP_SYNC_DATA`, `PARSE_RESUME`, `SCRAPE_ACTIVE_TAB` and `GENERATE_IMPROVED_ANSWER`, and none of them writes `onextap_profiles`. In practice: install, click the icon (the store is created, empty), set up the profile on the website, and the popup still says "Welcome to Onextap". The website meanwhile says "Saved and synced to the extension", because the old worker answers `success: true` regardless. Production, if it runs `main`'s website, has the same today. **Options:** a minimal 1.0.4 with only this fix (`extension/background.js` + `extension/profileSync.js`, a version bump); and in any case, the website's copy should stop claiming the sync (§0 checkpoint 9, option a).
+- **Checkpoint 11 (B1): the website stopped claiming it.** It asks the extension `ONEXTAP_HELLO` first (`docs/extension-protocol.md`): 1.0.2 answers "Unknown action", and after a save the status says the extension is out of date, with a link to the store; the sync is still sent, which helps a fresh install. A current build answers with its version and `profile-sync`, and only then does the status say "Saved and synced". Store users still need 1.0.4 for the sync itself (batch B3). The legacy e2e checks this against the real 1.0.2.
 
 **2. ~~Never run against real services.~~ Run at checkpoint 9**, against a dev Supabase project and Dodo in test mode: every line below passes (§0 has the detail), except Google sign-in, not tried, and the extension one, which passes with this branch's build only (item 1). Production itself has not been touched. The list, for the next real-service run:
 - email sign-up with confirmation;
@@ -967,9 +1118,9 @@ before this work.
 
 **4. ~~Docs.~~ Done:** updated at checkpoint 2, and `docs/app-flow.md` rewritten from the code at checkpoint 4. It is traced and stub-tested; the real run (checkpoint 9) has happened but the doc has not been checked against it yet (§6 item 6).
 
-**29. The dashboard trusts `?extensionId=` from the link.** Pre-existing (`src/extensionClient.js`, the same on `main`). Whatever ID the link names gets the active profile, and through `PARSE_RESUME` the resume file and the Supabase access token (`web/dashboard/js/services.js`, `src/resumeParse.js`). Chrome delivers only if that extension lists the site's origin in its own `externally_connectable`, so an attack needs an installed extension that does, plus a crafted link. Found at checkpoint 9. **Proposed:** in production, send only to the store ID (`EXTENSION_ID_FALLBACK`), keeping the override on `localhost` for unpacked builds. Waiting on the owner (option b).
+**29. The dashboard trusts `?extensionId=` from the link.** Pre-existing (`src/extensionClient.js`, the same on `main`). Whatever ID the link names gets the active profile, and through `PARSE_RESUME` the resume file and the Supabase access token (`web/dashboard/js/services.js`, `src/resumeParse.js`). Chrome delivers only if that extension lists the site's origin in its own `externally_connectable`, so an attack needs an installed extension that does, plus a crafted link. Found at checkpoint 9. **Fixed at checkpoint 11 (B1), option b:** `resolveExtensionId()` in `src/extensionClient.js`. Outside `localhost` and `127.0.0.1` the site only messages `EXTENSION_ID_FALLBACK`, whatever the link says; on localhost `?extensionId=` wins if it has an extension ID's shape (32 letters a–p), for unpacked builds. Inside the extension it addresses itself, never the store ID. The resume no longer goes to the extension at all (item 31). Unit-tested; not deployed.
 
-**30. One account could end up with two Dodo subscriptions. Fixed in code at checkpoint 9, not yet tested with a real double checkout.** Checkout refuses an account that is already Pro, but an account becomes Pro only when the first `subscription.active` lands, so two checkouts in that window (two tabs, a slow or failing webhook) made two subscriptions, and the app tracks one. It was worse than double billing: every webhook acted on the account whatever subscription it named, so cancelling the stray one switched Pro off, and deleting the account cancelled only the linked one. The fix (`server/subscriptionGuard.js`, the webhook and `DELETE /api/account` in `server/index.js`, `web/dashboard/js/subscription.js`) is in §0, checkpoint 9. **Left open:**
+**30. One account could end up with two Dodo subscriptions. Fixed in code at checkpoint 9, not yet tested with a real double checkout.** Checkout refuses an account that is already Pro, but an account becomes Pro only when the first `subscription.active` lands, so two checkouts in that window (two tabs, a slow or failing webhook) made two subscriptions, and the app tracks one. It was worse than double billing: every webhook acted on the account whatever subscription it named, so cancelling the stray one switched Pro off, and deleting the account cancelled only the linked one. The fix (`server/subscriptionGuard.js`, the webhook and `DELETE /api/account`, now in `server/routes/webhook.js` and `server/routes/account.js`, `web/dashboard/js/subscription.js`) is in §0, checkpoint 9. **Left open:**
 - the cancelled duplicate's payment is refunded by hand in Dodo (the log names both subscriptions); automating it needs the payment id from `payment.succeeded`;
 - two activations processed in the same instant can both link; account deletion cleans that up;
 - a linked subscription on hold is not cancelled when a new one replaces it.
@@ -1017,7 +1168,7 @@ before this work.
 
 ### Low
 
-**14. Landing copy that is still aspirational.** Not changed, because it wasn't clearly contradicted and it's a product-narrative decision:
+**14. ~~Landing copy that is still aspirational.~~ Rewritten at checkpoint 11 (B1)**, words only, after checking each claim against the code: an unknown field is left empty (nothing is flagged or bound), a profile custom field named the way forms print it fills it from then on, and Premium only skips the credit charge (same models, no support tier). The before → after list is in §0, checkpoint 11. **Still not quite true, left for the owner:** "every field, on every board" (hero, About, FAQ 1); "activates automatically" (it is injected on demand); the demo's "Mapped" `work_authorization` and `years_of_experience` (no built-in match); "No limits on the AI" (every plan has an hourly ceiling). What it said before:
 - **The feature showcase's "Mapping" tab** describes flagging an unmapped field and binding it in one click. No such flow exists; custom profile fields are the closest thing.
 - **The FAQ** says a new field is "flagged, never guessed".
 - **"Priority support and early access"** is not something code can verify.
@@ -1033,20 +1184,20 @@ before this work.
 **18. ~~Preview deployments call the production API.~~ Fixed at checkpoint 4:** with `VITE_API_URL` empty, a production website build calls its own origin, and the extension `https://www.onextap.com` (`src/config.js`).
 
 **19. Leftover code.**
-- `src/index.css` still holds the old dashboard's CSS: dead but harmless.
+- ~~`src/index.css` still holds the old dashboard's CSS: dead but harmless.~~ Not dead (checked at checkpoint 11): `src/popup.jsx` imports it as the popup's Tailwind entry. Kept.
 - `src/consent.js` is unused, and kept on purpose as the future analytics consent gate.
 
 **20. ~~Unknown URLs get Vercel's default 404.~~ Fixed at checkpoint 4:** `web/404.html` (a Vite entry, so it shares the site's styles), built to `dist-dashboard/404.html`.
 
-**21. Job Matches shows "Scoring 30 of 30 jobs" immediately.** This is the backend's own constants (batch = prefilter = 30); the label is only an estimate.
+**21. ~~Job Matches shows "Scoring 30 of 30 jobs" immediately.~~ Fixed at checkpoint 11:** the label claims no running count. It reads "Scoring the closest of N jobs in the pool", with N from `/api/jobs/meta` and only while no filter is applied, else "Scoring the closest jobs in the pool" (`web/dashboard/js/ws/job-matches-label.js`, unit-tested). Not seen in a browser: no e2e covers Job Matches, and a real rank needs real services (B4).
 
 **22. No application-type picker on the web dashboard.** Job is the only live type, as in the backend. Bringing the others back needs a picker there as well as in the popup.
 
-**23. The landing's "signed in?" check reads Supabase's default storage key** (`sb-<ref>-auth-token`), in `web/src/app/backend.js`. A custom `storageKey` would break it.
+**23. The landing's "signed in?" check reads Supabase's default storage key** (`sb-<ref>-auth-token`), in `web/src/app/backend.js`. A custom `storageKey` would break it. **Checkpoint 11:** worked out in one pure place, `web/src/app/session.js`, and `test/web/session.test.js` builds real supabase-js clients with `src/supabaseClient.js`'s options and fails if the keys ever differ, a custom `storageKey` included. Loading the SDK on the landing just to ask would cost its first paint. Still a derivation: an explicit key both sides import would remove it, a candidate for B3, whose wipe needs the same key.
 
 **24. ~~The website never installs the client logger's global handlers.~~ Fixed at checkpoint 3:** every website entry calls `installGlobalErrorHandlers()`, so uncaught errors go through the logger and `__onextapIssues()` works in the console there too.
 
-**31. Resume upload goes through the extension when it is installed.** `src/resumeParse.js` sends `PARSE_RESUME` to the service worker, which posts to the API address built into the extension. With the store build on a local site, that is production's API with a dev token: a 401. In production it works, but it ties the website to the old worker (the store's 1.0.2 replies with `data` but no `text`, so it drops the resume text, and the page falls back to a rougher parse). `parseResumeViaApi()` already does the same without the extension. Found at checkpoint 9. **Proposed:** always call the API directly. Decided at planning (session 6): option c, in batch B1.
+**31. Resume upload goes through the extension when it is installed.** `src/resumeParse.js` sends `PARSE_RESUME` to the service worker, which posts to the API address built into the extension. With the store build on a local site, that is production's API with a dev token: a 401. In production it works, but it ties the website to the old worker (the store's 1.0.2 replies with `data` but no `text`, so it drops the resume text, and the page falls back to a rougher parse). `parseResumeViaApi()` already does the same without the extension. Found at checkpoint 9. **Proposed:** always call the API directly. Decided at planning (session 6): option c. **Fixed at checkpoint 11 (B1):** `src/resumeParse.js` always calls `POST /api/parse-resume` itself, on every surface; the website never sends `PARSE_RESUME`, and the worker still answers it for the website already deployed. The legacy e2e parses a resume with store 1.0.2 installed, transcription included.
 
 **32. Seen during the real-service run, not fixed.** From one run each, so impressions, not measurements:
 - Answer Studio's "Improve" left a draft with more claims the resume does not back (1 → 4). The claim check flagged all four; the improvement prompt invents figures.

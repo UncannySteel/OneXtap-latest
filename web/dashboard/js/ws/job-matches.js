@@ -2,6 +2,7 @@ import { h, ico, fill } from '../ui/dom.js';
 import { section, field, input, select, button, setBusy, note, tag, skeleton, spinner } from '../ui/controls.js';
 import { fileDrop } from '../ui/file-drop.js';
 import { resumeSwitcher } from '../ui/switchers.js';
+import { rankingLabel } from './job-matches-label.js';
 import { parseResumeFile, MAX_RESUME_LABEL } from '@app/resumeParse.js';
 import { getActiveResume, saveParsedResume } from '@app/resumeStore.js';
 import { rankJobs, explainJob, fetchJobsMeta, fetchJobLocations } from '@app/jobsApi.js';
@@ -46,11 +47,9 @@ const SORT_OPTIONS = [
 ];
 const EMPTY_FILTERS = Object.freeze({ remote: 'any', location: '', sources: [] });
 const REFETCH_DEBOUNCE_MS = 400;
-// Mirrors PREFILTER_LIMIT / the batch size in server/jobs/ — the progress
-// label only; nothing depends on them being exact.
+// Mirrors PREFILTER_LIMIT in server/jobs/ — the run footer's fallback for a
+// result without `sentToScorer` only; nothing depends on it being exact.
 const PREFILTER_LIMIT_ESTIMATE = 30;
-const RANK_BATCH_SIZE = 30;
-const PROGRESS_TICK_MS = 1600;
 const THIN_POOL = 12;
 const MAX_MATCHED_CHIPS = 5;
 const MAX_MISSING_CHIPS = 5;
@@ -194,7 +193,6 @@ export function mount(body, ctx) {
 
   let result = null;
   let ranking = false;
-  let scoredSoFar = 0;
   let loadError = null;
   let actionError = null;
   let explanations = {};
@@ -205,7 +203,6 @@ export function mount(body, ctx) {
 
   let rankTimer = null;
   let rankSeq = 0;
-  let progressTimer = null;
   let lastSignature = null;
   let drop = null;
 
@@ -525,21 +522,12 @@ export function mount(body, ctx) {
     }, REFETCH_DEBOUNCE_MS);
   }
 
-  /** The batch counter is an estimate on a timer: one POST, no progress channel. */
   function setRanking(on) {
     ranking = on;
-    clearInterval(progressTimer);
-    if (on) {
-      scoredSoFar = 0;
-      progressTimer = setInterval(() => {
-        scoredSoFar = Math.min(scoredSoFar + RANK_BATCH_SIZE, PREFILTER_LIMIT_ESTIMATE - RANK_BATCH_SIZE);
-        const counter = resultsSec.querySelector('[data-progress]');
-        if (counter) counter.textContent = progressText();
-      }, PROGRESS_TICK_MS);
-    }
     renderApplyBar();
   }
-  const progressText = () => `Scoring ${Math.min(scoredSoFar + RANK_BATCH_SIZE, PREFILTER_LIMIT_ESTIMATE)} of ${PREFILTER_LIMIT_ESTIMATE} jobs`;
+  // What it says, and why it claims no running count: job-matches-label.js.
+  const progressText = () => rankingLabel(meta, !sameFilters(applied, EMPTY_FILTERS));
 
   function refreshEverything() {
     scheduleRank(true);
@@ -570,8 +558,8 @@ export function mount(body, ctx) {
     let list;
     if (ranking) {
       list = h('div.ranking', null,
-        h('p.busy-row', null, h('span.spin', { 'aria-hidden': 'true' }), h('span', { 'data-progress': '' }, progressText())),
-        h('p.meta-note', null, 'Ranking runs in batches and usually takes 5–20 seconds. The count is an estimate; the exact numbers arrive with the result.'),
+        h('p.busy-row', null, h('span.spin', { 'aria-hidden': 'true' }), h('span', null, progressText())),
+        h('p.meta-note', null, 'Ranking runs in batches and usually takes 5–20 seconds. The exact numbers arrive with the result.'),
         skeleton(3, ['100%', '100%', '100%']).map((el) => { el.classList.add('skel-card'); return el; }));
     } else if (loadError && !result) {
       list = note('amber', h('p', null, loadError), h('button.link-btn', { type: 'button', onclick: () => scheduleRank(true) }, 'Try again'));
@@ -839,7 +827,6 @@ export function mount(body, ctx) {
     unmount() {
       alive = false;
       clearTimeout(rankTimer);
-      clearInterval(progressTimer);
       drop?.destroy();
       switcher.destroy();
     },

@@ -182,6 +182,55 @@ test.describe('stage', () => {
     ), { timeout: slow }).toBe('One per direction');
   });
 
+  // The Field mapping tab describes autofill as public/content.js runs it: a
+  // field matching nothing in the profile is left empty, and a custom field
+  // named after its label fills it from then on. No flagging, no one-click
+  // binding: neither exists.
+  test('the field mapping tab says what autofill really does', async ({ page, browserName }) => {
+    const slow = browserName === 'webkit' ? 30000 : 5000;
+    await boot(page);
+    await seek(page, chapter(await info(page), 'how').arrive + 0.1);
+    const autofillDeck = await page.textContent('#railTrack');
+    expect(autofillDeck).toContain('Leaves unknown fields to you');
+    expect(autofillDeck).not.toContain('Handles fields it has not seen');
+
+    await page.click('#tab-mapping');
+    await expect(page.locator('#tab-mapping')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#featDesc')).toHaveText(
+      'Fields are matched to your profile by their labels. One it does not know waits for you, until you name it once.',
+      { timeout: slow });
+    await expect.poll(() => page.evaluate(() =>
+      [...document.querySelectorAll('#railTrack .rcard:not([data-clone]) .rcard__t')].map(t => t.textContent)
+    ), { timeout: slow }).toEqual(['An odd field appears', 'Name it once', 'It fills from then on', 'No repeat work']);
+    const deck = await page.textContent('#railTrack');
+    expect(deck).toContain('Onextap leaves it empty rather than make something up.');
+    expect(deck).toContain('Add it to your profile as a custom field');
+    for (const gone of [/flagged/i, /never guessed/i, /unmapped/i, /one click/i, /only ever grows/i]) {
+      expect(deck).not.toMatch(gone);
+    }
+  });
+
+  // Premium is unlimited credits and nothing else (server: is_premium skips
+  // the charge; there is no support tier and no early-access programme).
+  test('pricing, the FAQ and the paperwork promise only what the product does', async ({ page }) => {
+    await page.goto('/');
+    const premium = page.locator('#price .plan', { has: page.locator('.plan__badge') }).locator('.plan__list');
+    await expect(premium).toContainText('The same AI models as Free');
+    await expect(premium).not.toContainText(/priority support|early access/i);
+
+    // The FAQ window is in the page from the start, closed; its words are read
+    // without opening it (tests/windows.spec.js drives the window itself).
+    const faq = page.locator('#faq .acc');
+    await expect(faq).toContainText('recognise is left empty for you; add it to your profile once and it fills from then on.');
+    await expect(faq).toContainText('Everything else, autofill included, is free either way.');
+    await expect(faq).not.toContainText(/flagged|never guessed|priority support|early access/i);
+
+    await expect(page.locator('#form .lede').first()).toContainText('Onextap reads the labels and fills them from one profile.');
+    await expect(page.locator('#form .lede').first()).not.toContainText('learns the mapping');
+
+    expect(await page.textContent('body')).not.toMatch(/flagged, never guessed|priority support and early access/i);
+  });
+
   test('the deck can still be dragged', async ({ page, isMobile, browserName }) => {
     test.skip(isMobile, 'mouse drag');
     test.slow(browserName === 'webkit', 'software renderer');

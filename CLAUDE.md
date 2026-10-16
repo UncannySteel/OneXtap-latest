@@ -23,7 +23,7 @@ status: `HANDOVER.md`.
 3. Always guard credit values with `Number.isFinite()` before comparing or
    rendering. Premium accounts report `Infinity`, not a number.
 4. Always keep the Dodo webhook registered *before* `express.json()` in
-   `server/index.js`. It needs the raw body for signature verification;
+   `server/app.js`. It needs the raw body for signature verification;
    moving it silently breaks payment webhooks in production only.
 5. Always mirror scraper selector fixes across both copies:
    `scrapeJobPage()` in `extension/background.js` and `scrapePageContext()`
@@ -79,8 +79,9 @@ status: `HANDOVER.md`.
   cover-letter credits, against stubs.
 - **E2E, extension loaded: `npm run test:e2e:extension`** — dashboard →
   extension profile sync, popup autofill, popup cover letters (signed out:
-  to the dashboard and back; signed in: credits), against stubs. Needs port
-  5173 free.
+  to the dashboard and back; signed in: credits), against stubs; plus a
+  `legacy` project against store 1.0.2, skipped unless
+  `E2E_LEGACY_EXTENSION_PATH` is set. Needs port 5173 free.
 - **Lint: `npm run lint`** (ESLint 9, flat `eslint.config.js`):
   correctness only, no style rules, no Prettier. `no-console` is an error
   outside the loggers, `scripts/` and the e2e probe tools (rule 11).

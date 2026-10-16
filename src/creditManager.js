@@ -102,7 +102,7 @@ export const creditManager = {
 
   // There is no refundCredit. The server's POST /api/credits/refund handed a
   // credit back to anyone who asked, with nothing to prove a charge, and was
-  // removed (see the note where it stood in server/index.js). A client cannot
+  // removed (see the note where it stood, now in server/routes/credits.js). A client cannot
   // be trusted to say it was charged: refunds belong to the route that charged.
 
   /**

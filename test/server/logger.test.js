@@ -10,7 +10,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const { log } = await import('../../server/logger.js');
@@ -56,6 +56,12 @@ test('backend call sites use errName, never a bare name, for error classes', () 
     'server/jobs/graph.js',
     'server/jobs/rankCache.js',
     'server/index.js',
+    'server/app.js',
+    // What server/index.js held until the B1 split, read as directories so a
+    // new route or helper is covered without editing this list.
+    ...['server/routes', 'server/lib', 'server/prompts'].flatMap((dir) =>
+      readdirSync(repoFile(dir)).filter((f) => f.endsWith('.js')).map((f) => `${dir}/${f}`),
+    ),
   ]) {
     const source = readFileSync(repoFile(rel), 'utf8');
     const offenders = source
