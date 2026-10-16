@@ -129,7 +129,7 @@ const TAG_RE = /<[^>]*>/g;
  * may end in `+`/`#`. That is exactly what keeps `node.js`, `ci-cd`, `c++` and
  * `c#` intact while treating `/`, whitespace and every other mark as a break.
  */
-const TOKEN_RE = /[a-z0-9]+(?:[.\-][a-z0-9]+)*[+#]*/g;
+const TOKEN_RE = /[a-z0-9]+(?:[.-][a-z0-9]+)*[+#]*/g;
 
 /** A token with no letters at all ("2024", "5+", "10-15") carries no skill signal. */
 const NUMERIC_ONLY_RE = /^[\d.+#-]+$/;
@@ -230,7 +230,7 @@ export function tokenize(text) {
     // always matches at least one character, so neither the trim nor the empty
     // check below can currently fire. They are kept so that widening TOKEN_RE
     // cannot quietly start emitting `.foo` or empty strings as tokens.
-    let token = match.replace(/^[.\-]+/, '').replace(/[.\-]+$/, '');
+    let token = match.replace(/^[.-]+/, '').replace(/[.-]+$/, '');
     const withoutSuffix = token.replace(/[+#]+$/, '');
     if (withoutSuffix.length >= 2) token = withoutSuffix;
     if (!token) continue;

@@ -19,10 +19,12 @@ const repoFile = (rel) => fileURLToPath(new URL(`../../${rel}`, import.meta.url)
 /** Capture one log line without letting it reach the real console. */
 function capture(fn) {
   const lines = [];
+  /* eslint-disable no-console -- swaps the console out to read what the logger prints */
   const originals = { warn: console.warn, error: console.error, info: console.info, log: console.log };
   for (const key of Object.keys(originals)) {
     console[key] = (...args) => lines.push(args.join(' '));
   }
+  /* eslint-enable no-console */
   try {
     fn();
   } finally {

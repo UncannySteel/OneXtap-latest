@@ -35,6 +35,10 @@ if (!window.__onextapAutofillLoaded) {
   //
   // Errors and warnings always print. Set window.__onextapDebug = true in the
   // page console for the verbose ones.
+  //
+  // This object is the one place in this file allowed to touch the console
+  // (CLAUDE.md rule 11); everything else logs through it.
+  /* eslint-disable no-console -- the inline logger itself */
   const log = {
     error: (msg, err) => console.error('[Onextap]', msg, err ? errShape(err) : ''),
     warn: (msg, err) => console.warn('[Onextap]', msg, err ? errShape(err) : ''),
@@ -42,6 +46,7 @@ if (!window.__onextapAutofillLoaded) {
       if (window.__onextapDebug) console.log('[Onextap]', msg, extra ?? '');
     },
   };
+  /* eslint-enable no-console */
 
   function errShape(err) {
     if (!err || typeof err !== 'object') return { message: String(err) };
@@ -605,36 +610,63 @@ if (!window.__onextapAutofillLoaded) {
    * descriptive text on the page, used as AI context.
    *
    * Company is resolved in priority order: og:site_name → known job-board
-   * selectors → the last segment of document.title split on | - — or " at ".
-   * Description picks whichever candidate selector yields the most text,
-   * falling back to document.body, then collapses whitespace and caps at
-   * 8000 chars.
+   * selectors, then school / university / organization ones → the last
+   * segment of document.title split on | - — or " at ". Description picks
+   * whichever candidate selector yields the most text, falling back to
+   * document.body, then collapses whitespace and caps at 8000 chars.
    *
    * NOTE: scrapeJobPage() in extension/background.js does the same job for
    * the service worker, which cannot call into this file — it must be a
-   * self-contained function it can serialise into the page. The two selector
-   * lists are intentionally not identical: this one also matches school /
-   * university / essay markup for the college and scholarship application
-   * types. Selector fixes usually need applying in both places.
+   * self-contained function it can serialise into the page. Both open with
+   * the same SELECTORS literal, and test/rules/rule5-scraper-selectors.test.js
+   * fails if the two copies differ, so a selector fix goes into both. Only
+   * this one reads the *Academic lists (school / university / essay markup
+   * for the college and scholarship application types).
    *
    * @returns {{ company: string, description: string }}
    */
   function scrapePageContext() {
-    let company = '';
-    const ogSite = document.querySelector('meta[property="og:site_name"]');
-    if (ogSite?.content?.trim()) company = ogSite.content.trim();
-    if (!company) {
-      const selectors = [
+    // Identical in scrapeJobPage() (extension/background.js): change both or
+    // neither. companyAcademic and descriptionAcademic are read only here, on
+    // purpose: the job-page scraper must not take a "school" class for the
+    // employer. Each academic list is tried after its job-board list.
+    const SELECTORS = {
+      siteName: 'meta[property="og:site_name"]',
+      company: [
         '[class*="company-name" i]',
         '[class*="companyName" i]',
         '[data-testid*="company" i]',
         '.jobs-unified-top-card__company-name',
+        '.job-details-jobs-unified-top-card__company-name',
         '[class*="employer" i]',
+      ],
+      companyAcademic: [
         '[class*="organization" i]',
         '[class*="school" i]',
         '[class*="university" i]',
-      ];
-      for (const sel of selectors) {
+      ],
+      description: [
+        '[class*="job-description" i]',
+        '[class*="jobDescription" i]',
+        '[data-testid*="description" i]',
+        '#job-details',
+        '.jobs-description',
+        '.jobs-box__html-content',
+        '[class*="description" i]',
+        'article',
+        'main',
+      ],
+      descriptionAcademic: [
+        '[class*="personal-statement" i]',
+        '[class*="essay" i]',
+      ],
+    };
+
+    let company = '';
+    const ogSite = document.querySelector(SELECTORS.siteName);
+    if (ogSite?.content?.trim()) company = ogSite.content.trim();
+    if (!company) {
+      for (const sel of [...SELECTORS.company, ...SELECTORS.companyAcademic]) {
         const el = document.querySelector(sel);
         if (el?.innerText?.trim()) {
           company = el.innerText.trim();
@@ -643,22 +675,13 @@ if (!window.__onextapAutofillLoaded) {
       }
     }
     if (!company) {
-      const parts = (document.title || '').split(/\s*[\|\-—]\s*|\s+at\s+/i);
+      const parts = (document.title || '').split(/\s*[|\-—]\s*|\s+at\s+/i);
       if (parts.length > 1) company = parts[parts.length - 1].trim();
     }
 
-    const descSelectors = [
-      '[class*="job-description" i]',
-      '[class*="description" i]',
-      '[class*="personal-statement" i]',
-      '[class*="essay" i]',
-      '#job-details',
-      'article',
-      'main',
-    ];
     let description = '';
     let bestLen = 0;
-    for (const sel of descSelectors) {
+    for (const sel of [...SELECTORS.description, ...SELECTORS.descriptionAcademic]) {
       const el = document.querySelector(sel);
       const text = (el?.innerText || '').trim();
       if (text.length > bestLen) {

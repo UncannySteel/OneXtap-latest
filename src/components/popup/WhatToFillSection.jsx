@@ -24,7 +24,6 @@ const WhatToFillSection = ({ detectedSections, sectionToggles, setSectionToggles
     return detectedSections[s.key];
   });
 
-  const enabledCount = visibleSections.filter((s) => sectionToggles[s.key]).length;
   const totalCount = visibleSections.length;
 
   const setAll = (value) => {

@@ -27,7 +27,9 @@ status: `HANDOVER.md`.
    moving it silently breaks payment webhooks in production only.
 5. Always mirror scraper selector fixes across both copies:
    `scrapeJobPage()` in `extension/background.js` and `scrapePageContext()`
-   in `public/content.js`. They cannot call each other and drift silently.
+   in `public/content.js`. They cannot call each other, so each starts with
+   the same `SELECTORS` literal (its `*Academic` keys are `content.js`'s
+   only); `test/rules/` fails when the two drift.
 
 ## Never
 
@@ -68,14 +70,20 @@ status: `HANDOVER.md`.
 - Verbose server logs: `LOG_LEVEL=debug npm run server:dev`
   (levels: error/warn/info/debug; client side uses `VITE_LOG_LEVEL`)
 - **Test: `npm test`** (`node --test`) — matching, corpus, the stores,
-  credit rules, server modules, the worker's profile sync.
+  credit rules, server modules, the worker's profile sync; rules 4, 5, 7, 9
+  and 10 (`test/rules/`); and every route, through a harness that serves the
+  real app with dummy env, no `server/.env` and no network
+  (`test/server/harness.js`). A new route means updating
+  `test/rules/routes.snapshot.json`.
 - **E2E: `npm run test:e2e`** — landing + company pages, and the dashboard's
   cover-letter credits, against stubs.
 - **E2E, extension loaded: `npm run test:e2e:extension`** — dashboard →
   extension profile sync, popup autofill, popup cover letters (signed out:
   to the dashboard and back; signed in: credits), against stubs. Needs port
   5173 free.
-- **Lint: none.** There is no ESLint or Prettier config.
+- **Lint: `npm run lint`** (ESLint 9, flat `eslint.config.js`):
+  correctness only, no style rules, no Prettier. `no-console` is an error
+  outside the loggers, `scripts/` and the e2e probe tools (rule 11).
 
 Nothing else automated drives the dashboard or the popup, nor real
 services. There, "verified" means you built it and exercised the path in the

@@ -2327,20 +2327,6 @@ app.post('/api/jobs/rank', requireAuth, async (req, res) => {
 // VaultPage.jsx: a user whose generation failed has received nothing and must
 // not be charged for it. A failure after the deduction refunds.
 
-/** Audit-row text for the charge, and for the refund that undoes it. */
-const EXPLAIN_CHARGE_DESCRIPTION = 'Job fit analysis';
-const EXPLAIN_REFUND_DESCRIPTION = 'Credit refunded (failed job fit analysis)';
-
-/**
- * How much of one job description reaches the model.
- *
- * Twenty thousand characters is a long posting in full plus its boilerplate.
- * The cap exists because this is the one route that handles third-party text
- * of unbounded length — a scraped page can be a whole careers site — and a
- * single request must not be able to price itself arbitrarily.
- */
-const EXPLAIN_DESCRIPTION_CHARS = 20000;
-
 /**
  * Corpus items and profile skills sent with the explain prompt.
  *

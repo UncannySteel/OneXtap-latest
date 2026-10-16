@@ -311,7 +311,7 @@ export function initRail(opts) {
     if (spinning()) return;          // a swap owns the rail for its one second
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     dragging = true; dragDelta = 0; lastX = e.clientX; pointerId = e.pointerId;
-    try { rail.setPointerCapture(pointerId); } catch (err) { /* capture is a nicety */ }
+    try { rail.setPointerCapture(pointerId); } catch { /* capture is a nicety */ }
     rail.classList.add('is-dragging');
     cursorEl.classList.add('is-dragging');
     if (settle) { settle.kill(); settle = null; }
@@ -333,7 +333,7 @@ export function initRail(opts) {
       dragDelta = 0;
       dirty = true;
     }
-    try { rail.releasePointerCapture(pointerId); } catch (err) { /* already gone */ }
+    try { rail.releasePointerCapture(pointerId); } catch { /* already gone */ }
     pointerId = null;
     rail.classList.remove('is-dragging');
     cursorEl.classList.remove('is-dragging');

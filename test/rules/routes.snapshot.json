@@ -1,0 +1,26 @@
+{
+  "note": "Every [method, path] server/index.js serves. Checked by test/rules/routes.test.js; regenerate with UPDATE_ROUTE_SNAPSHOT=1.",
+  "routes": [
+    ["DELETE","/api/account"],
+    ["POST","/api/answer-vault/generate"],
+    ["POST","/api/cancel-subscription"],
+    ["POST","/api/create-checkout-session"],
+    ["POST","/api/create-portal-session"],
+    ["GET","/api/credits"],
+    ["POST","/api/credits/deduct"],
+    ["POST","/api/feedback"],
+    ["GET","/api/health"],
+    ["GET","/api/jobs"],
+    ["POST","/api/jobs/explain"],
+    ["GET","/api/jobs/ingest"],
+    ["POST","/api/jobs/ingest"],
+    ["GET","/api/jobs/locations"],
+    ["GET","/api/jobs/meta"],
+    ["POST","/api/jobs/rank"],
+    ["GET","/api/me"],
+    ["POST","/api/parse-resume"],
+    ["POST","/api/resume-subscription"],
+    ["GET","/api/verify-premium"],
+    ["POST","/api/webhook"]
+  ]
+}

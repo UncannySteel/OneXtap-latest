@@ -6,6 +6,7 @@
 // extension with unresolvable addresses. The account and the API are stubbed
 // on the whole browser context, so the same stubs answer the website and the
 // extension's pages. Nothing here reaches a real project or a real model.
+/* global chrome -- the evaluate() callbacks run in the extension's popup and worker */
 import { test as base, expect, chromium } from '@playwright/test';
 import { EXTENSION_DIR } from './extension-build.js';
 import { stubAuth, stubApi, sessionFor } from './stubs.js';
@@ -19,6 +20,7 @@ const test = base.extend({
   // the other suites use. E2E_CHROMIUM_PATH points at another chrome.exe: on
   // one Windows machine the installed one failed to start ("side-by-side
   // configuration is incorrect") and a copy of its folder elsewhere ran.
+  // eslint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this destructure
   context: async ({}, use) => {
     const context = await chromium.launchPersistentContext('', {
       channel: 'chromium',

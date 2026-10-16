@@ -5,8 +5,9 @@ included, checkpoint 7), and **run against real services on a dev Supabase
 project with Dodo in test mode** (checkpoint 9): every flow in §7 item 2
 passes, except Google sign-in, not tried. Production has not been touched,
 and nothing is deployed. The site has to work with the extension already on
-the Chrome Web Store (1.0.3; no release is planned, though a minimal 1.0.4
-is an open question): it does, except profile sync from the website (§7
+the Chrome Web Store (1.0.2, not 1.0.3 as this file said until 2026-10-16;
+a 1.0.4 is being built and tested, and submitting it is the owner's later
+call, see `docs/plans/active/completion-plan.md`): it does, except profile sync from the website (§7
 item 1), which the website cannot fix alone, and resume upload on a local
 site with the store build installed (item 31). The keys on this machine are the dev
 project's now; production's are backed up outside the repo. **Committed and pushed**: the
@@ -377,7 +378,7 @@ Done, offline:
   `localStorage`. Pre-existing: at `bae4abc` the only caller was the old
   dashboard rendered inside the extension at `?mode=dashboard`, which no
   button opened. So checkpoint 3's popup credit rule works but no user can
-  reach it. And if the published v1.0.3 matches `bae4abc`, its popup cannot
+  reach it. And if the published version (1.0.2; this entry said v1.0.3) matches `bae4abc`, its popup cannot
   personalise at all, rather than for free as §6 said (corrected there and
   in `docs/app-flow.md`).
 - Playwright's full Chromium (extensions do not load in the headless shell
@@ -454,7 +455,7 @@ The owner's answers at checkpoint 8:
   the owner since said no new release is planned (below), so it waits on
   that.
 - **New instruction:** the website has to plug into the extension already on
-  the Chrome Web Store (1.0.3). No new extension release is planned (whether
+  the Chrome Web Store (1.0.2; this entry said 1.0.3). No new extension release is planned (whether
   a minimal 1.0.4 is ever published is left open, below). The popup
   cover-letter check (§9) was dropped for that reason.
 
@@ -518,12 +519,14 @@ Done:
 - **Both test subscriptions cancelled** (one by the deletion, the stray one
   through Dodo's API). The test account is deleted.
 - **Audited: does this branch plug into the store extension?** Read-only,
-  against `main` as the stand-in for 1.0.3 (its manifest version is unchanged
-  since `9b01adb`; the store build itself was not unpacked). Compatible:
+  against `main` as the stand-in for the store build, then taken to be 1.0.3
+  (`main`'s manifest version, unchanged since `9b01adb`; the store build
+  itself was not unpacked, and is in fact 1.0.2). Compatible:
   every API call the extension makes, the popup's dashboard links, resume
   upload through the worker, CORS, the extension ID. **Not compatible: item
-  1**, the profile sync, and the website cannot work around it (1.0.3's
-  worker has no message that writes the store the popup reads). Also found:
+  1**, the profile sync, and the website cannot work around it (the store
+  worker has no message that writes the store the popup reads; confirmed
+  for 1.0.2 while planning). Also found:
   item 29 (`?extensionId=` trusted) and item 31 (resume upload goes through
   the extension).
 - `dist/` rebuilt with the **dev** values: it points at `localhost` and the
@@ -559,6 +562,85 @@ touched.
   B0 corrects those lines (plan §2).
 - **Next:** batch B0. Open a new session and paste: `Run batch B0 of
   docs/plans/active/completion-plan.md.`
+
+### Checkpoint 10 (2026-10-16, session 7): B0, baseline and guardrails
+
+Batch B0 of the completion plan: a known-green start, and checks that make
+the parallel batches safe. Two builders (B0-A ESLint, B0-B rule tests),
+merged, reviewed (`code-review` at high) and audited (every acceptance
+criterion passed).
+
+- **ESLint, `npm run lint`** (`eslint.config.js`, flat, ESLint 9):
+  correctness only. Globals per runtime (page + `chrome` for `src/`, `web/`,
+  `public/`; service worker for `extension/`; node for the rest).
+  `no-console` is an error outside the four loggers, `scripts/` and the e2e
+  probe tools, which enforces rule 11. Every error fixed without changing
+  behaviour: unused imports and variables, three dead duplicate constants in
+  `server/index.js`, needless regex escapes, duplicate keys in a test, and
+  the two raw `console.warn` calls in `web/src/app/mount.js` and `stage.js`,
+  now through the logger. One warning stays:
+  `src/components/shared/CoverLetterPanel.jsx:127` (`exhaustive-deps`), a
+  mount-only effect that is deliberate.
+- **Rule tests, `test/rules/`** (83 new tests): rule 4 (the webhook is
+  before `express.json()` and raw-parsed, read from the real router stack),
+  rule 5, rule 7 (no secret-looking `VITE_*` name in code, HTML or
+  `.env.example`, untracked files included), rule 9 (`scrapeJobPage()` linted
+  standalone and run in a bare `vm`), rule 10, and a **route inventory**
+  (`routes.snapshot.json`, 21 routes, each answering non-404) through
+  **`test/server/harness.js`**. That harness imports the real app with
+  `VERCEL=1`, dummy or deleted values for every env var `server/` reads,
+  `ONEXTAP_SKIP_DOTENV=1` (new in `server/load-env.js`) plus a tripwire on
+  dotenv, and guards on `fetch` and on every socket connect, so it never
+  reads `server/.env` and never reaches a service. Each test was shown to fail
+  on a deliberate break, then reverted.
+- **Scraper drift found and resolved (rule 5).** The two scrapers differed:
+  `content.js`'s extra school / university / essay selectors were
+  deliberate, but five LinkedIn selectors had only reached `background.js`.
+  Both now open with one identical `SELECTORS` literal. The `*Academic` keys
+  are read only by `scrapePageContext()`, so the job-page scraper can't take a
+  "school" class for the employer. `scrapeJobPage()` behaves exactly as
+  before (the Auditor ran both versions on 20,000 random pages: no
+  difference). `scrapePageContext()` gains the five LinkedIn selectors, and on
+  an exact tie in description length `#job-details` now beats
+  `[class*=description]` (a test pins it).
+- **The store is 1.0.2: HANDOVER corrected** throughout (the top, §5, §6
+  item 5, §7 items 1, 12 and 31, §9, and the older log entries, which now say
+  what they had said). Checked on the store copy itself: 1.0.2 opens
+  `https://www.onextap.com?extensionId=<id>`, and its `externally_connectable`
+  includes `localhost:5173`.
+- **e2e caches** in `%USERPROFILE%\onextap-e2e` (Chromium, and the store
+  1.0.2 with `_metadata` removed). Not `%LOCALAPPDATA%`, as the plan first
+  said: Chromium fails with the side-by-side error in any folder directly
+  under it, and starts from `%USERPROFILE%` or `%TEMP%`.
+- **Dependencies:** six dev dependencies (eslint 9.39.5 and friends). The
+  lockfile adds 170 packages and moves five shared transitive ones up by a
+  patch (`hasown`, `side-channel`, `side-channel-list`, `es-object-atoms`,
+  `is-core-module`).
+
+**Verified:** baseline before any change: `npm test` 577/0/2,
+`npm run test:e2e` 188 pass / 10 skipped, `npm run test:e2e:extension` 3
+pass (the first e2e runs since checkpoints 5 and 8). After: `npm run lint` 0
+errors / 1 warning; `npm test` 660 pass, 0 fail, 2 skipped; both builds;
+`test:e2e` 188 / 10 skipped; `test:e2e:extension` 3 of 3; `npm run
+server:dev` answers `/api/health` 200 with an `X-Request-Id`. The built
+`scrapeJobPage()` in `dist/` was also run standalone in a `vm`, by hand.
+
+**Not verified:** nothing against a real service (none was needed).
+Accepted from the review, not fixed: `ONEXTAP_SKIP_DOTENV=1` skips
+`server/.env` without a log line; rule 9 is tested on the source, not the
+minified bundle (checked by hand this once); the harness blocks connections
+but not DNS lookups.
+
+**Open questions for the owner:**
+- The scraper change above: `content.js` gains the five LinkedIn selectors,
+  and the tie-break moves. Keep it? (Default: yes.)
+- Lint warnings to promote to errors: there is one, and it is deliberate.
+  Default: keep `exhaustive-deps` a warning.
+- Still from planning: is there a pending 1.0.3 draft in the Chrome Web
+  Store developer dashboard?
+
+**Next:** batch B1. Open a new session and paste: `Run batch B1 of
+docs/plans/active/completion-plan.md.`
 
 ---
 
@@ -786,8 +868,11 @@ mode, real Groq and Gemini; checkpoint 9 has the detail):
   `subscription.cancelled` at the end of a real period; "Explain my fit"'s
   one-credit charge on a free account after the checkpoint 9 fix; a real
   double checkout (§7 item 30); anything in production.
-- **The store extension (1.0.3) itself**: never unpacked or run. What this
-  document says about it comes from reading `main` (§7 item 1).
+- **The store extension (1.0.2) itself**: never run. Its installed files were
+  read while planning (`docs/plans/active/completion-plan.md` §2: the four
+  messages its worker answers, its manifest, its links); before that, this
+  document's claims came from reading `main` (§7 item 1). Checkpoint 10 keeps
+  an unpacked copy for the legacy e2e tests B1 adds.
 - **The popup's cover-letter credits for a real user**: no user can reach
   them (§7 item 27), and the check was dropped at checkpoint 9.
 - Safari and Firefox.
@@ -803,8 +888,13 @@ mode, real Groq and Gemini; checkpoint 9 has the detail):
   `server/data/cached_jobs.json` in place (untracked; without it, 3 fail).
 - **Checkpoint 9: 577 pass, 0 fail, 2 skipped** (the 5 new ones are
   `test/server/subscriptionGuard.test.js`). The e2e suites were not re-run.
+- **Checkpoint 10: 660 pass, 0 fail, 2 skipped.** The 83 new ones are
+  `test/rules/`: CLAUDE.md rules 4, 5, 7, 9 and 10, and every route answering
+  through `test/server/harness.js`, which imports the real app with dummy env,
+  no `server/.env` and no network. **Lint** (`npm run lint`, new): 0 errors,
+  1 warning.
 
-**E2E (`npm run test:e2e`)**, at checkpoint 5: 188 pass, 10 skipped
+**E2E (`npm run test:e2e`)**, at checkpoint 5, and again at checkpoint 10: 188 pass, 10 skipped
 (keyboard and wheel tests on the phone profile), 0 fail, across desktop
 Chromium, phone Chromium and WebKit. It covers the landing page, its company
 pages, the 404 page, the account flows (sign-up's name, forgot password, the
@@ -815,7 +905,7 @@ that a card is *visible* before trusting its words, since words already in
 the markup pass `toHaveText` while the card is hidden.
 
 **E2E with the extension (`npm run test:e2e:extension`)**, from checkpoint 7:
-3 tests since checkpoint 8, 15 of 15 over five repeats, in Chromium with the
+3 tests since checkpoint 8, 15 of 15 over five repeats (3 of 3 again at checkpoint 10), in Chromium with the
 extension loaded unpacked. It builds its own copy of the extension with unresolvable
 addresses, runs the website on 5173 (it stops if something is already
 there), and uses the same stubs. A sign-in to the popup is put in place by
@@ -835,7 +925,7 @@ hand, since the popup has none (§7 item 27).
    - the live webhook endpoint is `https://www.onextap.com/api/webhook`, and `DODO_PAYMENTS_WEBHOOK_KEY` in Vercel is the live endpoint's secret, copied with Dodo's button (§9 lists the two ways this broke on dev).
 4. **Vercel**: same env var names; `VITE_DASHBOARD_URL` and `CLIENT_URL` stay the site origin.
 5. **Chrome Web Store**:
-   - **the owner said at checkpoint 9 that the site must work with the published 1.0.3, and no release is planned.** Whether a minimal 1.0.4 (the sync fix only) ships is open (§7 item 1). What follows describes what a release would carry. A new release would be needed for checkpoint 2's profile-sync fix and checkpoint 8's dashboard link in the popup's Cover Letter tab (§7 item 27). Until it ships, the published popup (v1.0.3) still misses dashboard edits made after it first opened. Decide §7 item 28 (popup-made templates lost at the next dashboard save) before building it;
+   - **the published version is 1.0.2** (not 1.0.3: `docs/plans/active/completion-plan.md` §2), and the site must keep working with it. The owner decided at planning (session 6) that 1.0.4 is built and fully tested, and that submitting it is their later call; the plan stops at a release zip. What follows describes what that release carries: checkpoint 2's profile-sync fix and checkpoint 8's dashboard link in the popup's Cover Letter tab (§7 item 27). Until it ships, the published popup (1.0.2) still misses dashboard edits made after it first opened. §7 item 28 (popup-made templates lost at the next dashboard save) is decided: option a, popup templates become read-only;
    - it also links straight to `/dashboard/` (the landing forwards the old link meanwhile);
    - point the listing's privacy URL at `/privacy/` (the old URL redirects).
 6. **Check `docs/app-flow.md` against the real run** (§7, item 4; the run happened at checkpoint 9), and fix it where they disagree.
@@ -858,7 +948,7 @@ before this work.
   - `onextap_profiles` is created the first time the popup opens, and `user_profile` is ignored from then on.
 - **Result:** autofill keeps using the popup's own copy, and the dashboard's "Saved and synced" does not reach it.
 - **Fixed in code at checkpoint 2** (§0), with the owner's go-ahead: the handler files the payload into `onextap_profiles` and makes it active (`extension/profileSync.js`, unit-tested against `src/profileStore.js`). **Checked at checkpoint 7 with the extension loaded**, against stubs (`npm run test:e2e:extension`): the dashboard's second edit is what the popup's autofill fills, and with the old worker it is not. **Checked at checkpoint 9 with a real sign-in**, the local build loaded: passes.
-- **But the owner said at checkpoint 9 that the site has to plug into the store extension, 1.0.3, with no release planned.** That build has the old worker, so for its users this item stays open, and the website cannot work around it: 1.0.3's worker accepts `ONEXTAP_SYNC_DATA`, `PARSE_RESUME`, `SCRAPE_ACTIVE_TAB` and `GENERATE_IMPROVED_ANSWER`, and none of them writes `onextap_profiles`. In practice: install, click the icon (the store is created, empty), set up the profile on the website, and the popup still says "Welcome to Onextap". The website meanwhile says "Saved and synced to the extension", because the old worker answers `success: true` regardless. Production, if it runs `main`'s website, has the same today. **Options:** a minimal 1.0.4 with only this fix (`extension/background.js` + `extension/profileSync.js`, a version bump); and in any case, the website's copy should stop claiming the sync (§0 checkpoint 9, option a).
+- **But the owner said at checkpoint 9 that the site has to plug into the store extension**, then thought to be 1.0.3 and in fact 1.0.2, with no release planned (since session 6: 1.0.4 is built and tested, submission is the owner's later call). That build has the old worker, so for its users this item stays open, and the website cannot work around it: 1.0.2's worker accepts `ONEXTAP_SYNC_DATA`, `PARSE_RESUME`, `SCRAPE_ACTIVE_TAB` and `GENERATE_IMPROVED_ANSWER`, and none of them writes `onextap_profiles`. In practice: install, click the icon (the store is created, empty), set up the profile on the website, and the popup still says "Welcome to Onextap". The website meanwhile says "Saved and synced to the extension", because the old worker answers `success: true` regardless. Production, if it runs `main`'s website, has the same today. **Options:** a minimal 1.0.4 with only this fix (`extension/background.js` + `extension/profileSync.js`, a version bump); and in any case, the website's copy should stop claiming the sync (§0 checkpoint 9, option a).
 
 **2. ~~Never run against real services.~~ Run at checkpoint 9**, against a dev Supabase project and Dodo in test mode: every line below passes (§0 has the detail), except Google sign-in, not tried, and the extension one, which passes with this branch's build only (item 1). Production itself has not been touched. The list, for the next real-service run:
 - email sign-up with confirmation;
@@ -921,7 +1011,7 @@ before this work.
 - **`server/data/cached_jobs.json` is not in git.** `.gitignore` has `server/data/`, and git history has no such file, though `server/jobs/adapters/cache.js` and 3 tests expect ~40 synthetic listings there. At checkpoint 3 the owner put the file in place on this machine and chose to keep it untracked, so the 3 tests pass here and fail on a clone without it: copy it by hand (§9). To track it instead, `.gitignore`'s `server/data/` has to become `server/data/*` + `!server/data/cached_jobs.json` (a negation cannot re-include a file inside an ignored directory). Mind the hazard in `cache.js`'s header: with the file present, a local ingest against a real project seeds fake listings unless `ALLOW_CACHE_SOURCE=false` (which `server/.env.example` already sets).
 - ~~**Windows line endings** break `test/server/logger.test.js`~~ — fixed at checkpoint 1 (splits on `/\r?\n/`).
 
-**12. The published extension (v1.0.3) still opens `onextap.com/?extensionId=…`.** The landing forwards it to the dashboard (tested). A new release links straight to `/dashboard/`. Publishing is the owner's call.
+**12. The published extension (1.0.2) still opens `onextap.com/?extensionId=…`.** (Checked in its installed files at checkpoint 10: it opens `https://www.onextap.com?extensionId=<id>`.) The landing forwards it to the dashboard (tested). A new release links straight to `/dashboard/`. Publishing is the owner's call.
 
 **13. `dist/` was built here without a `.env`** at checkpoints 1 to 3; since checkpoint 6 with a `.env`, the production one until checkpoint 8 and the dev one since checkpoint 9. The rule below stands: build after the `.env` you mean. That build has no Supabase address, so its Supabase client cannot start (the dev dashboard without a `.env` stops on `supabaseUrl is required`; the popup uses the same `src/supabaseClient.js`). Run `npm run build` again once `.env` is in place, before loading the unpacked extension.
 
@@ -956,7 +1046,7 @@ before this work.
 
 **24. ~~The website never installs the client logger's global handlers.~~ Fixed at checkpoint 3:** every website entry calls `installGlobalErrorHandlers()`, so uncaught errors go through the logger and `__onextapIssues()` works in the console there too.
 
-**31. Resume upload goes through the extension when it is installed.** `src/resumeParse.js` sends `PARSE_RESUME` to the service worker, which posts to the API address built into the extension. With the store build on a local site, that is production's API with a dev token: a 401. In production it works, but it ties the website to the old worker (1.0.3 builds before `45e9b13` drop the resume text, and the page falls back to a rougher parse). `parseResumeViaApi()` already does the same without the extension. Found at checkpoint 9. **Proposed:** always call the API directly. Waiting on the owner (option c).
+**31. Resume upload goes through the extension when it is installed.** `src/resumeParse.js` sends `PARSE_RESUME` to the service worker, which posts to the API address built into the extension. With the store build on a local site, that is production's API with a dev token: a 401. In production it works, but it ties the website to the old worker (the store's 1.0.2 replies with `data` but no `text`, so it drops the resume text, and the page falls back to a rougher parse). `parseResumeViaApi()` already does the same without the extension. Found at checkpoint 9. **Proposed:** always call the API directly. Decided at planning (session 6): option c, in batch B1.
 
 **32. Seen during the real-service run, not fixed.** From one run each, so impressions, not measurements:
 - Answer Studio's "Improve" left a draft with more claims the resume does not back (1 → 4). The claim check flagged all four; the improvement prompt invents figures.
@@ -1009,7 +1099,9 @@ needs them before anything can be tested against real services.
   Chromium that `npm run test:e2e:extension` needs (extensions do not load in
   the headless shell). If it fails to start with "side-by-side configuration
   is incorrect", as on the first machine, copy its `chrome-win64` folder
-  somewhere else and set `E2E_CHROMIUM_PATH` to the copy's `chrome.exe`.
+  to `%USERPROFILE%\onextap-e2e\chrome-win` and set `E2E_CHROMIUM_PATH` to
+  the copy's `chrome.exe`. Not to a folder directly under `%LOCALAPPDATA%`:
+  on the first machine a copy there fails the same way.
 
 ### Files that are not in git
 
@@ -1070,7 +1162,8 @@ Never commit either `.env` (both are gitignored; CLAUDE.md rule 10).
 ```bash
 npm install && npm run server:install
 # put .env, server/.env and server/data/cached_jobs.json in place
-npm test              # expect 577 pass, 0 fail
+npm run lint          # expect 0 errors (1 warning)
+npm test              # expect 660 pass, 0 fail
 npm run test:e2e      # expect every test to pass
 npm run test:e2e:extension   # 3 tests; needs port 5173 free
 npm run build         # after .env: then Load unpacked → dist/ at chrome://extensions
@@ -1120,10 +1213,10 @@ and Groq like real ones would (CLAUDE.md rule 8).
   and one cancelled. Refund the second payment in Dodo's test dashboard.
   Back in tab 1, Manage subscription should say "Payment received" until
   Pro arrives, not "Upgrade".
-- **With the store extension (1.0.3)**, if you want to see §7 item 1 for
+- **With the store extension (1.0.2)**, if you want to see §7 item 1 for
   yourself. **Not yet run.** Install it from the store, open its popup once,
-  save a profile on `localhost:5173/dashboard/` (`main`'s manifest allows
-  that origin; the store build itself was not checked), and reopen the
+  save a profile on `localhost:5173/dashboard/` (the store build's
+  `externally_connectable` allows that origin, checked at checkpoint 10), and reopen the
   popup. Expected, from the code: still "Welcome to Onextap".
 
 ### Deploying (Vercel)

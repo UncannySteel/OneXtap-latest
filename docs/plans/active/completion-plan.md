@@ -16,7 +16,7 @@ Run batch B<N> of docs/plans/active/completion-plan.md.
 
 | Batch | What | Owner needed | Size | Status | Commit |
 | --- | --- | --- | --- | --- | --- |
-| B0 | Baseline and guardrails | no | M | not started | |
+| B0 | Baseline and guardrails | no | M | done 2026-10-16 (checkpoint 10) | see `git log --grep "checkpoint 10"` |
 | B1 | Server split ∥ website fixes ∥ extension protocol | no | L | not started | |
 | B2 | Server: charging, billing, AI quality | no | L | not started | |
 | B3 | Extension 1.0.4: job-page button, popup, wipe, release tooling | no | L | not started | |
@@ -29,7 +29,29 @@ Order: `B0 → B1 → B2 and B3 (either order, or both at once, see B3's note) �
 Notes from batches (deviations, new work found, anything a later batch must
 know) go here, newest last:
 
-- (none yet)
+- **B0: builder worktrees start from `main`, not the lead's `HEAD`.** The
+  Agent tool cut both B0 worktrees from `bae4abc`; one builder noticed, the
+  other wrote half its work against old code before the lead caught it. §0.4
+  now has the builder check its base first. Lead: give the exact SHA, and
+  check `git log --oneline -1` on each builder branch before merging.
+- **B0: the e2e caches are in `%USERPROFILE%\onextap-e2e`**, not
+  `%LOCALAPPDATA%` (§0.6). `E2E_CHROMIUM_PATH` and
+  `E2E_LEGACY_EXTENSION_PATH` point there.
+- **B0: baseline for B1.** `npm run lint` 0 errors, 1 warning
+  (`CoverLetterPanel.jsx:127`, deliberate); `npm test` 660/0/2; `test:e2e`
+  188 pass / 10 skipped; `test:e2e:extension` 3 pass.
+- **B0, for B1's server split:** `test/rules/routes.test.js` reads the
+  router stack, nested routers included (it reconstructs mount paths), and
+  `routes.snapshot.json` has the 21 routes. A split must keep it green with no
+  snapshot change. `test/server/harness.js` is how to import the app in a
+  test; its env list must cover every var `server/` reads, which
+  `test/rules/harness.test.js` enforces (aliases like `env = process.env`
+  included).
+- **B0, for B3:** both scrapers open with one `SELECTORS` literal;
+  `*Academic` keys are `content.js`-only. A selector change goes into both,
+  or `test/rules/rule5-*` fails. `scrapeJobPage()` sits inside an
+  `eslint-disable no-undef` pair (it runs in the page); rule 9's test lints it
+  standalone instead.
 
 ---
 
@@ -118,6 +140,11 @@ extension protocol) if your WP touches the extension or its messaging; your
 WP in §4. Read code as you need it. For long documents, use a Haiku Explore
 agent.
 
+First check your base: `git log --oneline -1` must show <lead HEAD SHA>.
+If it doesn't (worktrees have been cut from `main`), run
+`git merge --ff-only <lead HEAD SHA>` before anything else, and say so in
+your report.
+
 Set up the worktree (PowerShell):
   $main = 'C:\Users\anira\Desktop\ONEXTAP-full'
   New-Item -ItemType Junction -Path node_modules -Target "$main\node_modules" | Out-Null
@@ -169,17 +196,19 @@ Record every count; they go into HANDOVER.
 ### 0.6 e2e on this machine
 
 - Playwright's own Chromium won't start from its install folder here
-  (Windows "side-by-side configuration" error). B0 copies
-  `%LOCALAPPDATA%\ms-playwright\chromium-*\chrome-win` once to
-  `%LOCALAPPDATA%\onextap-e2e\chrome-win`. Every session:
-  `$env:E2E_CHROMIUM_PATH = "$env:LOCALAPPDATA\onextap-e2e\chrome-win\chrome.exe"`.
+  (Windows "side-by-side configuration" error). Nor does a copy in any
+  folder directly under `%LOCALAPPDATA%`; one under `%USERPROFILE%` or
+  `%TEMP%` does (found in B0). B0 copied
+  `%LOCALAPPDATA%\ms-playwright\chromium-*\chrome-win64` once to
+  `%USERPROFILE%\onextap-e2e\chrome-win`. Every session:
+  `$env:E2E_CHROMIUM_PATH = "$env:USERPROFILE\onextap-e2e\chrome-win\chrome.exe"`.
   Re-copy if Playwright's version changes.
-- The real store extension for the legacy tests: B0 copies
+- The real store extension for the legacy tests: B0 copied
   `%LOCALAPPDATA%\Google\Chrome\User Data\Profile 1\Extensions\fpleipjggoiolomkcnchnlelbjcnoklj\1.0.2_0`
-  to `%LOCALAPPDATA%\onextap-e2e\store-1.0.2`, then deletes the copy's
+  to `%USERPROFILE%\onextap-e2e\store-1.0.2`, then deleted the copy's
   `_metadata` folder (Chrome refuses to load an unpacked folder that has
   one). Every session from B1:
-  `$env:E2E_LEGACY_EXTENSION_PATH = "$env:LOCALAPPDATA\onextap-e2e\store-1.0.2"`.
+  `$env:E2E_LEGACY_EXTENSION_PATH = "$env:USERPROFILE\onextap-e2e\store-1.0.2"`.
 - Port 5173 must be free: stop `npm run dev` first.
 
 ### 0.7 Close-out
@@ -244,7 +273,8 @@ Defaults taken without asking. Veto any of them at review:
 - Each batch is one checkpoint commit on `merge/web-dashboard`, pushed to
   `latest`.
 - The e2e caches (the Chromium copy, the store 1.0.2 copy) live in
-  `%LOCALAPPDATA%\onextap-e2e`, outside the repo.
+  `%USERPROFILE%\onextap-e2e`, outside the repo (moved from
+  `%LOCALAPPDATA%` in B0: Chromium won't start there, §0.6).
 
 ---
 
@@ -886,6 +916,6 @@ By owner decision, 2026-10-16. They stay in HANDOVER §7.
 | Migrations lag the code | Generation fails closed with a named error; B4 applies them first; the deploy checklist orders them |
 | Junctioned worktrees confuse a tool | Fall back to `npm ci` in the worktree; dependencies are lead-only |
 | e2e collisions on port 5173 | e2e is lead-only and serialised |
-| Chromium won't start (the SxS error) | The stable copy in `%LOCALAPPDATA%\onextap-e2e` |
+| Chromium won't start (the SxS error) | The stable copy in `%USERPROFILE%\onextap-e2e` |
 | Store review | No new permissions, localhost removed, privacy URL updated |
 | Version confusion (1.0.2 live, 1.0.3 in the repo) | Release as 1.0.4; HANDOVER corrected in B0 |

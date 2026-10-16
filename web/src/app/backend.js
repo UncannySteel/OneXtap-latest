@@ -22,7 +22,7 @@ function sessionKey() {
   try {
     var host = new URL(import.meta.env.VITE_SUPABASE_URL).hostname;
     return 'sb-' + host.split('.')[0] + '-auth-token';
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -34,7 +34,7 @@ export function hasSession() {
     var stored = JSON.parse(localStorage.getItem(key) || 'null');
     var session = stored && (stored.currentSession || stored);
     return !!(session && session.refresh_token);
-  } catch (err) {
+  } catch {
     return false;
   }
 }

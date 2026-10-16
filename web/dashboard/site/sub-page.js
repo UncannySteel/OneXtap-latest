@@ -84,7 +84,7 @@ function initBack() {
     a.addEventListener('click', function (e) {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;   // a new tab or window
       var from = null;
-      try { from = document.referrer && new URL(document.referrer); } catch (err) { from = null; }
+      try { from = document.referrer && new URL(document.referrer); } catch { from = null; }
       if (!from || from.origin !== location.origin || history.length < 2) return;
       e.preventDefault();
       history.back();

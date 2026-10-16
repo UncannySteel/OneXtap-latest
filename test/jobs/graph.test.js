@@ -178,7 +178,6 @@ test('options.maxLoops can lower the bound but never raise it', async () => {
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: poolOf(makeJobs(20)).fetchJobs, callModel: scorer(5) },
-    options: { broaden: true },
     options: { broaden: true, maxLoops: 1 },
   });
   assert.equal(low.loops, 1);
@@ -187,7 +186,6 @@ test('options.maxLoops can lower the bound but never raise it', async () => {
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: poolOf(makeJobs(20)).fetchJobs, callModel: scorer(5) },
-    options: { broaden: true },
     options: { broaden: true, maxLoops: 99 },
   });
   assert.equal(high.loops, MAX_LOOPS, 'the hard cap wins over the option');
@@ -196,7 +194,6 @@ test('options.maxLoops can lower the bound but never raise it', async () => {
     resumeProfile: PROFILE,
     filters: { location: 'Berlin', remote: 'true' },
     deps: { fetchJobs: poolOf(makeJobs(20)).fetchJobs, callModel: scorer(5) },
-    options: { broaden: true },
     options: { broaden: true, maxLoops: 0 },
   });
   assert.equal(none.loops, 0);

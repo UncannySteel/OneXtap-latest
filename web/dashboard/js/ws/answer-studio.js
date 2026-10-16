@@ -72,7 +72,6 @@ export function mount(body, ctx) {
     h('div.editor-actions', null, saveBtn, aiBtn, cancelEdit, meta),
     messages);
 
-  const savedList = h('div.saved');
   const savedSec = h('div');
 
   const switcher = profileSwitcher({ onChange: () => load() });

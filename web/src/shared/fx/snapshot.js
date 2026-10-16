@@ -24,7 +24,7 @@ function pageCSS() {
   var out = [];
   for (var i = 0; i < document.styleSheets.length; i++) {
     var rules;
-    try { rules = document.styleSheets[i].cssRules; } catch (e) { continue; }
+    try { rules = document.styleSheets[i].cssRules; } catch { continue; }
     if (!rules) continue;
     for (var j = 0; j < rules.length; j++) out.push(rules[j].cssText);
   }

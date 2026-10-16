@@ -138,6 +138,7 @@ test('RankCalibration — scores mean the same thing across models', { concurren
         value: thresholdAgreement(actual, expected, thr),
       }));
 
+      /* eslint-disable no-console -- this table is the eval's report */
       console.log(`\n  ── ${model} ──`);
       for (const r of rows) {
         console.log(
@@ -149,6 +150,7 @@ test('RankCalibration — scores mean the same thing across models', { concurren
       console.log(`    mean abs error    ${mae.toFixed(1)} points`);
       console.log(`    landed in band    ${pct(inBandRate)}`);
       for (const a of agreement) console.log(`    agreement @${a.thr}      ${pct(a.value)}`);
+      /* eslint-enable no-console */
 
       assert.ok(
         rho >= MIN_RANK_CORRELATION,

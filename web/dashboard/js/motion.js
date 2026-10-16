@@ -47,6 +47,7 @@ export function riseWords(el, { delay = 0, restore = false } = {}) {
   el.classList.add('rises');
   if (!restore) return;
   setTimeout(() => {
+    // eslint-disable-next-line no-self-assign -- not a no-op: it flattens the word spans back to one text node
     if (el.querySelector('.w')) el.textContent = el.textContent;
     el.classList.remove('rises');
   }, delay + Math.max(0, count - 1) * STAGGER_MS + WORD_MS + 50);

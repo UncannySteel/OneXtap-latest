@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowRight, Briefcase, Clipboard, ExternalLink, FileText, Layout, MessageSquare, PenTool, Sparkles } from 'lucide-react';
-import { getApplicationType, setApplicationType } from '../../applicationTypeStorage';
-import { APPLICATION_TYPES, getApplicationTypeConfig } from '../../applicationTypes';
+import { getApplicationType } from '../../applicationTypeStorage';
+import { getApplicationTypeConfig } from '../../applicationTypes';
 import { getUser, onAuthStateChange } from '../../auth';
 import { AUTOFILL_SECTION_META, DEFAULT_SECTION_TOGGLES } from '../../autofillSections';
 import { getIconUrl } from '../../extensionClient';
@@ -227,6 +227,8 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches
               read in the mount effect, and `popupAppConfig`, which is what
               relabels this popup's tabs and buttons per type. Hidden, the popup
               is always on Job, whatever an older build may have stored.
+              Showing it again also means importing `setApplicationType` and
+              `APPLICATION_TYPES` again, removed while unused.
 
             <select
               value={applicationType}

@@ -38,33 +38,65 @@ chrome.runtime.onInstalled.addListener(() => {
 //
 // public/content.js has a near-identical scrapePageContext() for the same job.
 // Neither can call the other: this one must stay inline-serialisable, that one
-// runs from an injected file. That one also matches school / university /
-// essay markup for the college and scholarship application types, which this
-// one does not. A selector fix here usually belongs there too.
+// runs from an injected file. Both open with the same SELECTORS literal, and
+// test/rules/rule5-scraper-selectors.test.js fails if the two copies differ,
+// so a selector fix goes into both. That one also reads the *Academic lists
+// (school / university / essay markup for the college and scholarship
+// application types); this one must not.
 //
 // Returns { company, description } — description whitespace-collapsed, capped
 // at 8000 chars.
+/* eslint-disable no-undef -- runs in the page, not the worker; test/rules lints it standalone with browser globals */
 function scrapeJobPage() {
-  // Derive company name
-  let company = '';
-
-  // 1) og:site_name meta tag
-  const ogSite = document.querySelector('meta[property="og:site_name"]');
-  if (ogSite && ogSite.content && ogSite.content.trim()) {
-    company = ogSite.content.trim();
-  }
-
-  // 2) Known job-board company selectors
-  if (!company) {
-    const selectors = [
+  // Identical in scrapePageContext() (public/content.js): change both or
+  // neither. companyAcademic and descriptionAcademic are read only there, on
+  // purpose: this scrapes job pages, where a "school" class could be taken for
+  // the employer. Declared inside the body because this function is
+  // serialized into the page (CLAUDE.md rule 9).
+  const SELECTORS = {
+    siteName: 'meta[property="og:site_name"]',
+    company: [
       '[class*="company-name" i]',
       '[class*="companyName" i]',
       '[data-testid*="company" i]',
       '.jobs-unified-top-card__company-name',
       '.job-details-jobs-unified-top-card__company-name',
       '[class*="employer" i]',
-    ];
-    for (const sel of selectors) {
+    ],
+    companyAcademic: [
+      '[class*="organization" i]',
+      '[class*="school" i]',
+      '[class*="university" i]',
+    ],
+    description: [
+      '[class*="job-description" i]',
+      '[class*="jobDescription" i]',
+      '[data-testid*="description" i]',
+      '#job-details',
+      '.jobs-description',
+      '.jobs-box__html-content',
+      '[class*="description" i]',
+      'article',
+      'main',
+    ],
+    descriptionAcademic: [
+      '[class*="personal-statement" i]',
+      '[class*="essay" i]',
+    ],
+  };
+
+  // Derive company name
+  let company = '';
+
+  // 1) og:site_name meta tag
+  const ogSite = document.querySelector(SELECTORS.siteName);
+  if (ogSite && ogSite.content && ogSite.content.trim()) {
+    company = ogSite.content.trim();
+  }
+
+  // 2) Known job-board company selectors
+  if (!company) {
+    for (const sel of SELECTORS.company) {
       const el = document.querySelector(sel);
       if (el && el.innerText && el.innerText.trim()) {
         company = el.innerText.trim();
@@ -77,7 +109,7 @@ function scrapeJobPage() {
   if (!company) {
     const title = document.title || '';
     // Split on | - — or " at "
-    const parts = title.split(/\s*[\|\-—]\s*|\s+at\s+/i);
+    const parts = title.split(/\s*[|\-—]\s*|\s+at\s+/i);
     // Usually the last meaningful segment is the company
     if (parts.length > 1) {
       company = parts[parts.length - 1].trim();
@@ -86,21 +118,10 @@ function scrapeJobPage() {
 
   // Derive job description
   let description = '';
-  const descSelectors = [
-    '[class*="job-description" i]',
-    '[class*="jobDescription" i]',
-    '[data-testid*="description" i]',
-    '#job-details',
-    '.jobs-description',
-    '.jobs-box__html-content',
-    '[class*="description" i]',
-    'article',
-    'main',
-  ];
 
   let best = null;
   let bestLen = 0;
-  for (const sel of descSelectors) {
+  for (const sel of SELECTORS.description) {
     const el = document.querySelector(sel);
     if (el) {
       const text = (el.innerText || '').trim();
@@ -118,6 +139,7 @@ function scrapeJobPage() {
 
   return { company, description };
 }
+/* eslint-enable no-undef */
 
 // ─── Main message handler ─────────────────────────────────────────────────────
 async function handleMessage(msg, sendResponse) {

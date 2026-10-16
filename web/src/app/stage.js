@@ -2,6 +2,9 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { createFx } from '../shared/fx/fx.js';
 import { capture, render } from '../shared/fx/snapshot.js';
+import { log as baseLog } from '@app/logger.js';
+
+var log = baseLog.child('stage');
 
 /* ===========================================================================
    The stage: the page played as one timeline.
@@ -33,7 +36,7 @@ export function createStage(opts) {
 
   stageEl.classList.add('stage--live');
   var fx = null;
-  try { fx = createFx(stageEl); } catch (e) { fx = null; }
+  try { fx = createFx(stageEl); } catch { fx = null; }
 
   chapters.forEach(function (ch) {
     ch.inner = ch.el.querySelector(':scope > .ch__body');
@@ -82,7 +85,7 @@ export function createStage(opts) {
         tl.time(job.at);
         shot = capture(job.el, stageEl);
         tl.time(now);
-      } catch (e) {
+      } catch {
         busy = false; pump(); return;
       }
       render(shot, {
@@ -93,7 +96,7 @@ export function createStage(opts) {
       }, function (err) {
         // The section keeps its CSS stand-in; say why, once, for whoever
         // is debugging, and carry on with the rest of the queue.
-        console.warn('[stage] snapshot failed, using the CSS fallback:', err && err.message);
+        log.warn('snapshot failed, using the CSS fallback', err);
       }).then(function () { busy = false; pump(); });
     });
   }

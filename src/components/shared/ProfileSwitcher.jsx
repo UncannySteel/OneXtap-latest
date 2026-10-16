@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, Save, Trash2, ChevronDown, Settings } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, Settings } from 'lucide-react';
 import { loadProfileStore, setActiveProfileId, createProfile, renameProfile, deleteProfile, listProfiles, MAX_PROFILE_NAME_LENGTH } from '../../profileStore';
 
 // --- PROFILE SWITCHER ---
