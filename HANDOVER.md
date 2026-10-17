@@ -1074,6 +1074,19 @@ e2e's fixture job page.
    label. Keep it, or move it: to the right end of the field's label line, or
    inside the field's bottom-right corner?
 
+**Owner's answer at the checkpoint:**
+1. The button: **moved inside the field's bottom-right corner**, so it never
+   covers the next field's label. It sits 8 px from the field's bottom and
+   20 px from a resizable textarea's right edge (clear of its grip), on the
+   part of a tall field that is on screen, and centred on the right end of a
+   field too short to hold it. The cost: it covers the last words of a long
+   letter typed into that corner; × hides it. Checked after the move: lint
+   0 errors / 0 warnings, `npm test` 994/0/2, the extension build,
+   `test:e2e:extension` 12 of 12 (the handoff test now checks the corner),
+   and a new screenshot on the fixture page. The website e2e was not re-run:
+   it does not load `content.js`. A field too short for the button (a
+   single-line input) is not in the e2e.
+
 **Next:** batch B4, the owner session on the dev project (about 90 minutes).
 Open a new session and paste: `Run batch B4 of
 docs/plans/active/completion-plan.md.` It applies migration 007 to the dev

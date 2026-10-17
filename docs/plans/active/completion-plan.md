@@ -159,6 +159,10 @@ know) go here, newest last:
   build carries (supabase-js's `http://localhost:9999`, quoted bare
   `localhost`/`127.0.0.1` comparisons). The deploy checklist (B5) records
   the zip's SHA-256 from B6's run.
+- **B3, owner's answer at checkpoint 13:** the job-page button moves inside
+  the cover-letter field's bottom-right corner (under the field it covered
+  the next field's label). Done in the answers commit; B4 checks where it
+  lands on real boards.
 
 ---
 

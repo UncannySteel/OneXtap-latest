@@ -14,7 +14,7 @@
  *                                                    workExperience, openEnded, coverLetter } }
  *   { action: "FILL_COVER_LETTER", text }      → { success } — false when no field matched
  *   { action: "MOUNT_COVER_BUTTON" }           → { success, mounted } — the "Customize cover
- *                                                    letter" button under the cover-letter field;
+ *                                                    letter" button in the cover-letter field's corner;
  *                                                    `type` is read as well as `action`
  *
  * AUTOFILL_TRIGGERED mounts that button too. Its click sends the worker
@@ -729,7 +729,7 @@ if (!window.__onextapAutofillLoaded) {
   /**
    * The page's cover letter / personal statement / essay field, found one way
    * for both of its users: FILL_COVER_LETTER fills it, and the "Customize
-   * cover letter" button sits under it.
+   * cover letter" button sits in its bottom-right corner.
    *
    * Two passes: first any visible textarea or text input whose signature
    * matches a cover-letter keyword, then — if none matched, and `guess` is
@@ -798,7 +798,8 @@ if (!window.__onextapAutofillLoaded) {
 
   // ── The "Customize cover letter" button ───────────────────────────────────
   /**
-   * One button under the page's cover-letter field, mounted when the popup
+   * One button over the page's cover-letter field (its bottom-right corner;
+   * the host itself is in <body>), mounted when the popup
    * opens on the page (MOUNT_COVER_BUTTON) and after an autofill. A click
    * reads the job off the page (scrapePageContext(), plus the role) and hands
    * it to the worker (OPEN_COVER_CUSTOMIZER), which opens the dashboard's
@@ -833,8 +834,9 @@ if (!window.__onextapAutofillLoaded) {
     const HOST_TAG = 'onextap-cover-button';
     const HOST_ATTR = 'data-onextap-cover-button';
     const LABEL = 'Customize cover letter';
-    const GAP = 6;   // px between the field and the button
-    const EDGE = 8;  // px kept clear of the viewport's sides
+    const INSET = 8;  // px between the button and the field's bottom and right edges
+    const GRIP = 20;  // px from a resizable textarea's right edge: clear of its grip
+    const EDGE = 8;   // px kept clear of the viewport's sides
 
     // The host is in the page's own DOM, where the page's stylesheets reach
     // it: reset, inline and !important. Fixed: out of the page's flow.
@@ -852,8 +854,10 @@ if (!window.__onextapAutofillLoaded) {
     ];
 
     // The dashboard's ink and citrine (web/dashboard/css/tokens.css).
+    // Right-aligned: the host is anchored by its bottom-right corner, and a
+    // failure line wider than the bar must not push the bar off the corner.
     const CSS = `
-      :host { all: initial; }
+      :host { all: initial; text-align: right; }
       .bar {
         display: inline-flex; align-items: stretch; overflow: hidden;
         font: 600 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -870,7 +874,7 @@ if (!window.__onextapAutofillLoaded) {
       button:focus-visible { outline: 2px solid #0C1710; outline-offset: -3px; }
       button:disabled { cursor: progress; opacity: .75; }
       .status {
-        margin: 6px 0 0; padding: 7px 10px; max-width: 300px;
+        margin: 6px 0 0 auto; padding: 7px 10px; max-width: 300px; text-align: left;
         font: 500 12px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         color: #E9E4D4; background: #0C1710; border-radius: 8px;
       }
@@ -991,7 +995,18 @@ if (!window.__onextapAutofillLoaded) {
       return false;
     }
 
-    /** Under the field's left edge, kept inside the viewport. */
+    /** A textarea the user can resize has a grip in that corner. */
+    function hasGrip(field) {
+      return field.tagName === 'TEXTAREA' && window.getComputedStyle(field).resize !== 'none';
+    }
+
+    /**
+     * Inside the field's bottom-right corner, so it covers nothing outside the
+     * field (under it, it sat on the next field's label). Clear of a
+     * textarea's resize grip; on the part of a tall field that is on screen;
+     * centred on the right end of a field too short to hold it; kept inside
+     * the viewport.
+     */
     function place() {
       if (!mounted) return;
       mounted.frame = 0;
@@ -1007,9 +1022,14 @@ if (!window.__onextapAutofillLoaded) {
       host.style.setProperty('display', 'block', 'important');
       const rect = field.getBoundingClientRect();
       const own = host.getBoundingClientRect();
-      const viewport = document.documentElement.clientWidth || window.innerWidth;
-      const left = Math.round(Math.max(EDGE, Math.min(rect.left, viewport - own.width - EDGE)));
-      const top = Math.round(rect.bottom + GAP);
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+      const right = rect.right - (hasGrip(field) ? GRIP : INSET);
+      const left = Math.round(Math.max(EDGE, Math.min(right - own.width, viewportWidth - own.width - EDGE)));
+      const bottom = Math.min(rect.bottom, viewportHeight) - INSET;
+      const top = Math.round(rect.height >= own.height + 2 * INSET
+        ? Math.max(rect.top + INSET, bottom - own.height)
+        : rect.top + (rect.height - own.height) / 2);
       if (pinnedOver(left + own.width / 2, top + own.height / 2, field, host)) {
         host.style.setProperty('display', 'none', 'important');
         return;
@@ -1129,7 +1149,7 @@ if (!window.__onextapAutofillLoaded) {
     }
 
     /**
-     * Put the button under the cover-letter field, or move it there: one
+     * Put the button in the cover-letter field's corner, or move it there: one
      * button, whatever was mounted before.
      * @returns {boolean} Whether there is a button now.
      */
@@ -1182,7 +1202,7 @@ if (!window.__onextapAutofillLoaded) {
         log.error('autofill failed', err);
         sendResponse({ success: false, error: err.message });
       }
-      // This is an application form: offer the button under its cover-letter
+      // This is an application form: offer the button in its cover-letter
       // field. After the reply, so it can never cost the autofill its answer.
       try {
         coverButton.mount();

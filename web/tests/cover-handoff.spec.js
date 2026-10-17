@@ -129,16 +129,19 @@ test.describe('the cover-letter handoff, with the extension loaded', () => {
     const form = await job.locator('form').boundingBox();
     await popup.reload();
 
-    // One button, under the cover-letter field, outside the form, which has
-    // not moved: the host is fixed, in <body>.
+    // One button, in the cover-letter field's bottom-right corner (clear of
+    // the textarea's resize grip), so it covers nothing outside the field;
+    // the form has not moved: the host is fixed, in <body>.
     await expect(hostOf(job)).toHaveCount(1);
     await expect(hostOf(job)).toBeVisible();
     expect(await job.evaluate(() => document.querySelector('[data-onextap-cover-button]').parentElement === document.body)).toBe(true);
     expect(await job.locator('form').boundingBox()).toEqual(form);
     const field = await job.locator('#cl').boundingBox();
     const host = await hostOf(job).boundingBox();
-    expect(Math.abs(host.y - (field.y + field.height + 6))).toBeLessThanOrEqual(1);
-    expect(Math.abs(host.x - field.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs((host.y + host.height) - (field.y + field.height - 8))).toBeLessThanOrEqual(1);
+    expect(Math.abs((host.x + host.width) - (field.x + field.width - 20))).toBeLessThanOrEqual(1);
+    expect(host.x).toBeGreaterThan(field.x);
+    expect(host.y).toBeGreaterThan(field.y);
     expect(await onextapButtons(job)).toEqual(['Customize cover letter with Onextap', 'Hide the Onextap cover letter button']);
 
     // Opening the popup again, or autofilling, keeps the one button.

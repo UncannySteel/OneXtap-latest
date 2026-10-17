@@ -158,8 +158,11 @@ back to the largest empty textarea; the button does not, or it would sit
 under any textarea on any page). The host element is appended to `body`,
 never inside the form, and is `position: fixed` with a closed shadow root:
 it takes no room in the page and moves nothing, the page's styles and scripts
-do not reach it, and every word in it is the extension's own. It sits under
-the field's left edge and follows it (scroll, resize, `ResizeObserver`, and a
+do not reach it, and every word in it is the extension's own. It sits inside
+the field's bottom-right corner (the owner's choice at checkpoint 13: under
+the field it covered the next field's label), clear of a textarea's resize
+grip, on the part of a tall field that is on screen, and centred on the
+right end of a field too short to hold it; it follows the field (scroll, resize, `ResizeObserver`, and a
 `MutationObserver` on the field's own `disabled`, `readonly`, `hidden`,
 `style` and `class`); it hides while the field is hidden or disabled, while
 the field is in the top layer, or while something the page pins in place (a
@@ -177,6 +180,8 @@ with an `aria-label` naming Onextap; × hides it until the page loads again.
   can sit away from its field.
 - It hides wherever a fixed or sticky element that does not contain the field
   covers its spot, a sticky bar inside the same form included.
+- Over the field, it covers the last words of a long letter typed into the
+  corner; × hides it.
 - A class toggled on one of the field's ancestors that hides it without
   changing its size is noticed at the next scroll or resize.
 
