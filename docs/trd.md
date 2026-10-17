@@ -2,7 +2,9 @@
 
 > **Since this was written:** the React landing page and dashboard were
 > replaced by the plain-JS website under `web/`, on one origin with the API
-> (the website merge, September 2026); the extension popup is unchanged, and
+> (the website merge, September 2026); the extension popup is unchanged but
+> for its Cover tab, read-only since 1.0.4 (templates are managed and letters
+> personalised on the dashboard; the popup spends no credits), and
 > the server gained account deletion, a billing portal and end-of-period
 > cancellation, and lost `POST /api/credits/refund` (it gave any account a
 > credit per call). What changed and what is still open:

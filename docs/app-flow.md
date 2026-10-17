@@ -416,8 +416,9 @@ AI-scored, filters broadened, the hourly limit, a thin pool)
         ├─ Sort: re-orders what is in hand, no re-rank
         ├─ Refresh: the one way to ask the same question again
         └─ Explain my fit ──► POST /api/jobs/explain
-                 the server refuses at 0 credits (403), charges after success,
-                 refunds if a later step fails; reopening an explained job is free
+                 the server spends a credit first (403 at 0, 503 without
+                 migration 007), refunds if the analysis fails; reopening an
+                 explained job is free
 ```
 
 The last result is kept in memory, keyed by the resume and the applied

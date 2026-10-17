@@ -1,7 +1,6 @@
 import { storage } from './storage';
 import { APPLICATION_TYPES, DEFAULT_APPLICATION_TYPE } from './applicationTypes';
-
-const APPLICATION_TYPE_KEY = 'onextap_application_type';
+import { APPLICATION_TYPE_KEY } from './localKeys.js';
 
 export async function getApplicationType() {
   const stored = await storage.get(APPLICATION_TYPE_KEY);

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { log } from './logger';
+import { supabaseStorageKey } from './supabaseSessionKey';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -39,11 +40,20 @@ const chromeStorageAdapter = {
   },
 };
 
+/**
+ * The session's key, named rather than left to supabase-js. Its value is
+ * supabase-js's default (src/supabaseSessionKey.js), so no session moved;
+ * named so the landing page's "signed in?" check and the extension's wipe on
+ * account deletion (src/localKeys.js) read the same key the client writes.
+ */
+const storageKey = supabaseStorageKey(supabaseUrl);
+
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
+    ...(storageKey ? { storageKey } : {}),
     ...(isExtension ? { storage: chromeStorageAdapter } : {}),
   },
 });

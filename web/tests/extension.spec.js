@@ -1,15 +1,17 @@
 // End-to-end checks with the extension loaded unpacked: the dashboard's
-// profile sync into it (ONEXTAP_SYNC_DATA), autofill from the popup, and the
-// popup's cover letters, signed out (sent to the dashboard) and signed in
-// (credits). playwright.extension.config.js runs this file
+// profile sync into it (ONEXTAP_SYNC_DATA), autofill from the popup, the
+// popup's read-only Cover tab and the dashboard it sends you to for the rest,
+// and deleting the account, which clears the extension (ONEXTAP_WIPE_LOCAL).
+// playwright.extension.config.js runs this file
 // (`npm run test:e2e:extension`), after tests/extension-build.js has built the
 // extension with unresolvable addresses. The account and the API are stubbed
 // on the whole browser context, so the same stubs answer the website and the
 // extension's pages. Nothing here reaches a real project or a real model.
 /* global chrome -- the evaluate() callbacks run in the extension's popup and worker */
 import { test as base, expect, chromium } from '@playwright/test';
-import { EXTENSION_DIR } from './extension-build.js';
-import { stubAuth, stubApi, sessionFor } from './stubs.js';
+import { EXTENSION_DIR, EXTENSION_ENV } from './extension-build.js';
+import { stubAuth, stubApi, stubDashboard, sessionFor } from './stubs.js';
+import { supabaseStorageKey } from '../../src/supabaseSessionKey.js';
 
 const SITE = 'http://localhost:5173';
 
@@ -70,6 +72,18 @@ const FORM = `<!doctype html><title>Apply</title>
     <label for="cl">Cover letter</label><textarea id="cl" name="cover_letter"></textarea>
   </form>`;
 
+// A template with two versions saved from it on the dashboard, the older first.
+const LETTERS = [{
+  id: 'cl-1',
+  name: 'Formal',
+  body: 'Dear team, I build payment systems that stay up.',
+  createdAt: '2026-09-01T00:00:00.000Z',
+  variants: [
+    { id: 'clv-1', company: 'Norwick Labs', role: 'Backend Engineer', jdSnippet: '', body: 'Dear Norwick Labs team, the older letter.', createdAt: '2026-09-02T00:00:00.000Z' },
+    { id: 'clv-2', company: 'Kestrel Analytics', role: 'Platform Engineer', jdSnippet: '', body: 'Dear Kestrel Analytics team, the newer letter.', createdAt: '2026-09-03T00:00:00.000Z' }
+  ]
+}];
+
 test.describe('the extension, loaded', () => {
   test('dashboard saves reach the popup, even after it made its own store, and autofill uses them', async ({ context, page, serviceWorker, extensionId }) => {
     await stubAuth(context);
@@ -115,80 +129,82 @@ test.describe('the extension, loaded', () => {
     await expect(form.locator('#em')).toHaveValue('ada@example.com');
   });
 
-  // The popup's personalising predates server-side charging: it sends no
-  // `kind`, so the server (and stubApi) charge every call and grant nothing,
-  // and its own call to POST /api/credits/deduct is a no-op. Its "free re-run"
-  // is therefore refused at zero credits. Batch B3 removes this path.
-  test('popup cover letters (an old client): every personalisation is charged by the server, once', async ({ context, page, serviceWorker, extensionId }) => {
+  // The popup's Cover tab only reads (completion plan D6): templates and their
+  // saved versions as the dashboard synced them, Open and Fill. Writing,
+  // personalising and credits are the dashboard's; even a session left in the
+  // extension's storage (the popup has no sign-in, D5) brings none of it back.
+  test('the popup\'s Cover tab is read-only: templates, saved versions newest first, Open, Copy and Fill', async ({ context, page, serviceWorker, extensionId }) => {
     await stubAuth(context);
     const api = await stubApi(context, { credits: 1 });
+    await stubDashboard(context);
+    await context.route(FORM_URL, (route) => route.fulfill({ contentType: 'text/html', body: FORM }));
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${extensionId}/index.html`);
 
-    // A profile, filed by the worker's own sync handler, and a session put in
-    // place: the popup has no sign-in of its own (HANDOVER.md §7 item 27), so
-    // this path is dormant until it gets one. Signed out, see the next test.
+    // A profile with a template and two saved versions, filed by the worker's
+    // own sync handler, as the dashboard sends it: from a page on the site.
     // First, the popup's first-run setup has to finish: it writes an empty
     // store from what it read before, which would undo a profile filed
-    // meanwhile. The sync comes from a page on the site, as the dashboard
-    // sends it: the worker takes ONEXTAP_SYNC_DATA from the site only.
+    // meanwhile.
     await expect(popup.getByRole('button', { name: 'Open Dashboard' })).toBeVisible();
     await page.goto(`${SITE}/contact/`);
     const synced = await page.evaluate(([id, payload]) => new Promise((resolve) =>
       chrome.runtime.sendMessage(id, { type: 'ONEXTAP_SYNC_DATA', payload }, resolve)),
-    [extensionId, { firstName: 'Ada', email: 'ada@example.com' }]);
+    [extensionId, { firstName: 'Ada', email: 'ada@example.com', coverLetters: LETTERS }]);
     expect(synced).toEqual({ success: true });
-    await serviceWorker.evaluate((session) => chrome.storage.local.set({ 'sb-e2e-auth-token': JSON.stringify(session) }),
-      sessionFor('reader@example.com'));
+    await serviceWorker.evaluate(([key, session]) => chrome.storage.local.set({ [key]: JSON.stringify(session) }),
+      [supabaseStorageKey(EXTENSION_ENV.VITE_SUPABASE_URL), sessionFor('reader@example.com')]);
     await popup.reload();
-
-    const deducts = () => api.calls.filter((c) => c.path === '/api/credits/deduct').length;
-    const generations = () => api.calls.filter((c) => c.path === '/api/answer-vault/generate').length;
-    const button = popup.getByRole('button', { name: 'Personalize for this job application' });
-    const suggestion = popup.locator('p:text-is("AI Suggestion") + textarea');
-    const description = popup.getByPlaceholder('Paste job description, program details, or scholarship prompt…');
-
     await popup.getByRole('button', { name: 'Cover Letter' }).click();
-    await popup.getByRole('button', { name: 'Paste manually' }).click();
-    await popup.getByPlaceholder('Template name (e.g. Formal)').fill('Formal');
-    await popup.getByRole('button', { name: 'Save', exact: true }).click();
-    await popup.getByPlaceholder('Paste your base cover letter…').fill('Dear team, I build payment systems that stay up.');
-    await popup.getByPlaceholder('Company / school / organization').fill('Norwick Labs');
-    await description.fill('Senior Backend Engineer at Norwick Labs. Requirements: Python, PostgreSQL, Docker.');
-    await expect(popup.getByText('Uses 1 credit · includes 1 free re-run')).toBeVisible();
 
-    // Paid: one credit, charged by the server inside the generation. The
-    // popup's deduct afterwards is answered with the balance and charges
-    // nothing.
-    await button.click();
-    await expect(suggestion).toHaveValue('Dear Norwick Labs team, letter number 1.');
-    expect(api.calls.filter((c) => c.path === '/api/answer-vault/generate')[0].body.kind).toBeUndefined();
-    expect(deducts()).toBe(1);
-    expect(api.state.credits).toBe(0);
-    // The popup still believes in its own counter…
-    await expect(popup.getByText('Free re-run for this description')).toBeVisible();
+    // The template, read-only.
+    await expect(popup.getByText('Formal', { exact: true })).toBeVisible();
+    await expect(popup.getByText('2 saved versions')).toBeVisible();
 
-    // …but the server granted it nothing: at zero credits the "re-run" is
-    // refused, and nothing is generated or charged.
-    await button.click();
-    await expect(popup.getByText('No credits remaining', { exact: true }).first()).toBeVisible();
-    await expect(suggestion).toHaveCount(0);
-    expect(generations()).toBe(2);
-    expect(api.state.credits).toBe(0);
-    expect(deducts()).toBe(1);
+    // The saved versions, newest first, each with Open and Fill.
+    const rows = popup.locator('p:text-is("Saved versions") + div > div');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText('Kestrel Analytics · Platform Engineer');
+    await expect(rows.nth(1)).toContainText('Norwick Labs · Backend Engineer');
+    await expect(popup.getByRole('button', { name: 'Open', exact: true })).toHaveCount(2);
+    await expect(popup.getByRole('button', { name: 'Fill', exact: true })).toHaveCount(2);
 
-    // Another job, no credits: refused before any AI call.
-    await description.fill('Platform Engineer at Kestrel Analytics. Requirements: Kubernetes, Terraform.');
-    await expect(popup.getByText('No credits left · Premium makes cover letters unlimited')).toBeVisible();
-    await button.click();
-    await expect(popup.getByText('No credits remaining. Premium makes cover letters unlimited.')).toBeVisible();
-    expect(generations()).toBe(2);
-    expect(deducts()).toBe(1);
+    // Nothing to write with: no upload, add, edit or delete, no AI.
+    for (const name of ['Upload file', 'Paste manually', 'Add template', 'Delete', 'Save version', 'Retry', /^Personalize/]) {
+      await expect(popup.getByRole('button', { name })).toHaveCount(0);
+    }
+    await expect(popup.getByText('Upload file')).toHaveCount(0);
+    await expect(popup.getByRole('textbox')).toHaveCount(0);
+    await expect(popup.getByText(/credit/i)).toHaveCount(0);
 
-    // The popup's own counter is still on the template, in the extension's
-    // store; the server pays it no attention.
-    const stored = await extensionStorage(serviceWorker, ['onextap_profiles']);
-    expect(activeProfile(stored).coverLetters[0]).toMatchObject({ name: 'Formal', aiRerunsLeft: 1 });
+    // Open: the whole text, read-only, with Copy and Fill.
+    await rows.nth(1).getByRole('button', { name: 'Open', exact: true }).click();
+    const text = popup.getByRole('textbox', { name: 'Saved version' });
+    await expect(text).toHaveValue('Dear Norwick Labs team, the older letter.');
+    await expect(text).not.toBeEditable();
+    await expect(popup.getByRole('button', { name: 'Copy' })).toBeVisible();
+    const form = await context.newPage();
+    await form.goto(FORM_URL);
+    await form.bringToFront();
+    await popup.getByRole('button', { name: 'Fill', exact: true }).click();
+    await expect(form.locator('#cl')).toHaveValue('Dear Norwick Labs team, the older letter.');
+    await popup.getByRole('button', { name: 'All saved versions' }).click();
+    await expect(rows).toHaveCount(2);
+
+    // The rest is on the dashboard: its Cover Letter workspace, told which
+    // extension to sync back to.
+    const [dashboard] = await Promise.all([
+      context.waitForEvent('page'),
+      popup.getByRole('button', { name: 'Manage templates on the dashboard' }).click()
+    ]);
+    await dashboard.waitForLoadState();
+    const opened = new URL(dashboard.url());
+    expect(opened.pathname).toBe('/dashboard/');
+    expect(opened.searchParams.get('view')).toBe('cover');
+    expect(opened.searchParams.get('extensionId')).toBe(extensionId);
+
+    // And nothing asked the API for a balance, a charge or a generation.
+    expect(api.calls.filter((c) => /^\/api\/(credits|answer-vault|me|verify-premium)/.test(c.path))).toEqual([]);
   });
 
   test('signed out, the popup sends cover letters to the dashboard, and versions saved there come back to fill', async ({ context, page, serviceWorker, extensionId }) => {
@@ -207,14 +223,15 @@ test.describe('the extension, loaded', () => {
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${extensionId}/index.html`);
     await popup.getByRole('button', { name: 'Cover Letter' }).click();
-    await expect(popup.getByText('AI personalization is on the dashboard. Versions you save there appear here, ready to fill.')).toBeVisible();
-    await expect(popup.getByRole('button', { name: /^Personalize for this/ })).toHaveCount(0);
+    await expect(popup.getByText('No cover letter templates yet. Add one on the dashboard.')).toBeVisible();
+    await expect(popup.getByText('Templates are edited, and letters personalised, on the dashboard. Versions you save there appear here, ready to fill.')).toBeVisible();
+    await expect(popup.getByRole('button', { name: /^Personalize/ })).toHaveCount(0);
 
     // Its button opens the dashboard's Cover Letter workspace, with the
     // extension's ID, so what is saved there syncs back.
     const [dashboard] = await Promise.all([
       context.waitForEvent('page'),
-      popup.getByRole('button', { name: 'Personalize on the dashboard' }).click()
+      popup.getByRole('button', { name: 'Manage templates on the dashboard' }).click()
     ]);
     await dashboard.waitForURL(/\/dashboard\/.*#\/cover-letter$/);
     expect(new URL(dashboard.url()).searchParams.get('extensionId')).toBe(extensionId);
@@ -245,5 +262,119 @@ test.describe('the extension, loaded', () => {
     await form.bringToFront();
     await popup.getByRole('button', { name: 'Fill', exact: true }).click();
     await expect(form.locator('#cl')).toHaveValue('Dear Norwick Labs team, letter number 1.');
+  });
+
+  // Deleting the account clears the extension too (completion plan D10), once
+  // DELETE /api/account has succeeded: ONEXTAP_WIPE_LOCAL, which this build
+  // reports as `wipe-local`. Store 1.0.2 can't, and the dialog says so there.
+  test('deleting the account clears the extension: every key Onextap keeps there, and nothing else', async ({ context, page, serviceWorker, extensionId }) => {
+    await stubAuth(context);
+    const api = await stubApi(context);
+    await signIn(page);
+
+    // A profile synced from the dashboard, and the rest of what the extension
+    // can hold: resumes, a setting, a session, and the tour flag store 1.0.2
+    // left behind. And one key that isn't ours.
+    await page.goto(`${SITE}/dashboard/?extensionId=${extensionId}&view=profiles`);
+    await page.getByLabel('First name').fill('Ada');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.locator('.savebar-status')).toHaveText('Saved and synced to the extension');
+    await serviceWorker.evaluate((items) => chrome.storage.local.set(items), {
+      onextap_resumes: { resumes: {}, activeResumeId: null },
+      onextap_application_type: 'job',
+      onextap_tutorial_seen: true,
+      [supabaseStorageKey(EXTENSION_ENV.VITE_SUPABASE_URL)]: JSON.stringify(sessionFor('reader@example.com')),
+      not_onextaps: 'stays'
+    });
+    expect(Object.keys(await extensionStorage(serviceWorker, null)).sort()).toEqual([
+      'not_onextaps', 'onextap_application_type', 'onextap_profiles', 'onextap_resumes', 'onextap_tutorial_seen',
+      'sb-e2e-auth-token', 'user_profile'
+    ]);
+
+    // The dialog says what happens to this extension's copy: it goes too.
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('menuitem', { name: 'Delete account' }).click();
+    const dialog = page.locator('#delete-dialog');
+    await expect(dialog.getByText('The Onextap extension in this browser is cleared too.')).toBeVisible();
+    await expect(dialog.locator('[data-extension-copy]:visible')).toHaveCount(1);
+    await dialog.getByRole('textbox').fill('DELETE');
+    await dialog.getByRole('button', { name: 'Delete account' }).click();
+
+    // The account first, then the extension, then home (through the sign-out
+    // handler, main.js's onSignedOut). Polled rather than awaited as one
+    // navigation, so it holds however the page gets there.
+    await expect(page).toHaveURL(`${SITE}/`);
+    expect(api.calls.filter((c) => c.method === 'DELETE' && c.path === '/api/account')).toHaveLength(1);
+    expect(await extensionStorage(serviceWorker, null)).toEqual({ not_onextaps: 'stays' });
+
+    // The popup is back to its welcome.
+    const popup = await context.newPage();
+    await popup.goto(`chrome-extension://${extensionId}/index.html`);
+    await expect(popup.getByRole('button', { name: 'Open Dashboard' })).toBeVisible();
+  });
+
+  test('a deletion the server refuses leaves the extension alone', async ({ context, page, serviceWorker, extensionId }) => {
+    await stubAuth(context);
+    await stubApi(context, { deleteAccount: 'fail' });
+    await signIn(page);
+    await page.goto(`${SITE}/dashboard/?extensionId=${extensionId}&view=profiles`);
+    await page.getByLabel('First name').fill('Ada');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.locator('.savebar-status')).toHaveText('Saved and synced to the extension');
+
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('menuitem', { name: 'Delete account' }).click();
+    const dialog = page.locator('#delete-dialog');
+    await dialog.getByRole('textbox').fill('DELETE');
+    await dialog.getByRole('button', { name: 'Delete account' }).click();
+
+    await expect(page.getByText('Could not delete your account. Try again in a moment, or contact us.')).toBeVisible();
+    const stored = await extensionStorage(serviceWorker, ['onextap_profiles', 'user_profile']);
+    expect(activeProfile(stored).autofillData.firstName).toBe('Ada');
+    expect(stored.user_profile.firstName).toBe('Ada');
+  });
+
+  test('a wipe the extension does not confirm is told to the user, and the deletion still completes', async ({ context, page, serviceWorker, extensionId }) => {
+    await stubAuth(context);
+    const api = await stubApi(context);
+    await signIn(page);
+    await page.goto(`${SITE}/dashboard/?extensionId=${extensionId}&view=profiles`);
+    await page.getByLabel('First name').fill('Ada');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.locator('.savebar-status')).toHaveText('Saved and synced to the extension');
+
+    // The extension answers the wipe with a failure (its storage refused it,
+    // say), stood in for on the page's end of the channel; everything else,
+    // the handshake included, still reaches the real extension.
+    const patched = await page.evaluate(() => {
+      const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+      const failWipe = (...args) => {
+        const msg = typeof args[0] === 'string' ? args[1] : args[0];
+        const callback = args.find((a) => typeof a === 'function');
+        if ((msg?.type || msg?.action) === 'ONEXTAP_WIPE_LOCAL') return callback({ success: false, error: 'storage refused' });
+        return send(...args);
+      };
+      Object.defineProperty(chrome.runtime, 'sendMessage', { value: failWipe, configurable: true, writable: true });
+      return chrome.runtime.sendMessage === failWipe;
+    });
+    expect(patched).toBe(true);
+
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('menuitem', { name: 'Delete account' }).click();
+    const dialog = page.locator('#delete-dialog');
+    await expect(dialog.getByText('The Onextap extension in this browser is cleared too.')).toBeVisible();
+    await dialog.getByRole('textbox').fill('DELETE');
+    await dialog.getByRole('button', { name: 'Delete account' }).click();
+
+    // Said in words while the page is still here; then home, once the toast
+    // has had its time.
+    await expect(page.getByText('Your account is deleted, but the Onextap extension couldn’t clear its copy. Remove the extension to clear it.')).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe('/dashboard/');
+    expect(api.calls.filter((c) => c.method === 'DELETE' && c.path === '/api/account')).toHaveLength(1);
+    await page.waitForURL(`${SITE}/`, { timeout: 15000 });
+
+    // The copy is still there, as the user was told.
+    const stored = await extensionStorage(serviceWorker, ['onextap_profiles', 'user_profile']);
+    expect(stored.user_profile.firstName).toBe('Ada');
   });
 });

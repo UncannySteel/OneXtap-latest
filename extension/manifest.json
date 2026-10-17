@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Onextap",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Autofill job applications.",
   "permissions": [
     "storage",

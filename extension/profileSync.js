@@ -22,8 +22,8 @@
 // dashboard's id.
 //
 // Pure: it takes what is stored and returns what to store; background.js does
-// the chrome.storage calls. The worker cannot import src/
-// (docs/repo-structure.md, rule 2), so the store's shape is restated here from
+// the chrome.storage calls. The worker imports nothing from src/ but the key
+// names (docs/repo-structure.md, rule 2), so the store's shape is restated here from
 // profileStore.js, and a change to that shape belongs here too.
 // test/extension/profileSync.test.js reads the result back through
 // profileStore.js to hold the two together.

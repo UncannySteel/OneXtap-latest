@@ -68,9 +68,8 @@ the Vercel project needs no change.
 │   │   ├── shared/            # Name kept from the React dashboard; popup-only now
 │   │   │   ├── Toast.jsx
 │   │   │   ├── ProfileSwitcher.jsx
-│   │   │   ├── FabricationNotice.jsx  # Advisory "this claim isn't in your
-│   │   │   │                          #   resume" panel; never blocks
-│   │   │   └── CoverLetterPanel.jsx
+│   │   │   └── CoverLetterPanel.jsx   # The Cover tab: read-only templates,
+│   │   │                              #   saved versions to open and fill
 │   │   └── popup/
 │   │       ├── PopupView.jsx
 │   │       └── WhatToFillSection.jsx
@@ -212,7 +211,7 @@ The popup (extension build):
   src/popup.jsx ──► src/components/OnextapDashboard.jsx     (App root)
                           └──► src/components/popup/PopupView.jsx
   PopupView ──► popup/WhatToFillSection.jsx
-            └──► shared/{Toast,ProfileSwitcher,CoverLetterPanel,FabricationNotice}.jsx
+            └──► shared/{Toast,ProfileSwitcher,CoverLetterPanel}.jsx
 
 The website (website build), through the @app alias (→ src/):
 
@@ -258,7 +257,9 @@ THE TWO CROSS-BOUNDARY IMPORTS INTO THE SERVER:
   server/lib/generationSpend.js ──► src/coverLetterCredits.js   (no deps)
 
 extension/background.js   — imports only extension/logger.js and extension/messages/**
-                            (which import only extension/profileSync.js).
+                            (which import only extension/profileSync.js, and, for
+                            the wipe's key names, src/localKeys.js ──►
+                            src/supabaseSessionKey.js: rule 2's one exception).
 public/content.js         — standalone. Imports nothing at all.
 ```
 
@@ -268,7 +269,7 @@ public/content.js         — standalone. Imports nothing at all.
    exception.** The contract is a Supabase JWT in `Authorization: Bearer
    <token>`; the client half lives in `src/creditManager.js`, `src/jobsApi.js`,
    `src/resumeParse.js` (through the service worker in the extension), the
-   inline `fetch` calls in `shared/CoverLetterPanel.jsx` and in
+   inline `fetch` calls in
    `web/dashboard/js/ws/{answer-studio,cover-letter}.js`, and the landing's
    unauthenticated feedback post in `web/src/app/backend.js`.
 
@@ -300,6 +301,18 @@ public/content.js         — standalone. Imports nothing at all.
    `extension/profileSync.js` restates the profile store's shape from
    `src/profileStore.js`, and `test/extension/profileSync.test.js` holds the
    two together.
+
+   **The one exception: the worker imports `src/localKeys.js` and
+   `src/supabaseSessionKey.js`**, for the key names `ONEXTAP_WIPE_LOCAL`
+   clears when the account is deleted. The stores import their keys from
+   `src/localKeys.js`, so the extension's wipe and the stores cannot disagree
+   about a name. Both files are leaves with no load-time behaviour:
+   `localKeys.js` imports only `supabaseSessionKey.js`, which imports nothing,
+   so no store, storage backend or logger from `src/` runs in the worker.
+   `test/extension/workerImports.test.js` follows the worker's imports from
+   `extension/background.js` and fails on anything else from `src/` (or on
+   either leaf gaining an import), and on `public/content.js` importing
+   anything at all.
 
 3. **`src/` and `web/` may import `extension/constants.js`, and only that.**
    `src/resumeToProfile.js` pulls `COUNTRIES`, and
@@ -348,8 +361,8 @@ public/content.js         — standalone. Imports nothing at all.
 
 9. **`src/components/` is the popup's, and only the popup's.** The web
    dashboard cannot use a React component, so anything both front ends need
-   is a plain module in `src/` — which is why `loadFabricationCorpus` moved out
-   of `FabricationNotice.jsx` into `src/fabricationCorpus.js`.
+   is a plain module in `src/` — which is why `loadFabricationCorpus` lives in
+   `src/fabricationCorpus.js`, not in a component.
    `components/shared/` keeps its name from when a React dashboard rendered it
    too. `src/popup.jsx` sends anything opened outside the extension
    (including the old `?mode=dashboard`) to the web dashboard.

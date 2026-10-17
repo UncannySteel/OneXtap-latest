@@ -16,9 +16,10 @@ const self = { runtimeId: EXTENSION_ID, origins: allowedOrigins(MANIFEST) };
 
 // ---------- The registry ----------
 
-test('the registry holds 1.0.2\'s four messages and ONEXTAP_HELLO, once each', () => {
+test("the registry holds 1.0.2's four messages and protocol 2's, once each", () => {
   assert.deepEqual(MESSAGES.map((m) => m.kind).sort(), [
-    'GENERATE_IMPROVED_ANSWER', 'ONEXTAP_HELLO', 'ONEXTAP_SYNC_DATA', 'PARSE_RESUME', 'SCRAPE_ACTIVE_TAB',
+    'GENERATE_IMPROVED_ANSWER', 'GET_COVER_HANDOFF', 'ONEXTAP_HELLO', 'ONEXTAP_SYNC_DATA', 'ONEXTAP_WIPE_LOCAL',
+    'OPEN_COVER_CUSTOMIZER', 'PARSE_RESUME', 'SCRAPE_ACTIVE_TAB',
   ]);
 });
 
@@ -38,11 +39,14 @@ test('who may send what, as the protocol says', () => {
     SCRAPE_ACTIVE_TAB: ['popup', 'site'],
     GENERATE_IMPROVED_ANSWER: ['popup'],
     ONEXTAP_HELLO: ['popup', 'site'],
+    OPEN_COVER_CUSTOMIZER: ['content'],
+    GET_COVER_HANDOFF: ['site'],
+    ONEXTAP_WIPE_LOCAL: ['site'],
   });
 });
 
-test('the capabilities are the ones that work in this build: profile sync, not yet the handoff or the wipe', () => {
-  assert.deepEqual([...CAPABILITIES], ['profile-sync']);
+test("the capabilities are protocol 2's three: profile sync, the handoff and the wipe", () => {
+  assert.deepEqual([...CAPABILITIES], ['profile-sync', 'cover-handoff', 'wipe-local']);
 });
 
 test('the kind is `type` or `action`', () => {
@@ -52,8 +56,9 @@ test('the kind is `type` or `action`', () => {
   assert.equal(kindOf('ONEXTAP_HELLO'), undefined);
 });
 
-test('a message from B3 is not answered yet: "Unknown action"', async () => {
-  for (const kind of ['OPEN_COVER_CUSTOMIZER', 'GET_COVER_HANDOFF', 'ONEXTAP_WIPE_LOCAL', 'MOUNT_COVER_BUTTON']) {
+test('MOUNT_COVER_BUTTON never reaches the worker: "Unknown action"', async () => {
+  // It goes from the popup to the content script.
+  for (const kind of ['MOUNT_COVER_BUTTON']) {
     assert.deepEqual(await dispatch({ type: kind }, SITE, 'external', { ...self, log: quiet }),
       { success: false, error: `Unknown action: ${kind}` });
   }
@@ -142,12 +147,12 @@ beforeEach(() => worker?.reset());
 
 test('ONEXTAP_HELLO from the site: the manifest\'s version, protocol 2, the capabilities', { skip }, async () => {
   assert.deepEqual(await worker.external({ type: 'ONEXTAP_HELLO' }, SITE),
-    { success: true, version: MANIFEST.version, protocol: 2, capabilities: ['profile-sync'] });
+    { success: true, version: MANIFEST.version, protocol: 2, capabilities: ['profile-sync', 'cover-handoff', 'wipe-local'] });
 });
 
 test('ONEXTAP_HELLO from the popup too: getExtensionInfo() runs there', { skip }, async () => {
   assert.deepEqual(await worker.internal({ action: 'ONEXTAP_HELLO' }, POPUP),
-    { success: true, version: MANIFEST.version, protocol: 2, capabilities: ['profile-sync'] });
+    { success: true, version: MANIFEST.version, protocol: 2, capabilities: ['profile-sync', 'cover-handoff', 'wipe-local'] });
 });
 
 test('a refusal is never "Unknown action", so the website cannot take a current build for 1.0.2', { skip }, async () => {

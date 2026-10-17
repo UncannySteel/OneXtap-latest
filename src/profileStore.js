@@ -1,11 +1,9 @@
 import { storage } from './storage.js';
+import { PROFILES_STORAGE_KEY, LEGACY_PROFILE_KEY } from './localKeys.js';
 
-const PROFILES_STORAGE_KEY = 'onextap_profiles';
 const DEFAULT_PROFILE_ID = 'default';
 export const MAX_PROFILE_NAME_LENGTH = 32;
 export const MAX_COVER_LETTERS_PER_PROFILE = 10;
-
-const LEGACY_PROFILE_KEY = 'user_profile';
 
 /** @typedef {{ id: string, company: string, role: string, jdSnippet: string, body: string, createdAt: string }} CoverLetterVariant */
 

@@ -105,7 +105,7 @@ export async function undoGeneration(userId, spend, description) {
 }
 
 /**
- * Charge one credit for "Explain my fit", after its analysis succeeded.
+ * Charge one credit for "Explain my fit", before its analysis runs.
  *
  * The same atomic spend as Answer Studio's, of kind 'explain', which grants no
  * follow-up. Premium is free.

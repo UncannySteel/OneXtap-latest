@@ -18,6 +18,15 @@ const API_URL = (
   (import.meta.env.PROD ? 'https://www.onextap.com' : '')
 ).replace(/\/$/, '');
 
+// The dashboard, where the cover-letter handoff opens a tab. Worked out as
+// src/config.js works out DASHBOARD_URL, which the worker cannot import
+// (docs/repo-structure.md): VITE_DASHBOARD_URL is the site's origin, and the
+// dashboard is at /dashboard/ on it.
+const SITE_URL = String(import.meta.env.VITE_DASHBOARD_URL || 'https://www.onextap.com')
+  .replace(/\/+$/, '')
+  .replace(/\/dashboard$/, '');
+const DASHBOARD_URL = `${SITE_URL}/dashboard/`;
+
 chrome.runtime.onInstalled.addListener(() => {
   log.info('background service worker installed');
 });
@@ -142,6 +151,7 @@ const context = {
   // Wrapped: a bare `fetch` called as context.fetch() is an illegal invocation.
   fetch: (...args) => fetch(...args),
   apiUrl: API_URL,
+  dashboardUrl: DASHBOARD_URL,
   log,
   scrapeJobPage,
   runtimeId: chrome.runtime.id,

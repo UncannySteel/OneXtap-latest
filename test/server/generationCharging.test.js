@@ -170,8 +170,7 @@ test('migration 007 missing: 503, an error log naming it, and the model is never
     }
     assert.equal(modelCalls(), before, 'the model was never called');
 
-    // Explain charges after its analysis, so it has run the model by then;
-    // the user still gets nothing for free.
+    // Explain spends before its analysis too, so it fails closed the same way.
     groq.state.reply = () => ({ content: JSON.stringify({ fitAnalysis: 'A good fit.', gaps: [], strengths: [] }) });
     const explain = await post('/api/jobs/explain', who.token, { job: { title: 'Backend Engineer' } });
     assert.equal(explain.status, 503, 'explain fails closed too');
@@ -359,7 +358,7 @@ test('the client cannot choose what a charge grants', async () => {
   assert.equal(spendCall.body.p_free, 3);
 });
 
-test('Explain my fit is charged through the same atomic spend, after its analysis', async () => {
+test('Explain my fit is charged through the same atomic spend', async () => {
   const who = account({ credits: 2 });
   groq.state.reply = () => ({ content: JSON.stringify({ fitAnalysis: 'A good fit.', gaps: [], strengths: ['Python'] }) });
   let res;

@@ -104,7 +104,11 @@
       <div class="dialog-body">
         <p class="label dialog-eyebrow is-danger">Danger zone</p>
         <h2 class="display" id="delete-title">Delete your account?</h2>
-        <p>This permanently deletes your account and any remaining credits, cancels your subscription if you have one, and clears your profiles, saved answers, cover letters and resumes from this browser. The copy the extension keeps stays until you remove the extension. It can’t be undone.</p>
+        <p>This permanently deletes your account and any remaining credits, cancels your subscription if you have one, and clears your profiles, saved answers, cover letters and resumes from this browser. It can’t be undone.</p>
+        <!-- One of these shows, once the extension has answered (main.js, showExtensionCopy). -->
+        <p data-extension-copy="wipes" hidden>The Onextap extension in this browser is cleared too.</p>
+        <p data-extension-copy="keeps" hidden>The Onextap extension in this browser is a version that can’t be cleared from here: its copy stays until you remove the extension.</p>
+        <p data-extension-copy="none" hidden>If you use the Onextap extension elsewhere, its copy stays until you remove it there.</p>
         <label class="field">
           <span class="field-k">type <strong>DELETE</strong> to confirm</span>
           <input type="text" id="delete-confirm" autocomplete="off" spellcheck="false">

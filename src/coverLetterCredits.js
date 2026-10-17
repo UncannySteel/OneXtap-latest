@@ -19,8 +19,8 @@
  * and `aiRerunKey` mirroring it, travelling to the extension like the rest of
  * the profile.
  *
- * Shared by the dashboard's Cover Letter workspace, the popup's
- * CoverLetterPanel and the server (for the key). Pure, with no imports, so
+ * Shared by the dashboard's Cover Letter workspace and the server (for the
+ * key); the popup no longer personalises (1.0.4). Pure, with no imports, so
  * `node --test` covers it (test/credits/coverLetterCredits.test.js) and the
  * server can import it (test/server/generationSpend.test.js keeps it so).
  */

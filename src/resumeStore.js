@@ -2,6 +2,7 @@ import { storage, STORAGE_QUOTA_ERROR } from './storage.js';
 import { buildCorpus } from './corpus.js';
 import { detectSeniority, extractKeywords, MATCHER_VERSION } from './matching/index.js';
 import { log as baseLog } from './logger.js';
+import { RESUMES_STORAGE_KEY } from './localKeys.js';
 
 const log = baseLog.child('resume');
 
@@ -34,11 +35,11 @@ const log = baseLog.child('resume');
  */
 
 /**
- * The single key holding the whole store, alongside `onextap_profiles`.
- * Exported so a test can corrupt it directly and watch `loadResumeStore`
- * degrade.
+ * The single key holding the whole store, alongside `onextap_profiles`; both
+ * are defined in src/localKeys.js. Re-exported so a test can corrupt it
+ * directly and watch `loadResumeStore` degrade.
  */
-export const RESUMES_STORAGE_KEY = 'onextap_resumes';
+export { RESUMES_STORAGE_KEY };
 
 /**
  * Longest resume label, matching `MAX_PROFILE_NAME_LENGTH` in profileStore.js.

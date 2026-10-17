@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- A job page with an application form, for web/tests/cover-handoff.spec.js.
+     The job's markup is what scrapePageContext() reads (public/content.js):
+     .company-name for the company, .job-description for the description; the
+     <h1> is the role. Served by the spec's own route, never by the site. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Senior Backend Engineer at Norwick Labs</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 40px auto; max-width: 720px; padding: 0 16px; }
+    label { display: block; margin-top: 16px; font-weight: 600; }
+    input, textarea { display: block; width: 100%; box-sizing: border-box; font: inherit; }
+    button { margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Senior Backend Engineer</h1>
+    <p class="company-name">Norwick Labs</p>
+  </header>
+  <section class="job-description">
+    <h2>About the role</h2>
+    <p>Norwick Labs builds payment systems that stay up. You will own the services that move money for our customers.</p>
+    <h2>Requirements</h2>
+    <ul>
+      <li>Python</li>
+      <li>PostgreSQL</li>
+      <li>Docker</li>
+    </ul>
+  </section>
+  <form>
+    <label for="fn">First name</label>
+    <input id="fn" name="first_name">
+    <label for="cl">Cover letter</label>
+    <textarea id="cl" name="cover_letter" rows="8"></textarea>
+    <label for="why">Anything else?</label>
+    <input id="why" name="anything_else">
+    <button type="submit">Submit application</button>
+  </form>
+</body>
+</html>

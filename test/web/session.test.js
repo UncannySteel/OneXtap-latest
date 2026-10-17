@@ -2,23 +2,27 @@
 // Supabase client it has to agree with (src/supabaseClient.js).
 //
 // The landing page decides between "Log in" and "Dashboard" before Supabase's
-// SDK has loaded, so it cannot ask the client for its storage key; it works
-// the key out. These tests are what keep that honest: a real client, built
-// with the options src/supabaseClient.js uses, must keep its session under the
-// key the landing page reads, and src/supabaseClient.js must not have started
-// choosing a key of its own.
+// SDK has loaded, so it cannot ask the client for its storage key; it reads it
+// from src/supabaseSessionKey.js, which src/supabaseClient.js passes to the
+// client as its `storageKey` (the extension's wipe on account deletion lists
+// the same key, src/localKeys.js). These tests are what keep that honest:
+// the key must be supabase-js's own default, which is where every session
+// signed in before the key was named still sits, and src/supabaseClient.js
+// must take its key from that function.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseStorageKey, hasStoredSession } from '../../web/src/app/session.js';
+import { supabaseStorageKey as sharedStorageKey } from '../../src/supabaseSessionKey.js';
 
 const CLIENT_SOURCE = new URL('../../src/supabaseClient.js', import.meta.url);
 
-/** A client configured as src/supabaseClient.js configures it on the web.
- *  Auto-refresh and URL detection are off here only so nothing runs in the
- *  background of a test; neither has any bearing on the storage key. */
-function clientFor(url) {
+/** A client configured as src/supabaseClient.js configured it before it named
+ *  its key: supabase-js picks the default. Auto-refresh and URL detection are
+ *  off here only so nothing runs in the background of a test; neither has any
+ *  bearing on the storage key. */
+function clientFor(url, extra = {}) {
   const memory = new Map();
   return createClient(url, 'test-anon-key', {
     auth: {
@@ -30,30 +34,43 @@ function clientFor(url) {
         setItem: (key, value) => { memory.set(key, value); },
         removeItem: (key) => { memory.delete(key); },
       },
+      ...extra,
     },
   });
 }
 
 const fakeStorage = (entries) => ({ getItem: (key) => (key in entries ? entries[key] : null) });
 
-test('src/supabaseClient.js leaves the storage key to supabase-js', () => {
+const URLS = [
+  'https://e2e.invalid',                       // the e2e runs (web/playwright.config.js)
+  'https://abcdefghijklmnopqrst.supabase.co',  // a hosted project
+  'http://127.0.0.1:54321',                    // the Supabase CLI's local stack
+];
+
+test('src/supabaseClient.js takes its storageKey from src/supabaseSessionKey.js', () => {
   const source = readFileSync(CLIENT_SOURCE, 'utf8');
-  assert.equal(
-    /\bstorageKey\b/.test(source), false,
-    'src/supabaseClient.js now chooses its own storageKey: make supabaseStorageKey() in ' +
-    'web/src/app/session.js return the same key, or the landing page stops seeing sessions'
-  );
+  assert.match(source, /import\s*\{\s*supabaseStorageKey\s*\}\s*from\s*'\.\/supabaseSessionKey(\.js)?'/);
+  assert.match(source, /const storageKey = supabaseStorageKey\(supabaseUrl\);/);
+  assert.match(source, /\.\.\.\(storageKey \? \{ storageKey \} : \{\}\)/);
 });
 
-test('the landing page reads the key a real client keeps its session under', () => {
-  for (const url of [
-    'https://e2e.invalid',                       // the e2e runs (web/playwright.config.js)
-    'https://abcdefghijklmnopqrst.supabase.co',  // a hosted project
-    'http://127.0.0.1:54321',                    // the Supabase CLI's local stack
-  ]) {
+test('the landing page reads the shared key, not a copy of it', () => {
+  assert.equal(supabaseStorageKey, sharedStorageKey);
+});
+
+test('the named key is supabase-js\'s default: sessions from before it was named stay signed in', () => {
+  for (const url of URLS) {
     const client = clientFor(url);
     assert.equal(supabaseStorageKey(url), client.auth.storageKey, url);
     assert.equal(supabaseStorageKey(url), client.storageKey, url);
+  }
+});
+
+test('a client given the named key keeps its session under it', () => {
+  for (const url of URLS) {
+    const client = clientFor(url, { storageKey: supabaseStorageKey(url) });
+    assert.equal(client.auth.storageKey, supabaseStorageKey(url), url);
+    assert.equal(client.auth.storageKey, clientFor(url).auth.storageKey, url);
   }
 });
 

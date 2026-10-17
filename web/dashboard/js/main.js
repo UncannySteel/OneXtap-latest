@@ -148,6 +148,8 @@ const context = {
   openSubscription: () => user && subscription.open(),
   syncToExtension: (payload) => services.syncToExtension(payload),
   get hasExtension() { return services.hasExtension(); },
+  /** A job handed over by the extension's page button, for the Cover Letter workspace. */
+  takeCoverHandoff,
   /** The profile's name stands in for the account's when the account has none. */
   onProfileSaved(profile) {
     if (!user || user.nameFromAccount) return;
@@ -181,9 +183,22 @@ const actions = {
     deleteConfirm.value = '';
     deleteSubmit.disabled = true;
     deleteDialog.returnValue = '';
+    // What happens to the extension's copy depends on which one is installed
+    // (services.extensionWipeState): its line shows once it has answered.
+    showExtensionCopy(null);
     deleteDialog.showModal();
+    services?.extensionWipeState().then((state) => {
+      if (deleteDialog.open) showExtensionCopy(state);
+    });
   },
 };
+
+/** The delete dialog's line about the extension: 'wipes', 'keeps', 'none', or null for none yet. */
+function showExtensionCopy(state) {
+  deleteDialog.querySelectorAll('[data-extension-copy]').forEach((el) => {
+    el.hidden = el.dataset.extensionCopy !== state;
+  });
+}
 
 avatarInput.addEventListener('change', async () => {
   const file = avatarInput.files[0];
@@ -204,11 +219,24 @@ deleteConfirm.addEventListener('input', () => {
   deleteSubmit.disabled = deleteConfirm.value.trim() !== 'DELETE';
 });
 
+// How long the page stays to say the extension kept its copy (the error
+// toast's own time on screen, util.js), before it goes home.
+const WIPE_FAILED_NOTICE_MS = 5200;
+
 deleteDialog.addEventListener('close', async () => {
   if (deleteDialog.returnValue !== 'confirm') return;
   toast('Deleting your account…', 'loading');
   try {
-    await services.deleteAccount();   // goes home when it is done
+    // Goes home when it is done. The dialog promised the extension would be
+    // cleared when it could be; if it was asked and didn't confirm, say so
+    // before the page leaves.
+    await services.deleteAccount({
+      beforeLeaving: async (extension) => {
+        if (extension !== 'failed') return;
+        toast('Your account is deleted, but the Onextap extension couldn’t clear its copy. Remove the extension to clear it.', 'error');
+        await new Promise((resolve) => setTimeout(resolve, WIPE_FAILED_NOTICE_MS));
+      },
+    });
   } catch (error) {
     toast(error?.message || 'Couldn’t delete your account. Try again.', 'error');
   }
@@ -237,6 +265,55 @@ function applyLegacyView() {
   if (id && !location.hash.replace(/^#\/?/, '')) {
     history.replaceState(history.state, '', `${location.pathname}${location.search}#/${id}`);
   }
+}
+
+// The extension's "Customize cover letter" button, on a job page, opens the
+// dashboard with ?view=cover&handoff=<id>: a job the extension holds for the
+// Cover Letter workspace, for one read (GET_COVER_HANDOFF,
+// docs/extension-protocol.md). The id moves from the address into this tab's
+// sessionStorage first thing, so it survives a trip through sign-in (which
+// carries the rest of the address as `next`), and the workspace takes it once
+// the account is confirmed.
+const HANDOFF_KEY = 'onextap_cover_handoff';
+const HANDOFF_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let confirmAccount;
+const accountConfirmed = new Promise((resolve) => { confirmAccount = resolve; });
+
+function keepCoverHandoff() {
+  const { handoff } = takeParams(['handoff']);
+  if (!handoff || !HANDOFF_ID.test(handoff)) return;
+  try {
+    sessionStorage.setItem(HANDOFF_KEY, handoff);
+  } catch {
+    /* storage blocked: the job stays with the extension, the page still works */
+  }
+}
+
+function pendingCoverHandoff() {
+  try {
+    return sessionStorage.getItem(HANDOFF_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The handoff's id, for the Cover Letter workspace, once: when the account is
+ * confirmed, and only while `stillWanted()` (the workspace may have been left
+ * meanwhile, and the id waits for its next visit). Then gone from the tab.
+ * @param {() => boolean} [stillWanted]
+ * @returns {Promise<string|null>}
+ */
+async function takeCoverHandoff(stillWanted = () => true) {
+  await accountConfirmed;
+  const id = pendingCoverHandoff();
+  if (!id || !stillWanted()) return null;
+  try {
+    sessionStorage.removeItem(HANDOFF_KEY);
+  } catch {
+    /* nothing was kept */
+  }
+  return HANDOFF_ID.test(id) ? id : null;
 }
 
 /**
@@ -346,6 +423,9 @@ async function boot() {
     throw error;
   }
 
+  // Before sign-in can send the address away: the handoff waits in the tab.
+  keepCoverHandoff();
+
   // Signed in? If not, off to sign in, and back here afterwards.
   const session = await services.getSession();
   if (!session) {
@@ -355,6 +435,10 @@ async function boot() {
   services.onSignedOut(() => location.assign('/'));
 
   applyLegacyView();
+  // A job waiting means the Cover Letter workspace, even if ?view= was lost.
+  if (pendingCoverHandoff() && !location.hash.replace(/^#\/?/, '')) {
+    history.replaceState(history.state, '', `${location.pathname}${location.search}#/${legacyViews.cover}`);
+  }
   const arrival = takeParams(['upgrade']);
 
   renderRoute();
@@ -393,6 +477,7 @@ async function boot() {
   }
   renderUser();
   app.removeAttribute('aria-busy');
+  confirmAccount();
 
   // The entrance, once: the name rises word by word, the rest follows on a stagger.
   if (!reducedMotion.matches && app.dataset.view === 'home') {

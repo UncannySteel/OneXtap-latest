@@ -57,7 +57,7 @@ const GROQ_ALLOWED_MODELS = new Set(
 //
 // These caps do NOT stop a 413. express.json() defaults to a 100kb body and
 // rejects an oversized request before this handler runs, so the caps the
-// CLIENT applies (src/components/shared/FabricationNotice.jsx, same three
+// CLIENT applies (src/fabricationCorpus.js, same three
 // numbers) are what keep a real request under that ceiling. These are the
 // server's own floor under an untrusted body. Change one side, change both.
 // ------------------------------------------------------------------
@@ -229,8 +229,8 @@ async function generateDraft({ groq, selectedModel, systemInstruction, userConte
 //
 // The server spends for the request before calling the model, and gives the
 // spend back if the generation then fails. Spending first is what stops two
-// concurrent requests from both passing a balance check (explain's "check,
-// run, charge" leaves that window open, which is cheap there and not here).
+// concurrent requests from both passing a balance check ("Explain my fit"
+// does the same since B3: server/routes/jobExplain.js).
 // Out of credits is a 403 and the model is never called. A spend that cannot
 // be made at all (migration 007 missing, the database down) is a 503 and the
 // model is never called either: this fails closed. The response gains

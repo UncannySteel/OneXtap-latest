@@ -65,9 +65,10 @@ export function freeFollowUps(kind) {
 }
 
 /**
- * The header lines both front ends put before the description in a cover
+ * The header lines the dashboard puts before the description in a cover
  * letter's job context: "Organization: <company>\n", then "Role: <role>\n\n"
- * (cover-letter.js's jobContextFor(), CoverLetterPanel.jsx). Each is one
+ * (cover-letter.js's jobContextFor(); the popup's own personalising, removed
+ * in 1.0.4, wrote the same). Each is one
  * line, and only a short one counts as a header: a long first line is part
  * of the description, so a whole other job cannot ride in the company field.
  */

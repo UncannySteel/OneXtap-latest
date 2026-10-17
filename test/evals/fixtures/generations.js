@@ -11,7 +11,8 @@
  * way Answer Studio writes. That shape alone left the gate blind to the shape
  * the COVER LETTER flow actually produces, and the validator scored 0.75
  * fabrication rate on a letter in which every sentence was true — a HIGH flag
- * on the opening line, because `CoverLetterPanel.jsx` instructs the model to
+ * on the opening line, because the cover-letter prompt (the dashboard's
+ * `web/dashboard/js/ws/cover-letter.js`) instructs the model to
  * name the company and role and the corpus is built from the CV alone, where a
  * name taken from the POSTING can never appear.
  *

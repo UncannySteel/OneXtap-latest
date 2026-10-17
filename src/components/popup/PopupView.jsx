@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowRight, Briefcase, Clipboard, ExternalLink, FileText, Layout, MessageSquare, PenTool, Sparkles } from 'lucide-react';
 import { getApplicationType } from '../../applicationTypeStorage';
 import { getApplicationTypeConfig } from '../../applicationTypes';
-import { getUser, onAuthStateChange } from '../../auth';
 import { AUTOFILL_SECTION_META, DEFAULT_SECTION_TOGGLES } from '../../autofillSections';
 import { getIconUrl } from '../../extensionClient';
 import { getActiveLegacyProfile, loadProfileStore } from '../../profileStore';
@@ -21,7 +20,10 @@ const log = baseLog.child('ui');
  *
  * Injects content.js into the active tab on demand before each interaction
  * (the script guards against double-injection itself), then drives it with
- * DETECT_SECTIONS / AUTOFILL_TRIGGERED / FILL_COVER_LETTER.
+ * MOUNT_COVER_BUTTON / DETECT_SECTIONS / AUTOFILL_TRIGGERED / FILL_COVER_LETTER.
+ *
+ * Signed out, always: the popup has no sign-in (completion plan D5), and
+ * nothing in it spends credits. The AI lives on the dashboard.
  *
  * @param {object} props
  * @param {(view?: string|null) => void} props.onLaunchDashboard Opens the
@@ -32,11 +34,9 @@ const log = baseLog.child('ui');
  *   and closes the moment focus leaves it, which is the wrong surface for a
  *   list you read, compare and scroll. The button is an entry point only.
  * @param {() => void} [props.onLaunchCoverLetters] Same, deep-linked to the
- *   Cover Letter workspace: where a signed-out user personalises.
+ *   Cover Letter workspace: where templates are managed and letters personalised.
  */
 const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches, onLaunchCoverLetters }) => {
-  // undefined until the session check answers, then the user or null.
-  const [popupUser, setPopupUser] = useState(undefined);
   const [popupTab, setPopupTab] = useState('autofill');
   const [status, setStatus] = useState('Autofill Application');
   const [hasProfile, setHasProfile] = useState(false);
@@ -81,12 +81,24 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches
     } catch { /* restricted page */ }
   }, []);
 
+  // On open, offer the job page's "Customize cover letter" button: content.js
+  // mounts it under a cover-letter field it detects, and does nothing on a
+  // page without one (docs/extension-protocol.md, MOUNT_COVER_BUTTON). Any
+  // http(s) page; Chrome's own pages, the Web Store and the like refuse the
+  // injection, and that stays silent.
   useEffect(() => {
-    getUser().then((u) => setPopupUser(u));
-    const { unsubscribe } = onAuthStateChange((_, session) => {
-      setPopupUser(session?.user || null);
-    });
-    return () => unsubscribe?.();
+    if (typeof chrome === 'undefined' || !chrome.tabs?.query || !chrome.scripting) return;
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id || !/^https?:\/\//i.test(tab.url || '')) return;
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+        chrome.tabs.sendMessage(tab.id, { action: 'MOUNT_COVER_BUTTON' }, () => {
+          // Reading lastError keeps Chrome from logging a page that didn't answer.
+          if (chrome.runtime.lastError) { /* nothing to mount there */ }
+        });
+      } catch { /* restricted page: no button */ }
+    })();
   }, []);
 
   useEffect(() => {
@@ -332,10 +344,7 @@ const PopupView = ({ onLaunchDashboard, onLaunchAnswerStudio, onLaunchJobMatches
               <CoverLetterPanel
                 key={coverPanelKey}
                 showToast={showPopupToast}
-                user={popupUser}
                 onOpenDashboard={onLaunchCoverLetters}
-                compact
-                applicationType={applicationType}
                 documentLabel={popupAppConfig.coverLetterLabel}
               />
             )}

@@ -13,7 +13,7 @@ export default defineConfig({
   testDir: './tests',
   testMatch: /.*\.spec\.js/,
   // Need the extension loaded: playwright.extension.config.js runs them.
-  testIgnore: /extension(-legacy)?\.spec\.js/,
+  testIgnore: /(extension(-legacy)?|cover-handoff)\.spec\.js/,
   timeout: 60000,
   fullyParallel: false,
   workers: 2,

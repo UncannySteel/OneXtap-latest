@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 // `npm run dev` with the repo's real .env, and the run stops instead.
 //
 // Two projects, run one after the other (workers: 1, one port 5173):
-//   extension  this build (tests/extension.spec.js);
+//   extension  this build (tests/extension.spec.js, tests/cover-handoff.spec.js);
 //   legacy     store 1.0.2 (tests/extension-legacy.spec.js), skipped unless
 //              E2E_LEGACY_EXTENSION_PATH points at an unpacked copy of it.
 // `--project legacy` runs the second alone.
@@ -28,7 +28,7 @@ export default defineConfig({
     trace: 'off'
   },
   projects: [
-    { name: 'extension', testMatch: /(^|[\\/])extension\.spec\.js$/ },
+    { name: 'extension', testMatch: /(^|[\\/])(extension|cover-handoff)\.spec\.js$/ },
     { name: 'legacy', testMatch: /(^|[\\/])extension-legacy\.spec\.js$/ }
   ],
   webServer: {

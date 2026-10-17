@@ -32,8 +32,8 @@ router.get('/api/credits', requireAuth, async (req, res) => {
 // POST /api/credits/deduct — a no-op, for old clients
 // ------------------------------------------------------------------
 // Generations are paid for where they happen now: POST
-// /api/answer-vault/generate and POST /api/jobs/explain spend before (or, for
-// explain, right after) the model call, atomically (server/lib/credits.js).
+// /api/answer-vault/generate and POST /api/jobs/explain spend before the
+// model call, atomically (server/lib/credits.js).
 // Nothing current calls this. Clients from before that change (the published
 // popup, a cached Answer Studio page) still call it after a generation the
 // server has already charged, so it answers as it always did, success and the

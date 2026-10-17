@@ -3,8 +3,9 @@
  * tailoring suggestions. Prompt text is in server/jobs/prompts/.
  */
 import express from 'express';
-import { supabaseAdmin, getProfile, requireAuth } from '../supabase.js';
+import { supabaseAdmin, requireAuth } from '../supabase.js';
 import { parseJsonLenient } from '../llmJson.js';
+import { getGroq } from '../groqClient.js';
 import { createGroqModelCaller, renderPromptParts } from '../jobs/rank.js';
 import { getPrompt } from '../jobs/prompts/index.js';
 import { buildResumeProfile } from '../../src/matching/index.js';
@@ -22,9 +23,17 @@ const router = express.Router();
 // full corpus and makes two model calls for a single job — it is the
 // expensive, deliberate act, not the browse.
 //
-// The credit is deducted AFTER a successful generation, mirroring
-// VaultPage.jsx: a user whose generation failed has received nothing and must
-// not be charged for it. A failure after the deduction refunds.
+// ═══ PAID HERE, BEFORE THE MODEL ═══
+//
+// Answer Studio's order (server/routes/generate.js): validate the request,
+// spend (kind 'explain', which grants no follow-up), then the model. Spending
+// first is what stops two requests holding the last credit from both running
+// the analysis; the spend is the only balance check. Out of credits is a 403
+// and a spend that cannot be made (migration 007 missing, the database down)
+// a 503, and in both the model is never called. Premium spends nothing. If
+// anything after the spend fails, the credit is given back, once: a user whose
+// analysis failed has received nothing. Reopening a saved explanation is free
+// because the page does not call this route again.
 
 /**
  * Corpus items and profile skills sent with the explain prompt.
@@ -125,7 +134,8 @@ function sanitizeTailoringSuggestions(suggestions, corpus) {
 }
 
 router.post('/api/jobs/explain', requireAuth, async (req, res) => {
-  // chargeOneCredit()'s answer once it charged: what a refund gives back.
+  // chargeOneCredit()'s answer (spendGeneration() of kind 'explain'): what a
+  // refund gives back.
   let charge = null;
 
   try {
@@ -138,11 +148,16 @@ router.post('/api/jobs/explain', requireAuth, async (req, res) => {
     const corpus = Array.isArray(body.corpus) ? body.corpus : [];
     const resumeProfile = buildResumeProfile(body.resumeProfile || {});
 
-    // Pre-flight the balance so an out-of-credit user is refused before the
-    // model calls rather than after them.
-    const profile = await getProfile(req.userId, req.userEmail);
-    if (!profile.is_premium && profile.credits <= 0) {
-      return res.status(403).json({ error: 'No credits remaining' });
+    // Before the spend: a server with no Groq key fails without charging.
+    getGroq();
+    const callModel = createGroqModelCaller();
+
+    try {
+      charge = await chargeOneCredit(req.userId, req.userEmail, 'Job fit analysis');
+    } catch (spendError) {
+      // Nothing was spent and nothing is analysed. server/lib/credits.js has
+      // logged why (by name, for a missing migration 007).
+      return res.status(spendError?.statusCode || 503).json({ error: spendError?.message || 'Could not check your credits.' });
     }
 
     const trace = startTrace({
@@ -151,8 +166,6 @@ router.post('/api/jobs/explain', requireAuth, async (req, res) => {
       metadata: { requestId: req.id || null },
       tags: ['explain'],
     });
-
-    const callModel = createGroqModelCaller();
 
     // The full description goes to the model here and nowhere else.
     //
@@ -184,7 +197,7 @@ router.post('/api/jobs/explain', requireAuth, async (req, res) => {
         }
       } catch (readError) {
         // A missing description degrades the analysis; it must not fail the
-        // request the user is about to be charged for.
+        // request the user has just been charged for.
         jobsLog.warn('explain description read threw', { errName: readError?.name });
       }
     }
@@ -246,10 +259,14 @@ router.post('/api/jobs/explain', requireAuth, async (req, res) => {
     } catch (parseError) {
       // Usually a reply cut off at the token cap. The parser's own message
       // ("Unterminated string in JSON at position …") means nothing to the
-      // user, and nothing has been charged yet.
+      // user. The credit was spent before the model ran and the catch below
+      // gives it back; Premium spent nothing, so its message says nothing
+      // about credits.
       jobsLog.warn('explain response did not parse', { errName: parseError?.name, chars: explainRaw.length });
       explainSpan?.update?.({ output: { error: 'unparseable' } }).end?.();
-      const incomplete = new Error('The fit analysis came back incomplete. Try again; no credit was used.');
+      const incomplete = new Error(charge.charged
+        ? 'The fit analysis came back incomplete. Try again; your credit was given back.'
+        : 'The fit analysis came back incomplete. Try again.');
       incomplete.statusCode = 502;
       throw incomplete;
     }
@@ -289,28 +306,22 @@ router.post('/api/jobs/explain', requireAuth, async (req, res) => {
       }
     }
 
-    // Generation succeeded. Charge now — and from here on, any failure refunds.
-    charge = await chargeOneCredit(req.userId, req.userEmail, 'Job fit analysis');
-
-    try {
-      const payload = {
-        fitAnalysis: typeof explained?.fitAnalysis === 'string' ? explained.fitAnalysis : '',
-        gaps: Array.isArray(explained?.gaps) ? explained.gaps : [],
-        strengths: Array.isArray(explained?.strengths) ? explained.strengths : [],
-        tailoringSuggestions,
-        creditsRemaining: charge.remaining === Infinity ? null : charge.remaining,
-        isPremium: charge.remaining === Infinity,
-      };
-      trace?.update?.({ output: { gaps: payload.gaps.length, strengths: payload.strengths.length } }).end?.();
-      await flushTracing();
-      return res.json(payload);
-    } catch (err) {
-      await refundOneCredit(req.userId, req.userEmail, 'Credit refunded (failed job fit analysis)', charge);
-      charge = null;
-      throw err;
-    }
+    const payload = {
+      fitAnalysis: typeof explained?.fitAnalysis === 'string' ? explained.fitAnalysis : '',
+      gaps: Array.isArray(explained?.gaps) ? explained.gaps : [],
+      strengths: Array.isArray(explained?.strengths) ? explained.strengths : [],
+      tailoringSuggestions,
+      // Premium's remaining is Infinity (CLAUDE.md rule 3): null on the wire.
+      creditsRemaining: Number.isFinite(charge.remaining) ? charge.remaining : null,
+      isPremium: charge.remaining === Infinity,
+    };
+    trace?.update?.({ output: { gaps: payload.gaps.length, strengths: payload.strengths.length } }).end?.();
+    await flushTracing();
+    return res.json(payload);
   } catch (error) {
-    if (charge?.charged) {
+    // Paid for and not delivered: give the credit back, once (a no-op on
+    // Premium). Only this catch refunds, and only a spend that happened.
+    if (charge) {
       await refundOneCredit(req.userId, req.userEmail, 'Credit refunded (failed job fit analysis)', charge);
     }
     const status = error?.statusCode || 502;

@@ -63,6 +63,11 @@ status: `HANDOVER.md`.
 - Install: `npm install && npm run server:install`
 - Build extension → `dist/`: `npm run build` (needs `.env` first)
 - Build website → `dist-dashboard/`: `npm run build:dashboard`
+- Store release → `release/onextap-<version>.zip`: `npm run build:release`.
+  Refuses unless `.env` holds production's addresses (pass/fail per variable,
+  never a value), then builds `dist-release/` without localhost, scans it for
+  secrets and localhost, checks the manifest against 1.0.2's permissions, and
+  prints the zip's SHA-256.
 - Website dev server: `npm run dev` (keep :5173, the only local origin
   `externally_connectable` allows); extension's: `npm run dev:extension`
 - Backend with reload: `npm run server:dev`
@@ -78,9 +83,10 @@ status: `HANDOVER.md`.
 - **E2E: `npm run test:e2e`** — landing + company pages, and the dashboard's
   cover-letter credits, against stubs.
 - **E2E, extension loaded: `npm run test:e2e:extension`** — dashboard →
-  extension profile sync, popup autofill, popup cover letters (signed out:
-  to the dashboard and back; signed in: credits), against stubs; plus a
-  `legacy` project against store 1.0.2, skipped unless
+  extension profile sync, popup autofill, the popup's read-only Cover tab
+  (to the dashboard and back), the job-page button's handoff
+  (`cover-handoff.spec.js`) and the account deletion's wipe, against stubs;
+  plus a `legacy` project against store 1.0.2, skipped unless
   `E2E_LEGACY_EXTENSION_PATH` is set. Needs port 5173 free.
 - **Lint: `npm run lint`** (ESLint 9, flat `eslint.config.js`):
   correctness only, no style rules, no Prettier. `no-console` is an error

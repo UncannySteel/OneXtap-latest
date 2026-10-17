@@ -4,6 +4,10 @@ node_modules/
 # Build outputs
 dist/
 dist-dashboard/
+# npm run build:release: the store build and its zip. Anchored, so
+# test/release/ is not ignored with them.
+/dist-release/
+/release/
 *.crx
 *.pem
 

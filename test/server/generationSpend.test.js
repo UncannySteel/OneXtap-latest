@@ -51,7 +51,7 @@ test('the amounts are the product’s: 3 improvements, 1 re-run, nothing for exp
   assert.equal(FOLLOW_UP_DAYS, 30);
 });
 
-/** A job context as both front ends write it (cover-letter.js's jobContextFor(), CoverLetterPanel.jsx). */
+/** A job context as the dashboard writes it (cover-letter.js's jobContextFor(); the pre-1.0.4 popup wrote the same). */
 const contextFor = (company, role, description) =>
   `${company ? `Organization: ${company}\n` : ''}${role ? `Role: ${role}\n\n` : ''}${description.substring(0, 6000)}`;
 

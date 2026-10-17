@@ -8,10 +8,10 @@
 //   handle(msg, context) → the reply, { success: true, ... } or
 //               { success: false, error }
 //
-// A new message is a module and a line in MESSAGES. (B3 adds
-// OPEN_COVER_CUSTOMIZER, GET_COVER_HANDOFF and ONEXTAP_WIPE_LOCAL here;
-// MOUNT_COVER_BUTTON goes from the popup to the content script and never
-// passes through the worker.)
+// A new message is a module and a line in MESSAGES. (MOUNT_COVER_BUTTON is
+// not here: it goes from the popup to the content script and never passes
+// through the worker.) A handler also gets the message's `sender`:
+// the cover-letter handoff opens the dashboard next to the sender's tab.
 
 import { senderKind } from './senders.js';
 import syncData from './syncData.js';
@@ -19,6 +19,9 @@ import parseResume from './parseResume.js';
 import scrapeActiveTab from './scrapeActiveTab.js';
 import generateImprovedAnswer from './generateImprovedAnswer.js';
 import hello from './hello.js';
+import openCoverCustomizer from './openCoverCustomizer.js';
+import getCoverHandoff from './getCoverHandoff.js';
+import wipeLocal from './wipeLocal.js';
 
 export const MESSAGES = [
   // 1.0.2's four. Today's production website sends the first three, so their
@@ -29,6 +32,9 @@ export const MESSAGES = [
   generateImprovedAnswer,
   // Protocol 2.
   hello,
+  openCoverCustomizer,
+  getCoverHandoff,
+  wipeLocal,
 ];
 
 const BY_KIND = new Map(MESSAGES.map((m) => [m.kind, m]));
@@ -69,7 +75,7 @@ export async function dispatch(msg, sender, channel, context) {
       return { success: false, error: `Not accepted from this sender: ${kind}` };
     }
 
-    return await message.handle(msg, { ...context, capabilities: CAPABILITIES });
+    return await message.handle(msg, { ...context, capabilities: CAPABILITIES, sender });
   } catch (err) {
     // Safety net — never let an exception escape without a response
     log.error('unhandled error in message handler', err, { kind });

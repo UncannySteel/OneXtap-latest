@@ -6,10 +6,10 @@ const log = baseLog.child('ui');
 /**
  * The corpus half of the fabrication check, in plain JS.
  *
- * Lifted out of components/shared/FabricationNotice.jsx, which re-exports it,
- * so the website's dashboard (plain JS, no React) builds the same request body
- * the popup does. The notice itself is presentation and stays with each
- * surface; what goes to the server has to be identical on both.
+ * Plain JS so the website's dashboard (no React) can use it: its Answer Studio
+ * and Cover Letter workspaces send the same corpus. (It began in the popup's
+ * fabrication notice, which went with the popup's AI in 1.0.4.) The notice
+ * itself is presentation, web/dashboard/js/ui/fabrication.js.
  */
 
 /**

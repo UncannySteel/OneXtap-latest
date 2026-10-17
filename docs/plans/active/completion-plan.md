@@ -19,7 +19,7 @@ Run batch B<N> of docs/plans/active/completion-plan.md.
 | B0 | Baseline and guardrails | no | M | done 2026-10-16 (checkpoint 10) | see `git log --grep "checkpoint 10"` |
 | B1 | Server split ∥ website fixes ∥ extension protocol | no | L | done 2026-10-17 (checkpoint 11) | see `git log --grep "checkpoint 11"` |
 | B2 | Server: charging, billing, AI quality | no | L | done 2026-10-17 (checkpoint 12) | see `git log --grep "checkpoint 12"` |
-| B3 | Extension 1.0.4: job-page button, popup, wipe, release tooling; Explain spends first (B3-D) | no | L | not started | |
+| B3 | Extension 1.0.4: job-page button, popup, wipe, release tooling; Explain spends first (B3-D) | no | L | done 2026-10-18 (checkpoint 13) | see `git log --grep "checkpoint 13"` |
 | B4 | Owner session A: real services on the dev project | yes, ~90 min | M | not started | |
 | B5 | Docs, deploy checklist, final review | no | M | not started | |
 | B6 | Owner session B: release-candidate build | yes, ~20 min | S | not started | |
@@ -129,6 +129,36 @@ know) go here, newest last:
   wider replacement, the 500 that makes Dodo redeliver) are kept. Cover
   letters sent as answers (1 credit, up to 4 generations) are accepted as a
   known gap. Linking when Dodo can't be asked on the first read is kept.
+- **B3: baseline for B4.** `npm run lint` 0 errors, 0 warnings (the old
+  warning went with the popup code it flagged); `npm test` 994/0/2;
+  `test:e2e` 200 pass / 10 skipped / 0 fail; `test:e2e:extension` 12 of 12 (3 `cover-handoff`,
+  6 `extension`, 3 `legacy`). The usage limit didn't stop the builders
+  this time; each was resumed once by `SendMessage` for review fixes.
+- **B3: the worker may import two `src/` files.** `src/localKeys.js` (every
+  key Onextap writes to `chrome.storage.local`; the stores import their key
+  from it) and `src/supabaseSessionKey.js`, both import-free.
+  `docs/repo-structure.md` rule 2 names the exception and
+  `test/extension/workerImports.test.js` holds it. A new key in
+  `chrome.storage.local` goes into `src/localKeys.js`, or
+  `test/extension/localKeys.test.js` fails.
+- **B3, for B4 (by hand, with the extension loaded and real services):**
+  the job-page button on real boards (Greenhouse, Lever, Ashby, Workday,
+  LinkedIn): whether it mounts, where it sits, and the company and role it
+  reads. The e2e's job page is on `localhost:3001`, a `host_permissions`
+  origin, so the release build's real path (activeTab from the popup's
+  click, on a board outside `host_permissions`) is only checked by hand. The
+  handoff into a signed-out dashboard through Google sign-in. "Explain my
+  fit" spending first against migration 007 (a charge; 403 at zero; one
+  refund on a failed analysis). Deleting an account with 1.0.4 loaded (the
+  wipe) and with 1.0.2 (the "keeps" line).
+- **B3, for B5 and B6:** `npm run build:release` reads `.env` the way the
+  build does (Vite's `loadEnv`: `.env`, `.env.local`, `.env.production*`,
+  shell `VITE_*`). A publishable anon key passes step 1 with a "confirm it is
+  itqaozltgsyvjhlcllic's" line, since such a key doesn't name its project:
+  B6 confirms it by hand. The scanner allows three exact literals every
+  build carries (supabase-js's `http://localhost:9999`, quoted bare
+  `localhost`/`127.0.0.1` comparisons). The deploy checklist (B5) records
+  the zip's SHA-256 from B6's run.
 
 ---
 

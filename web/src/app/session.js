@@ -1,28 +1,20 @@
 /* --- is anyone signed in? ------------------------------------------------------
    The pure half of backend.js's hasSession(), kept apart so a Node test can
-   load it: no imports, no import.meta.
+   load it: no import.meta, and one import, of a module with none.
 
    The landing page decides between "Log in" and "Dashboard" on first paint,
    and Supabase's SDK only loads on the first sign-in (backend.js), so it
-   cannot ask the client which key the session is under. It works the key out
-   the way the client does instead: src/supabaseClient.js sets no
-   `storageKey`, so supabase-js keeps the session under its default,
-   sb-<first label of the project's hostname>-auth-token.
+   cannot ask the client which key the session is under. It reads the key
+   from the function the client is configured with:
+   src/supabaseClient.js passes supabaseStorageKey() as its `storageKey`.
+   Imported by a relative path, not @app, so Node can load this file bare.
 
-   test/web/session.test.js holds the two together: it builds a real client
-   with src/supabaseClient.js's options and compares keys, and it fails the
-   day src/supabaseClient.js chooses a key of its own. */
+   test/web/session.test.js holds the key to supabase-js's own default (so
+   naming it moved no session) and to src/supabaseClient.js's options. */
 
 /** The key Supabase's client keeps the session under for this project URL;
  *  null when there is no usable URL (a build without Supabase settings). */
-export function supabaseStorageKey(supabaseUrl) {
-  if (typeof supabaseUrl !== 'string' || !supabaseUrl.trim()) return null;
-  try {
-    return 'sb-' + new URL(supabaseUrl).hostname.split('.')[0] + '-auth-token';
-  } catch {
-    return null;
-  }
-}
+export { supabaseStorageKey } from '../../../src/supabaseSessionKey.js';
 
 /* A stored session with a refresh token counts: the access token inside it may
    have lapsed, but the dashboard's client refreshes it on load, and if that

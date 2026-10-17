@@ -11,9 +11,7 @@
  */
 
 import { storage } from './storage';
-
-const COOKIE_NOTICE_SEEN_KEY = 'onextap_cookie_notice_seen';
-const ANALYTICS_CONSENT_KEY = 'onextap_analytics_consent';
+import { COOKIE_NOTICE_SEEN_KEY, ANALYTICS_CONSENT_KEY } from './localKeys.js';
 
 /** @returns {Promise<boolean>} Whether the cookie notice has been dismissed. */
 export async function hasSeenCookieNotice() {

@@ -7,6 +7,7 @@
     "dev:extension": "vite",
     "build": "vite build",
     "build:dashboard": "vite build --config vite.dashboard.config.js",
+    "build:release": "node scripts/build-release.mjs",
     "preview": "vite preview --config vite.dashboard.config.js",
     "server": "npm start --prefix server",
     "server:dev": "npm run dev --prefix server",

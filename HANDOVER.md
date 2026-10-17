@@ -909,6 +909,176 @@ real database. The 27 s rank's cause is inferred from the code, not measured.
 B3 of docs/plans/active/completion-plan.md.` B4 applies migration 007 to the
 dev project before anything else.
 
+### Checkpoint 13 (2026-10-18, session 10): B3, extension 1.0.4
+
+Batch B3 of the completion plan. Four builders in worktrees (B3-A the
+job-page button and the handoff, B3-B the popup and the wipe, B3-C release
+tooling, B3-D "Explain my fit" spends first). Merged D → C → B → A. Both A and
+B added worker messages, so the registry, its routing test and the protocol
+table conflicted; the lead resolved them. B3-B was sent back once before its
+merge. Its first version had the service worker import the stores to read
+their key names, which pulled storage, matching and logger code into the
+worker (16.9 KB + 7.3 KB, now 9 KB + 0.4 KB). Reviewed (`code-review` at
+high, 6 findings) and audited (every criterion passed except the CLAUDE.md
+line, done at close-out; two partial). The fixes went back to the builders,
+and the gate was re-run on the result.
+
+- **The job-page button (D2 to D4).** When the popup opens on an http(s)
+  page (`MOUNT_COVER_BUTTON`) and after Autofill, `public/content.js` mounts
+  one "Customize cover letter" button under a cover-letter field. The field
+  is found by `FILL_COVER_LETTER`'s keyword pass. Its fallback (the largest
+  empty textarea) is left out here: it would put a button under any textarea.
+  - The host is appended to `<body>` (`position: fixed`, closed shadow root,
+    text only).
+  - It follows the field and hides when the field is hidden, disabled or
+    read-only, sits in a modal dialog or popover, or has a fixed or sticky
+    element over its spot.
+  - Top frame only, never on the Onextap site, and gone until reload once
+    dismissed (×).
+  - A click reads the company and description (`scrapePageContext()`) and
+    the role (a new `scrapeRole()`, the button's only), then sends
+    `OPEN_COVER_CUSTOMIZER`. That is content-script only, top frame only.
+  - The worker keeps the job sanitised in `chrome.storage.session` under
+    `coverHandoff:<uuid>` (markup stripped; capped at 120 / 160 / 20,000;
+    http(s) `url` only) and opens `/dashboard/?view=cover&handoff=…&extensionId=…`
+    next to the job's tab.
+  - The dashboard keeps the id in `sessionStorage` through sign-in and asks
+    `GET_COVER_HANDOFF` (site only; one read; 30 minutes), but only of a
+    `current` extension with `cover-handoff`. It fills company, role and
+    description and says "Filled from the job page: check it before
+    personalising". Expired and unreachable get plain messages of their own.
+  - The letter goes back through the popup's Fill (D4).
+- **The popup (D5, D6; §7 items 27 and 28).** The Cover tab is read-only:
+  - templates;
+  - saved versions, newest first, with Fill, and Open (read-only, with Copy
+    and Fill);
+  - "Manage templates on the dashboard".
+  Upload, Add, Edit, Delete and the dormant signed-in AI path are gone
+  (`FabricationNotice.jsx` deleted; `src/auth.js`, `src/coverLetterCredits.js`
+  and the worker's `GENERATE_IMPROVED_ANSWER` kept). The baseline's one lint
+  warning went with that code.
+- **The wipe (§7 item 10, D10).**
+  - `src/localKeys.js` lists every key Onextap writes to
+    `chrome.storage.local`:
+    - profiles and `user_profile`;
+    - resumes;
+    - the application type and the consent flags;
+    - the Supabase session;
+    - store 1.0.2's `onextap_tutorial_seen`.
+  - The stores import their key from it, so each string exists once.
+  - `src/supabaseClient.js` now names its `storageKey`, with supabase-js's
+    default value, so no session moves (§7 item 23).
+  - `ONEXTAP_WIPE_LOCAL` (site only, capability `wipe-local`) removes those
+    keys.
+  - The dashboard sends it after `DELETE /api/account` succeeds. The dialog
+    says which case applies: cleared, kept by an old extension, or none here.
+    If a promised wipe fails, a toast says so before the page goes home.
+  - Deleting now goes home once. It used to navigate twice: the sign-out
+    handler, then its own.
+  - Not cleared: 1.0.2's `onextap_dark_mode`, in the popup page's own
+    `localStorage`, which a worker cannot reach (not profile data); pending
+    handoffs, which expire.
+- **The worker and `src/`.** `docs/repo-structure.md` rule 2 has one
+  exception now: the worker imports `src/localKeys.js` and
+  `src/supabaseSessionKey.js`, both import-free.
+  `test/extension/workerImports.test.js` holds that, and checks that
+  `content.js` imports nothing.
+- **Release tooling (D10's localhost item; §7 item 13).**
+  - `extension/manifest.json` is 1.0.4.
+  - `ONEXTAP_RELEASE=1` builds `dist-release/` with no localhost in the
+    manifest. Dev builds are byte-identical.
+  - `npm run build:release` runs five steps:
+    1. The environment check: pass/fail per variable, never a value. It reads
+       the env as the build does (Vite's `loadEnv`).
+    2. The build.
+    3. A scan for localhost, a `service_role` JWT, and secret key shapes and
+       names.
+    4. The manifest, against pinned lists.
+    5. A zip with the system `tar`, and its SHA-256.
+  - With the dev `.env` it refuses at step 1.
+- **"Explain my fit" spends first (B3-D, the owner's answer at checkpoint
+  12).** The order is now validate, spend (kind `explain`, no follow-ups),
+  model.
+  - Out of credits is 403, migration 007 missing is 503, both before the
+    model.
+  - A failed analysis gets exactly one refund.
+  - The balance pre-check is gone.
+  - Premium pays nothing.
+  - The response shape is kept.
+  - A server with no Groq key refuses before the spend.
+  - The incomplete-analysis message now says the credit was given back.
+- **From the review and the audit, fixed:**
+  - the failed wipe was silent after the dialog had promised it;
+  - 1.0.2's tour flag wasn't on the list;
+  - a top-layer form got a button it couldn't show, and a field disabled
+    without a size change kept its button (now a `MutationObserver`);
+  - the release check called a publishable key's project verified;
+  - Explain's message still said "no credit was used";
+  - stale comments about the removed popup path;
+  - CLAUDE.md's commands.
+- **Lead glue:** the comments that still described Explain's old order; the
+  merged protocol table and routing test; the protocol doc's test list.
+- **Accepted, not fixed:**
+  - The worker derives the dashboard URL itself: it can't import
+    `src/config.js`.
+  - The button hides under a sticky bar inside the same form.
+  - It drifts off its field after a scroll on a page with a `transform` on
+    `html` or `body`.
+  - A field hidden by an ancestor's class change is noticed only at the next
+    scroll or resize.
+  - The last three are in `docs/extension-protocol.md`.
+- **Deviations from the plan:**
+  - the keyword-only field detection above;
+  - `MOUNT_COVER_BUTTON` answers `{success: true, mounted}`;
+  - handlers receive the `sender`;
+  - the worker's `src/` exception;
+  - the avatar isn't on the key list (it lives in the site's `localStorage`,
+    which deletion clears);
+  - the scanner's three allowed localhost literals, which every build carries
+    (supabase-js's unused default auth URL, and quoted bare-hostname
+    comparisons);
+  - `loadEnv` rather than plain dotenv;
+  - the release check also pins `externally_connectable` and refuses optional
+    permissions and secret-named `VITE_*` variables.
+
+**Verified:** baseline: lint 0 errors / 1 warning; `npm test` 864/0/2. After:
+- lint 0 errors / 0 warnings;
+- `npm test` 994 pass, 0 fail, 2 skipped;
+- both builds (`dist/` says 1.0.4);
+- `test:e2e` 200 pass, 10 skipped, 0 fail;
+- `test:e2e:extension` 12 of 12: `cover-handoff` 3, the whole chain (job
+  page → button → dashboard prefilled → personalise → save → popup Cover
+  tab → Fill); `extension` 6, the read-only Cover tab, the wipe, and a
+  failed wipe told to the user; `legacy` 3, against store 1.0.2;
+- `/api/health` 200 with an `X-Request-Id`;
+- `npm run build:release` with the dev `.env` refuses at step 1 (three URL
+  lines fail; the key line asks for a check by hand).
+
+The gate ran twice: after the merge, and after the review fixes. The
+first website run had one failure, `net::ERR_NETWORK_IO_SUSPENDED` in the
+landing's feedback-window test (untouched by B3), which passed when re-run; and the second extension run had one test time out at 90 s yet take 11 minutes (the machine paused mid-run), which passed with the rest, 12 of 12, when re-run.
+The button was screenshotted in Chromium with the extension loaded, on the
+e2e's fixture job page.
+
+**Not verified:**
+- Nothing against real services, by design (B4).
+- The button on real job boards.
+- The release build's own path: activeTab after the popup's click, on a board
+  outside `host_permissions`. The e2e's page is on a host-permission origin.
+- The release zip itself: it needs production's `.env` (B6).
+- The wipe on an install updated from 1.0.2 by the store.
+
+**Open questions at the checkpoint:**
+1. The button's wording and placement (the screenshot). It sits 6 px under
+   the field's left edge, and on the fixture it covers the next field's
+   label. Keep it, or move it: to the right end of the field's label line, or
+   inside the field's bottom-right corner?
+
+**Next:** batch B4, the owner session on the dev project (about 90 minutes).
+Open a new session and paste: `Run batch B4 of
+docs/plans/active/completion-plan.md.` It applies migration 007 to the dev
+project first.
+
 ---
 
 ## 1. What was asked, and what was decided
@@ -1108,10 +1278,17 @@ Behaviour only; the design is untouched.
   (`npm run test:e2e:extension`, checkpoint 7):
   - dashboard save → the extension's profile store → the popup → autofill
     of a form with the dashboard's latest edit (§7 item 1);
-  - the popup's cover-letter credits, with a session put in place by hand
-    (§7 items 8 and 27);
   - signed out, the popup's Cover Letter tab → the dashboard's workspace →
-    a saved version → back in the popup, filled into a form (checkpoint 8).
+    a saved version → back in the popup, filled into a form (checkpoint 8);
+    the tab read-only since checkpoint 13 (templates, saved versions, Open,
+    Copy, Fill);
+  - the job-page button (checkpoint 13): a fixture job page → the button →
+    the dashboard prefilled → personalise → save → the popup → Fill; the
+    handoff through sign-in, read once; no button without a cover-letter
+    field or on the Onextap site;
+  - deleting the account wipes the extension's keys and nothing else; a
+    deletion the server refuses leaves it alone; a failed wipe is told to
+    the user (checkpoint 13).
 
 **Against real services, 2026-10-10** (a dev Supabase project, Dodo in test
 mode, real Groq and Gemini; checkpoint 9 has the detail):
@@ -1148,8 +1325,11 @@ mode, real Groq and Gemini; checkpoint 9 has the detail):
   messages its worker answers, its manifest, its links); before that, this
   document's claims came from reading `main` (§7 item 1). Checkpoint 10 keeps
   an unpacked copy for the legacy e2e tests B1 adds.
-- **The popup's cover-letter credits for a real user**: no user can reach
-  them (§7 item 27), and the check was dropped at checkpoint 9.
+- **The popup's cover-letter AI**: removed at checkpoint 13 (no popup
+  sign-in, D5; §7 item 27). Nothing to check.
+- **The job-page button on real job boards**, and the release build's own
+  path to it (activeTab after the popup's click, on a board outside
+  `host_permissions`): B4, by hand.
 - Safari and Firefox.
 
 **Unit tests (`npm test`) on this machine** (Node 25, Windows):
@@ -1180,9 +1360,15 @@ mode, real Groq and Gemini; checkpoint 9 has the detail):
   Keyless evals (`npm run evals`) unchanged: 8 pass, 2 skipped (the LLM
   evals, opt-in), fabrication recall 100%, false positives 0%, profile
   fields 94.6%.
+- **Checkpoint 13: 994 pass, 0 fail, 2 skipped.** The 130 new ones: the
+  cover-letter handoff (sanitising, expiry, the one-time read, the sender
+  and top-frame checks, static checks on the button), the wipe and its key
+  list, the worker's imports, the release manifest, scanner and script, and
+  "Explain my fit" spending first through the harness. **Lint:** 0 errors,
+  0 warnings.
 
 **E2E (`npm run test:e2e`)**, at checkpoint 5, and again at checkpoint 10: 188 pass, 10 skipped
-(197 at checkpoint 11, with the new copy tests; 200 at checkpoint 12, with Answer Studio's server-side charging)
+(197 at checkpoint 11, with the new copy tests; 200 at checkpoint 12, with Answer Studio's server-side charging; 200 at checkpoint 13)
 (keyboard and wheel tests on the phone profile), 0 fail, across desktop
 Chromium, phone Chromium and WebKit. It covers the landing page, its company
 pages, the 404 page, the account flows (sign-up's name, forgot password, the
@@ -1195,11 +1381,12 @@ the markup pass `toHaveText` while the card is hidden.
 **E2E with the extension (`npm run test:e2e:extension`)**, from checkpoint 7:
 3 tests since checkpoint 8, 15 of 15 over five repeats (3 of 3 again at checkpoint 10; since
 checkpoint 11 a `legacy` project adds 3 against the real store 1.0.2, skipped unless
-`E2E_LEGACY_EXTENSION_PATH` is set: 6 of 6), in Chromium with the
+`E2E_LEGACY_EXTENSION_PATH` is set: 6 of 6; 12 of 12 at checkpoint 13, with
+`cover-handoff.spec.js` and the delete-account tests), in Chromium with the
 extension loaded unpacked. It builds its own copy of the extension with unresolvable
 addresses, runs the website on 5173 (it stops if something is already
-there), and uses the same stubs. A sign-in to the popup is put in place by
-hand, since the popup has none (§7 item 27).
+there), and uses the same stubs. The job page is served by a route on
+`localhost:3001`, a `host_permissions` origin of the dev manifest.
 
 ---
 
@@ -1215,7 +1402,8 @@ hand, since the popup has none (§7 item 27).
    - the live webhook endpoint is `https://www.onextap.com/api/webhook`, and `DODO_PAYMENTS_WEBHOOK_KEY` in Vercel is the live endpoint's secret, copied with Dodo's button (§9 lists the two ways this broke on dev).
 4. **Vercel**: same env var names; `VITE_DASHBOARD_URL` and `CLIENT_URL` stay the site origin.
 5. **Chrome Web Store**:
-   - **the published version is 1.0.2** (not 1.0.3: `docs/plans/active/completion-plan.md` §2), and the site must keep working with it. The owner decided at planning (session 6) that 1.0.4 is built and fully tested, and that submitting it is their later call; the plan stops at a release zip. What follows describes what that release carries: checkpoint 2's profile-sync fix and checkpoint 8's dashboard link in the popup's Cover Letter tab (§7 item 27). Until it ships, the published popup (1.0.2) still misses dashboard edits made after it first opened. §7 item 28 (popup-made templates lost at the next dashboard save) is decided: option a, popup templates become read-only;
+   - **the published version is 1.0.2** (not 1.0.3: `docs/plans/active/completion-plan.md` §2), and the site must keep working with it. The owner decided at planning (session 6) that 1.0.4 is built and fully tested, and that submitting it is their later call; the plan stops at a release zip. What follows describes what that release carries: checkpoint 2's profile-sync fix, checkpoint 8's dashboard link in the popup's Cover Letter tab (§7 item 27), and checkpoint 13's job-page button, read-only popup templates (§7 item 28) and the wipe on account deletion (§7 item 10). Until it ships, the published popup (1.0.2) still misses dashboard edits made after it first opened;
+   - build it with `npm run build:release` on production's `.env` (it refuses anything else, and asks for the publishable key's project to be confirmed by hand), and upload `release/onextap-1.0.4.zip`, noting its SHA-256;
    - it also links straight to `/dashboard/` (the landing forwards the old link meanwhile);
    - point the listing's privacy URL at `/privacy/` (the old URL redirects).
 6. **Check `docs/app-flow.md` against the real run** (§7, item 4; the run happened at checkpoint 9), and fix it where they disagree.
@@ -1277,9 +1465,9 @@ Both are unit-tested with Dodo and Supabase faked; neither has met a real double
 
 **7. Supabase redirect allowlist.** Google sign-in and email confirmation depend on the configuration in §6. Without `/dashboard/` on the allowlist, Supabase falls back to the site root and the landing forwards the tokens. At checkpoint 9, email confirmation and the reset link worked on the dev project with the `localhost` entries; Google and the production allowlist are untested. This path was tested only against the mock.
 
-**8. ~~Cover-letter personalisation never spends a credit.~~ Done at checkpoint 3**, by the owner's decision: 1 credit buys a personalisation plus 1 free re-run, on the dashboard and in the popup (§0). The dashboard's half passed against real services at checkpoint 9; the popup's half reaches no store user (item 27). The popup's half is checked with the extension loaded (checkpoint 7), but no user reaches it until item 27 is settled, and then only with a new extension release (§6).
+**8. ~~Cover-letter personalisation never spends a credit.~~ Done at checkpoint 3**, by the owner's decision: 1 credit buys a personalisation plus 1 free re-run, on the dashboard and in the popup (§0). The dashboard's half passed against real services at checkpoint 9; the popup's half reaches no store user (item 27). The popup's half was never reachable (item 27) and was removed at checkpoint 13: personalising is on the dashboard only.
 
-**27. The popup cannot sign in, so its cover-letter AI is unreachable.** Pre-existing. Found at checkpoint 7. (Since checkpoint 9, with no release planned, the fix below reaches no store user; the same goes for item 28.) **The owner chose a) at checkpoint 8, and it is done:** signed out, the popup's Cover Letter tab says personalising is on the dashboard and opens its Cover Letter workspace (with `?extensionId=`, so versions saved there sync back to the popup's "Saved versions", ready to fill). The signed-in path is kept, dormant, for a sign-in later (option b). Reaches users with the next extension release.
+**27. The popup cannot sign in, so its cover-letter AI is unreachable.** Pre-existing. Found at checkpoint 7. (Since checkpoint 9, with no release planned, the fix below reaches no store user; the same goes for item 28.) **The owner chose a) at checkpoint 8, and it is done:** signed out, the popup's Cover Letter tab says personalising is on the dashboard and opens its Cover Letter workspace (with `?extensionId=`, so versions saved there sync back to the popup's "Saved versions", ready to fill). The signed-in path was kept, dormant, for a sign-in later (option b), **and removed at checkpoint 13** (D5: no popup sign-in; it stays in git history). Reaches users with the next extension release (1.0.4).
 - **Cause:** the popup keeps its own Supabase session in `chrome.storage.local` (`src/supabaseClient.js`), and nothing in it signs in: `signIn` and the extension's Google flow in `src/auth.js` (`chrome.identity.launchWebAuthFlow`) have no caller. Signing in on the website stores the session in the website's `localStorage`, which the extension cannot read. At `bae4abc` the only caller was the old dashboard rendered inside the extension at `?mode=dashboard`, which no button opened; this branch sends that address to the website.
 - **Result:** in the popup's Cover Letter tab, "Personalize" stays greyed out, with no word of why. Templates, saved versions and "Fill page" still work. Autofill needs no session and is unaffected.
 - **Options (the owner's call):**
@@ -1287,7 +1475,7 @@ Both are unit-tested with Dodo and Supabase faked; neither has met a real double
   - **b)** A sign-in in the popup: email and password, plus Google through the existing `launchWebAuthFlow` path (needs `https://<extension-id>.chromiumapp.org/` on Supabase's Redirect URLs, §9). The user signs in twice, once per surface; logging out of one leaves the other signed in.
   - **c)** Hand the website's session to the extension over `externally_connectable`. One sign-in, but both clients would then hold one refresh token, and Supabase rotates refresh tokens and can revoke the whole session when a used one comes back, signing out both. It also puts tokens on the extension's message channel. Not recommended without a design of its own.
 
-**28. A cover-letter template made in the popup is lost at the next dashboard save.** Found at checkpoint 8. A side effect of checkpoint 2's sync fix (item 1); not released yet.
+**28. A cover-letter template made in the popup is lost at the next dashboard save.** Found at checkpoint 8. A side effect of checkpoint 2's sync fix (item 1); not released yet. **Fixed at checkpoint 13 with option a (D6):** the popup's templates are read-only, with "Manage templates on the dashboard"; nothing is made or edited there, so nothing is lost. Reaches users with 1.0.4.
 - **Cause:** `fileSyncedProfile()` (`extension/profileSync.js`) replaces the extension profile's `coverLetters` with the dashboard's list, and the dashboard's list never holds the popup's templates: nothing syncs from the extension to the website.
 - **Result:** a template added or uploaded in the popup, or an edit made to one there, disappears the next time the user saves on the dashboard (profile, answers or cover letters) with the extension connected. Templates and versions made on the dashboard are fine, and that is now where item 27 sends people.
 - **Options (the owner's call; CLAUDE.md asks first for changes to the sync):**
@@ -1297,7 +1485,7 @@ Both are unit-tested with Dodo and Supabase faked; neither has met a real double
 
 **9. Logging out deletes this browser's profiles** (`user_profile` and `onextap_profiles`). Resumes and the avatar stay. **Decided at checkpoint 2: keep it** (the backend's behaviour).
 
-**10. "Delete account" clears only this browser.** The extension's `chrome.storage` copy and other devices keep their local data. The dialog now says so.
+**10. "Delete account" clears only this browser.** The extension's `chrome.storage` copy and other devices keep their local data. The dialog now says so. **Fixed at checkpoint 13 for 1.0.4 (D10):** after `DELETE /api/account` succeeds, the dashboard sends `ONEXTAP_WIPE_LOCAL`, and 1.0.4 removes every key on `src/localKeys.js`. The dialog says which case applies (cleared, kept by an older extension, none here), and a failed wipe is told in a toast. Store 1.0.2 can't be cleared from the page, and other devices still keep their copies.
 
 **11. `npm test` failed on this machine for three environmental reasons.** All pre-existing, and all reproduce on the untouched original:
 - ~~**Node 25 exposes a global `localStorage`**~~ — fixed at checkpoint 1 (`src/storage.js` checks for `getItem`).
@@ -1306,7 +1494,7 @@ Both are unit-tested with Dodo and Supabase faked; neither has met a real double
 
 **12. The published extension (1.0.2) still opens `onextap.com/?extensionId=…`.** (Checked in its installed files at checkpoint 10: it opens `https://www.onextap.com?extensionId=<id>`.) The landing forwards it to the dashboard (tested). A new release links straight to `/dashboard/`. Publishing is the owner's call.
 
-**13. `dist/` was built here without a `.env`** at checkpoints 1 to 3; since checkpoint 6 with a `.env`, the production one until checkpoint 8 and the dev one since checkpoint 9. The rule below stands: build after the `.env` you mean. That build has no Supabase address, so its Supabase client cannot start (the dev dashboard without a `.env` stops on `supabaseUrl is required`; the popup uses the same `src/supabaseClient.js`). Run `npm run build` again once `.env` is in place, before loading the unpacked extension.
+**13. `dist/` was built here without a `.env`** at checkpoints 1 to 3; since checkpoint 6 with a `.env`, the production one until checkpoint 8 and the dev one since checkpoint 9. The rule below stands: build after the `.env` you mean. That build has no Supabase address, so its Supabase client cannot start (the dev dashboard without a `.env` stops on `supabaseUrl is required`; the popup uses the same `src/supabaseClient.js`). Run `npm run build` again once `.env` is in place, before loading the unpacked extension. **Checkpoint 13:** the store build has its own command, `npm run build:release`, which refuses unless `.env` holds production's addresses, so a release can't be built from the wrong one.
 
 ### Low
 
@@ -1335,7 +1523,7 @@ Both are unit-tested with Dodo and Supabase faked; neither has met a real double
 
 **22. No application-type picker on the web dashboard.** Job is the only live type, as in the backend. Bringing the others back needs a picker there as well as in the popup.
 
-**23. The landing's "signed in?" check reads Supabase's default storage key** (`sb-<ref>-auth-token`), in `web/src/app/backend.js`. A custom `storageKey` would break it. **Checkpoint 11:** worked out in one pure place, `web/src/app/session.js`, and `test/web/session.test.js` builds real supabase-js clients with `src/supabaseClient.js`'s options and fails if the keys ever differ, a custom `storageKey` included. Loading the SDK on the landing just to ask would cost its first paint. Still a derivation: an explicit key both sides import would remove it, a candidate for B3, whose wipe needs the same key.
+**23. The landing's "signed in?" check reads Supabase's default storage key** (`sb-<ref>-auth-token`), in `web/src/app/backend.js`. A custom `storageKey` would break it. **Checkpoint 11:** worked out in one pure place, `web/src/app/session.js`, and `test/web/session.test.js` builds real supabase-js clients with `src/supabaseClient.js`'s options and fails if the keys ever differ, a custom `storageKey` included. Loading the SDK on the landing just to ask would cost its first paint. **Fixed at checkpoint 13:** `src/supabaseSessionKey.js` computes the key once; `src/supabaseClient.js` passes it as its `storageKey` (the same value as supabase-js's default, so no session moved), and the landing and the extension's wipe import it.
 
 **24. ~~The website never installs the client logger's global handlers.~~ Fixed at checkpoint 3:** every website entry calls `installGlobalErrorHandlers()`, so uncaught errors go through the logger and `__onextapIssues()` works in the console there too.
 
@@ -1351,7 +1539,7 @@ Both are unit-tested with Dodo and Supabase faked; neither has met a real double
 - HTML vs HTML5: an explicit list of versioned names (`VERSIONED_NAMES` in `src/matching/lexicon.js`: html, css, php, vue, angular, bootstrap, webpack, java, swift, oauth) folds `html5`, `html-5`, `css3`, `vue3` and the like in extraction, in stored job terms and in the claim check. S3, EC2, Web3, ES6, D3, K8s, C++ and Python 2/3 are unchanged (tests). Plain "HTML5" already matched through an alias, so the chip seen in the real run may have been the model's.
 - The 27 s: a default rank is one model call writing ~3,600 tokens, so there is nothing independent to parallelise (splitting the batch would cost more of the 20-a-day Gemini quota and move scores). The likely cause is the model order: `server/.env.example`'s commented `GEMINI_RANK_MODELS` listed the slowest model first, and a model that can't finish 30 jobs inside `GEMINI_RANK_TIMEOUT_MS` (25 s) times out before the next one answers. The example line now matches the code's default order. Every stage is timed (debug logs and `meta.timings`); a broadening loop no longer re-scores jobs an earlier loop scored. The page now says "usually takes 10–30 seconds, and longer when the AI service is busy". To check in B4: the dev env's `GEMINI_RANK_MODELS` order (pass/fail only) and `meta.timings` from a real rank.
 
-**25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3. **Design written at checkpoint 4:** `docs/plans/active/server-side-generation-charging.md`. **The owner chose "not now" at checkpoint 5**; the hourly ceiling added then (`server/generateLimit.js`) bounds the quota damage, not the free drafts. **Decided at planning (D7), fixed in code at checkpoint 12 (B2), not applied anywhere:** the generate route spends before the model through `spend_generation()` (migration 007), gives the spend back through `undo_generation()` if the generation fails, and keeps the free improvements and re-runs on the server as allowances; `POST /api/credits/deduct` is a no-op that answers with the balance. "Explain my fit" spends through the same function. Until 007 is applied, both routes refuse with a 503 (fail closed). Details in §0, checkpoint 12. **Left open:** `kind` is the client's word, so a modified client can send cover letters as `answer` and get 3 untied follow-ups instead of 1 re-run (1 credit buys at most 4 generations, under the hourly cap; accepted by the owner at checkpoint 12); "Explain my fit" still charges after its analysis (the owner chose spend-first at checkpoint 12: batch B3, work package B3-D); a request the client gives up on after the server spent is charged with nothing shown (the 90 s client timeout; the Improve retry is bounded to stay well inside it); a refused generation still uses an hourly slot.
+**25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3. **Design written at checkpoint 4:** `docs/plans/active/server-side-generation-charging.md`. **The owner chose "not now" at checkpoint 5**; the hourly ceiling added then (`server/generateLimit.js`) bounds the quota damage, not the free drafts. **Decided at planning (D7), fixed in code at checkpoint 12 (B2), not applied anywhere:** the generate route spends before the model through `spend_generation()` (migration 007), gives the spend back through `undo_generation()` if the generation fails, and keeps the free improvements and re-runs on the server as allowances; `POST /api/credits/deduct` is a no-op that answers with the balance. "Explain my fit" spends through the same function, and since checkpoint 13 (B3-D) before its analysis, like the generate route. Until 007 is applied, both routes refuse with a 503 (fail closed). Details in §0, checkpoint 12. **Left open:** `kind` is the client's word, so a modified client can send cover letters as `answer` and get 3 untied follow-ups instead of 1 re-run (1 credit buys at most 4 generations, under the hourly cap; accepted by the owner at checkpoint 12); a request the client gives up on after the server spent is charged with nothing shown (the 90 s client timeout; the Improve retry is bounded to stay well inside it); a refused generation still uses an hourly slot.
 
 ### Found and fixed along the way (for the record)
 

@@ -14,7 +14,7 @@ import { signOut, onAuthStateChange } from '@app/auth.js';
 import { creditManager } from '@app/creditManager.js';
 import { storage } from '@app/storage.js';
 import { getActiveLegacyProfile } from '@app/profileStore.js';
-import { hasExtensionRuntime, syncProfileToExtension } from '@app/extensionClient.js';
+import { getExtensionInfo, hasExtensionRuntime, sendToExtension, syncProfileToExtension } from '@app/extensionClient.js';
 import { log as baseLog } from '@app/logger.js';
 
 const log = baseLog.child('dashboard');
@@ -223,25 +223,90 @@ export async function logOut() {
 }
 
 /**
- * Deletes the account on the server (DELETE /api/account: cancels any live
- * subscription, then the Supabase user and everything keyed to it), then
- * everything this browser holds for the dashboard, then goes home. Throws
- * with the server's message if the deletion did not happen — nothing local
- * is touched in that case.
+ * What deleting the account does to the extension in this browser, from its
+ * answer to ONEXTAP_HELLO (docs/extension-protocol.md, "The wipe"):
+ *   'wipes'  a current extension with `wipe-local`: its copy is cleared too;
+ *   'keeps'  one that cannot clear it (store 1.0.2, or a current build
+ *            without the capability): its copy stays until it is removed;
+ *   'none'   no extension answers from this page.
+ * The delete dialog's copy follows it; deleteAccount() asks again. Never
+ * rejects.
  */
-export async function deleteAccount() {
+export async function extensionWipeState() {
+  const { state, capabilities } = await getExtensionInfo();
+  if (state === 'current' && capabilities.includes('wipe-local')) return 'wipes';
+  return state === 'absent' ? 'none' : 'keeps';
+}
+
+/** How long the wipe may take before the deletion goes home without it. */
+const WIPE_TIMEOUT_MS = 5000;
+
+/**
+ * ONEXTAP_WIPE_LOCAL, after the account is gone. Resolves with what became of
+ * the extension's copy:
+ *   'cleared'  the extension confirmed it;
+ *   'failed'   it was asked (the dialog promised it) and did not confirm: no
+ *              reply within WIPE_TIMEOUT_MS, `success` not true, or a throw;
+ *   null       not asked: the extension can't clear it, or there is none, as
+ *              the dialog said.
+ * Never rejects: the account is already deleted, and a copy left in the
+ * extension does not undo that.
+ */
+async function wipeExtension() {
+  if (await extensionWipeState() !== 'wipes') return null;
+  let timer;
+  try {
+    const reply = await Promise.race([
+      sendToExtension('ONEXTAP_WIPE_LOCAL'),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('No reply from the extension')), WIPE_TIMEOUT_MS); }),
+    ]);
+    if (reply?.success === true) return 'cleared';
+    log.warn('the extension did not clear its copy', { reason: reply?.error || 'no success' });
+  } catch (err) {
+    log.warn('the extension could not be asked to clear its copy', { reason: err?.message });
+  } finally {
+    clearTimeout(timer);
+  }
+  return 'failed';
+}
+
+/**
+ * Deletes the account on the server (DELETE /api/account: cancels any live
+ * subscription, then the Supabase user and everything keyed to it), then the
+ * extension's copy when it can clear it (ONEXTAP_WIPE_LOCAL), then everything
+ * this browser holds for the dashboard, then signs out. Throws with the
+ * server's message if the deletion did not happen — nothing local, in the
+ * extension or here, is touched in that case.
+ *
+ * Going home: signing out raises SIGNED_OUT, and the dashboard's handler for
+ * it (onSignedOut, main.js) takes the page home; this does it only when signing
+ * out failed, so the page leaves once.
+ *
+ * @param {{ beforeLeaving?: (extension: 'cleared'|'failed'|null) => (void|Promise<void>) }} [options]
+ *   Awaited once this browser's copy is cleared and before signing out, with
+ *   wipeExtension()'s outcome: the page's last chance to say what happened.
+ */
+export async function deleteAccount({ beforeLeaving } = {}) {
   await creditManager.deleteAccount();
+  const extension = await wipeExtension();
   try {
     localStorage.clear();
   } catch (err) {
     log.warn('Storage clear after account deletion:', err);
   }
   try {
-    await supabase.auth.signOut({ scope: 'local' });
+    await beforeLeaving?.(extension);
+  } catch (err) {
+    log.warn('before leaving, after account deletion:', err);
+  }
+  let signedOut = false;
+  try {
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    signedOut = !error;
   } catch {
     /* the user is already gone */
   }
-  location.assign('/');
+  if (!signedOut) location.assign('/');
 }
 
 // ---------- The extension ----------

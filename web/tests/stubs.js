@@ -149,9 +149,13 @@ export async function stubFeedback(page, answer = 'ok') {
                                          and no letter. The answer carries
                                          `charge`, as the server's does.
      POST /api/credits/deduct            a no-op, as on the server: the balance
+     DELETE /api/account                 `deleteAccount`: 'ok' (default), the
+                                         server's { success: true }; 'fail',
+                                         its 500 when Dodo or Supabase could
+                                         not confirm, and nothing is deleted
    Resolves with the calls made, in order ({ method, path, body }), and the
    live balance as `state.credits`. Anything else under /api/ is a 404. */
-export async function stubApi(page, { credits = 3 } = {}) {
+export async function stubApi(page, { credits = 3, deleteAccount = 'ok' } = {}) {
   const calls = [];
   const state = { credits };
   // Granted follow-ups, by id: { kind, subject, left }.
@@ -201,6 +205,12 @@ export async function stubApi(page, { credits = 3 } = {}) {
       if (!charge) return route.fulfill({ status: 403, headers, json: { error: 'No credits remaining' } });
       generated += 1;
       return route.fulfill({ headers, json: { text: `Dear Norwick Labs team, letter number ${generated}.`, fabricationFlags: [], charge } });
+    }
+    if (path === '/api/account' && request.method() === 'DELETE') {
+      if (deleteAccount === 'fail') {
+        return route.fulfill({ status: 500, headers, json: { error: 'Could not delete your account. Try again in a moment, or contact us.' } });
+      }
+      return route.fulfill({ headers, json: { success: true } });
     }
     return route.fulfill({ status: 404, headers, json: { error: 'not stubbed' } });
   });

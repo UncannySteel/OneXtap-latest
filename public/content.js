@@ -13,8 +13,14 @@
  *   { action: "DETECT_SECTIONS" }              → { success, sections: { personalInfo, education,
  *                                                    workExperience, openEnded, coverLetter } }
  *   { action: "FILL_COVER_LETTER", text }      → { success } — false when no field matched
+ *   { action: "MOUNT_COVER_BUTTON" }           → { success, mounted } — the "Customize cover
+ *                                                    letter" button under the cover-letter field;
+ *                                                    `type` is read as well as `action`
  *
- * Messages without an `action` are ignored.
+ * AUTOFILL_TRIGGERED mounts that button too. Its click sends the worker
+ * OPEN_COVER_CUSTOMIZER (docs/extension-protocol.md).
+ *
+ * Other messages without an `action` are ignored.
  */
 
 // ── Duplicate-injection guard ────────────────────────────────────────────────
@@ -719,21 +725,26 @@ if (!window.__onextapAutofillLoaded) {
     };
   }
 
-  // ── Fill cover letter / essay textarea ────────────────────────────────────
+  // ── Find the cover letter / essay field ───────────────────────────────────
   /**
-   * Drop generated long-form text into the page's cover letter / personal
-   * statement / essay field, and focus it.
+   * The page's cover letter / personal statement / essay field, found one way
+   * for both of its users: FILL_COVER_LETTER fills it, and the "Customize
+   * cover letter" button sits under it.
    *
    * Two passes: first any visible textarea or text input whose signature
-   * matches a cover-letter keyword, then — if none matched — the largest
-   * empty visible textarea by row count. Unlike autofill(), the keyword pass
-   * will overwrite a field that already has content.
+   * matches a cover-letter keyword, then — if none matched, and `guess` is
+   * on — the largest empty visible textarea by row count. Filling takes the
+   * guess (the user asked to fill this page); the button does not, or it
+   * would sit under any textarea on any page the popup is opened on.
    *
-   * @param {string} text
-   * @returns {boolean} False when the text was blank or no field was found.
+   * A const rather than a function declaration: in this classic script a
+   * function declared inside the guard's block also becomes a property of the
+   * isolated world's window (Annex B), and this file adds no more of those.
+   *
+   * @param {{ guess?: boolean }} [options]
+   * @returns {HTMLTextAreaElement|HTMLInputElement|null}
    */
-  function fillCoverLetter(text) {
-    if (!text?.trim()) return false;
+  const findCoverLetterField = ({ guess = true } = {}) => {
     const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"]'));
     const keywords = [
       'cover letter',
@@ -748,12 +759,9 @@ if (!window.__onextapAutofillLoaded) {
     for (const el of candidates) {
       if (!isVisible(el)) continue;
       const sig = fieldSignature(el);
-      if (keywords.some((kw) => sig.includes(kw))) {
-        setNativeValue(el, text);
-        el.focus?.();
-        return true;
-      }
+      if (keywords.some((kw) => sig.includes(kw))) return el;
     }
+    if (!guess) return null;
     // Fallback: largest empty textarea
     let best = null;
     let bestRows = 0;
@@ -766,16 +774,403 @@ if (!window.__onextapAutofillLoaded) {
         best = el;
       }
     }
-    if (best) {
-      setNativeValue(best, text);
-      best.focus?.();
+    return best;
+  };
+
+  // ── Fill cover letter / essay textarea ────────────────────────────────────
+  /**
+   * Drop generated long-form text into the page's cover letter / personal
+   * statement / essay field (findCoverLetterField(), guess included), and
+   * focus it. Unlike autofill(), a field matched by keyword is overwritten
+   * even when it already has content.
+   *
+   * @param {string} text
+   * @returns {boolean} False when the text was blank or no field was found.
+   */
+  function fillCoverLetter(text) {
+    if (!text?.trim()) return false;
+    const el = findCoverLetterField();
+    if (!el) return false;
+    setNativeValue(el, text);
+    el.focus?.();
+    return true;
+  }
+
+  // ── The "Customize cover letter" button ───────────────────────────────────
+  /**
+   * One button under the page's cover-letter field, mounted when the popup
+   * opens on the page (MOUNT_COVER_BUTTON) and after an autofill. A click
+   * reads the job off the page (scrapePageContext(), plus the role) and hands
+   * it to the worker (OPEN_COVER_CUSTOMIZER), which opens the dashboard's
+   * Cover Letter workspace with it filled in (docs/extension-protocol.md,
+   * "The cover-letter handoff").
+   *
+   * It runs on any site, so it stays out of the page's way:
+   *   - its host is appended to <body>, never inside the form, and is
+   *     position: fixed, so it takes no room and moves nothing;
+   *   - its UI is in a closed shadow root: the page's styles and scripts do
+   *     not reach in, and its own styles do not leak out;
+   *   - every word in it is ours, set as textContent; nothing read off the
+   *     page is ever shown in it;
+   *   - it follows the field (scroll, resize, ResizeObserver, and a
+   *     MutationObserver on the field's own attributes), hides while the field
+   *     is hidden, disabled, covered by something the page pins in place, or
+   *     in the top layer (a modal dialog, a popover), and goes when the field
+   *     does;
+   *   - mounting again keeps one button, also after an extension reload or
+   *     update left an older copy of this script's host in the page;
+   *   - top frame only: content.js is injected there and nowhere else
+   *     (activeTab's reach), so a field inside an iframe gets no button;
+   *   - not on the Onextap site itself, where the button would lead back to
+   *     the page it is on.
+   *
+   * Dismissed (×), it stays away until the page loads again.
+   *
+   * One closure in a block-scoped const, so it adds no name to the isolated
+   * world's window (see findCoverLetterField()).
+   */
+  const coverButton = (() => {
+    const HOST_TAG = 'onextap-cover-button';
+    const HOST_ATTR = 'data-onextap-cover-button';
+    const LABEL = 'Customize cover letter';
+    const GAP = 6;   // px between the field and the button
+    const EDGE = 8;  // px kept clear of the viewport's sides
+
+    // The host is in the page's own DOM, where the page's stylesheets reach
+    // it: reset, inline and !important. Fixed: out of the page's flow.
+    const HOST_STYLE = [
+      ['all', 'initial'],
+      ['position', 'fixed'],
+      ['top', '0px'],
+      ['left', '0px'],
+      ['z-index', '2147483647'],
+      ['display', 'none'],
+      ['margin', '0'],
+      ['padding', '0'],
+      ['border', '0'],
+      ['pointer-events', 'auto'],
+    ];
+
+    // The dashboard's ink and citrine (web/dashboard/css/tokens.css).
+    const CSS = `
+      :host { all: initial; }
+      .bar {
+        display: inline-flex; align-items: stretch; overflow: hidden;
+        font: 600 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #0C1710; background: #C6DA43; border-radius: 999px;
+        box-shadow: 0 1px 2px rgba(12, 23, 16, .3), 0 4px 14px rgba(12, 23, 16, .18);
+      }
+      button {
+        all: unset; box-sizing: border-box; cursor: pointer;
+        font: inherit; color: inherit; padding: 8px 12px;
+      }
+      .main { padding-left: 14px; white-space: nowrap; }
+      .close { padding-left: 9px; font-size: 15px; border-left: 1px solid rgba(12, 23, 16, .22); }
+      button:hover { background: rgba(12, 23, 16, .1); }
+      button:focus-visible { outline: 2px solid #0C1710; outline-offset: -3px; }
+      button:disabled { cursor: progress; opacity: .75; }
+      .status {
+        margin: 6px 0 0; padding: 7px 10px; max-width: 300px;
+        font: 500 12px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #E9E4D4; background: #0C1710; border-radius: 8px;
+      }
+      .status:empty { display: none; }
+    `;
+
+    let mounted = null;      // { host, field, main, status, observer, mutations, frame, busy }
+    let dismissed = false;
+
+    /** Constructed styles where they work (no inline-style CSP to trip), else a <style>. */
+    function styleRoot(root) {
+      try {
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync(CSS);
+        root.adoptedStyleSheets = [sheet];
+      } catch {
+        const el = document.createElement('style');
+        el.textContent = CSS;
+        root.append(el);
+      }
+    }
+
+    function build(field) {
+      const host = document.createElement(HOST_TAG);
+      host.setAttribute(HOST_ATTR, '');
+      for (const [prop, value] of HOST_STYLE) host.style.setProperty(prop, value, 'important');
+      const root = host.attachShadow({ mode: 'closed' });
+      styleRoot(root);
+
+      const main = document.createElement('button');
+      main.type = 'button';
+      main.className = 'main';
+      main.textContent = LABEL;
+      main.setAttribute('aria-label', 'Customize cover letter with Onextap');
+
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'close';
+      close.textContent = '×';
+      close.setAttribute('aria-label', 'Hide the Onextap cover letter button');
+
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.append(main, close);
+
+      // Failures only, so it is an alert: read out when its text appears.
+      const status = document.createElement('p');
+      status.className = 'status';
+      status.setAttribute('role', 'alert');
+
+      root.append(bar, status);
+      document.body.append(host);
+
+      const state = { host, field, main, status, observer: null, mutations: null, frame: 0, busy: false };
+      main.addEventListener('click', () => customize(state));
+      close.addEventListener('click', dismiss);
+      // Capture, to hear scrolls of any container the field sits in.
+      window.addEventListener('scroll', schedule, { capture: true, passive: true });
+      window.addEventListener('resize', schedule, { passive: true });
+      if (typeof ResizeObserver === 'function') {
+        // The field (a resize, display: none, removal) and the page (content
+        // added above the field moves it).
+        state.observer = new ResizeObserver(schedule);
+        state.observer.observe(field);
+        state.observer.observe(document.documentElement);
+      }
+      if (typeof MutationObserver === 'function') {
+        // What hides or locks the field without changing its size: disabled,
+        // readonly, visibility in its style or class. (A class toggled on an
+        // ancestor waits for the next scroll or resize.)
+        state.mutations = new MutationObserver(schedule);
+        state.mutations.observe(field, { attributes: true, attributeFilter: ['disabled', 'readonly', 'hidden', 'style', 'class'] });
+      }
+      return state;
+    }
+
+    /**
+     * Whether the field is in the browser's top layer: a modal <dialog>, an
+     * open popover, a fullscreen element. That layer draws over everything in
+     * <body>, the host included, so a button there could be neither seen nor
+     * clicked. Each selector on its own: a browser without one of them throws
+     * on the whole list.
+     */
+    function inTopLayer(field) {
+      return ['dialog:modal', ':popover-open', ':fullscreen'].some((selector) => {
+        try {
+          return !!field.closest(selector);
+        } catch {
+          return false;
+        }
+      });
+    }
+
+    /** Whether the field can be seen, and filled, right now. */
+    function shown(field) {
+      if (field.disabled || field.readOnly) return false;
+      const rect = field.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return false;
+      if (typeof field.checkVisibility === 'function') {
+        return field.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, opacityProperty: true, visibilityProperty: true });
+      }
+      const { visibility } = window.getComputedStyle(field);
+      return visibility !== 'hidden' && visibility !== 'collapse';
+    }
+
+    /**
+     * Whether something the page pins in place (a sticky header, a modal, a
+     * cookie banner) is at x, y, in a layer the field is not part of. The
+     * button would float over it there. A form that is itself in a modal is
+     * in that modal's layer, and keeps its button.
+     */
+    function pinnedOver(x, y, field, host) {
+      const hit = document.elementsFromPoint(x, y).find((el) => el !== host);
+      for (let el = hit; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+        const { position } = window.getComputedStyle(el);
+        if (position === 'fixed' || position === 'sticky') return !el.contains(field);
+      }
+      return false;
+    }
+
+    /** Under the field's left edge, kept inside the viewport. */
+    function place() {
+      if (!mounted) return;
+      mounted.frame = 0;
+      const { host, field } = mounted;
+      if (!field.isConnected || !host.isConnected) {
+        unmount();
+        return;
+      }
+      if (!shown(field) || inTopLayer(field)) {
+        host.style.setProperty('display', 'none', 'important');
+        return;
+      }
+      host.style.setProperty('display', 'block', 'important');
+      const rect = field.getBoundingClientRect();
+      const own = host.getBoundingClientRect();
+      const viewport = document.documentElement.clientWidth || window.innerWidth;
+      const left = Math.round(Math.max(EDGE, Math.min(rect.left, viewport - own.width - EDGE)));
+      const top = Math.round(rect.bottom + GAP);
+      if (pinnedOver(left + own.width / 2, top + own.height / 2, field, host)) {
+        host.style.setProperty('display', 'none', 'important');
+        return;
+      }
+      host.style.setProperty('left', `${left}px`, 'important');
+      host.style.setProperty('top', `${top}px`, 'important');
+    }
+
+    function schedule() {
+      if (mounted && !mounted.frame) mounted.frame = requestAnimationFrame(place);
+    }
+
+    function unmount() {
+      if (!mounted) return;
+      const { host, observer, mutations, frame } = mounted;
+      mounted = null;
+      if (frame) cancelAnimationFrame(frame);
+      observer?.disconnect();
+      mutations?.disconnect();
+      window.removeEventListener('scroll', schedule, { capture: true });
+      window.removeEventListener('resize', schedule);
+      host.remove();
+    }
+
+    function dismiss() {
+      dismissed = true;
+      unmount();
+    }
+
+    /**
+     * The Onextap site itself (an externally_connectable origin): its Cover
+     * Letter workspace is where the button leads, so its own template fields
+     * get none.
+     */
+    function onOwnSite() {
+      try {
+        const matches = chrome.runtime.getManifest().externally_connectable?.matches || [];
+        return matches.some((pattern) => String(pattern).replace(/\/\*$/, '') === location.origin);
+      } catch {
+        return false;
+      }
+    }
+
+    /**
+     * The role the page is for: a job-title heading, else the first part of
+     * its og:title or title. Only the button asks for it: scrapeJobPage() in
+     * the worker has no role (SCRAPE_ACTIVE_TAB answers as 1.0.2 did), so
+     * this list has no twin to keep in step (CLAUDE.md rule 5). Anything
+     * inside a form or a label is the applicant's field, not the job.
+     */
+    function scrapeRole() {
+      const tidy = (text) => String(text || '').replace(/\s+/g, ' ').trim();
+      const headings = [
+        '.job-details-jobs-unified-top-card__job-title',
+        '.jobs-unified-top-card__job-title',
+        '[data-automation-id="jobPostingHeader"]',
+        '.posting-headline h2',
+        '.app-title',
+        'h1',
+        '[class*="job-title" i]',
+        '[class*="jobTitle" i]',
+        '[data-testid*="job-title" i]',
+      ];
+      for (const sel of headings) {
+        for (const el of document.querySelectorAll(sel)) {
+          if (el.closest('form, label')) continue;
+          const text = tidy(el.innerText);
+          if (text && text.length <= 200) return text;
+        }
+      }
+      const title = tidy(document.querySelector('meta[property="og:title"]')?.content) || tidy(document.title);
+      return title.split(/\s+[|–—-]\s+|\s+at\s+/i)[0].trim();
+    }
+
+    /** One word to the user, in the button's own UI: a failure, or nothing. */
+    function finish(state, failure) {
+      state.busy = false;
+      state.main.disabled = false;
+      state.main.textContent = LABEL;
+      state.status.textContent = failure;
+      schedule();
+    }
+
+    async function customize(state) {
+      if (state.busy) return;
+      state.busy = true;
+      state.main.disabled = true;
+      state.main.textContent = 'Opening…';
+      state.status.textContent = '';
+
+      let job;
+      try {
+        const page = scrapePageContext();
+        job = { company: page.company, role: scrapeRole(), description: page.description, url: location.href };
+      } catch (err) {
+        log.error('page context scrape failed', err);
+        finish(state, 'Onextap couldn’t read this page. Paste the job on the dashboard instead.');
+        return;
+      }
+
+      let reply;
+      try {
+        reply = await chrome.runtime.sendMessage({ type: 'OPEN_COVER_CUSTOMIZER', job });
+      } catch (err) {
+        // Most often the extension was reloaded or updated since the page
+        // loaded, and this copy of the script can no longer reach it.
+        log.warn('could not reach the extension', err);
+        finish(state, 'Onextap was updated. Reload this page, then try again.');
+        return;
+      }
+      if (reply?.success) {
+        finish(state, '');
+        return;
+      }
+      log.warn('the dashboard did not open', { name: 'OPEN_COVER_CUSTOMIZER', message: String(reply?.error || 'no reply') });
+      finish(state, 'Onextap couldn’t open the dashboard. Try again.');
+    }
+
+    /**
+     * Put the button under the cover-letter field, or move it there: one
+     * button, whatever was mounted before.
+     * @returns {boolean} Whether there is a button now.
+     */
+    function mount() {
+      if (dismissed || window.top !== window || !document.body || onOwnSite()) return false;
+      const field = findCoverLetterField({ guess: false });
+      if (!field) {
+        unmount();
+        return false;
+      }
+      if (mounted?.field === field && mounted.host.isConnected) {
+        schedule();
+        return true;
+      }
+      unmount();
+      // A host this copy of the script did not make: the DOM outlives an
+      // isolated world, so an extension reload or update leaves the old
+      // copy's button behind, its closed root out of our reach. It goes.
+      document.querySelectorAll(`[${HOST_ATTR}]`).forEach((el) => el.remove());
+      mounted = build(field);
+      place();
       return true;
     }
-    return false;
-  }
+
+    return { mount };
+  })();
 
   // ── Message listener ───────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener(function onextapListener(msg, _sender, sendResponse) {
+    // The popup, on opening over this page. Read from `type` as well as
+    // `action`: the protocol names a message by either.
+    if (msg?.action === 'MOUNT_COVER_BUTTON' || msg?.type === 'MOUNT_COVER_BUTTON') {
+      try {
+        sendResponse({ success: true, mounted: coverButton.mount() });
+      } catch (err) {
+        log.error('cover letter button failed', err);
+        sendResponse({ success: false, mounted: false, error: err.message });
+      }
+      return false;
+    }
+
     if (!msg?.action) return false;
 
     if (msg.action === 'AUTOFILL_TRIGGERED') {
@@ -786,6 +1181,13 @@ if (!window.__onextapAutofillLoaded) {
       } catch (err) {
         log.error('autofill failed', err);
         sendResponse({ success: false, error: err.message });
+      }
+      // This is an application form: offer the button under its cover-letter
+      // field. After the reply, so it can never cost the autofill its answer.
+      try {
+        coverButton.mount();
+      } catch (err) {
+        log.warn('cover letter button failed', err);
       }
       return false;
     }

@@ -10,6 +10,7 @@ import { ANSWER_STYLE_INSTRUCTIONS } from '@app/answerStudio.js';
 import { creditManager } from '@app/creditManager.js';
 import { applicationKey, consumesCredit } from '@app/coverLetterCredits.js';
 import { loadFabricationCorpus } from '@app/fabricationCorpus.js';
+import { getExtensionInfo, sendToExtension } from '@app/extensionClient.js';
 
 // Cover Letter — the backend's CoverLetterPanel, for the web: templates for
 // the active profile (up to MAX_COVER_LETTERS_PER_PROFILE), personalised per
@@ -20,6 +21,8 @@ import { loadFabricationCorpus } from '@app/fabricationCorpus.js';
 // and fill the letter into it. Both need the extension's tab APIs, which a
 // web page does not get — so here the target application is typed or pasted,
 // and the finished letter is copied (or saved, and filled from the popup).
+// The exception is arriving from the extension's "Customize cover letter"
+// button on a job page: the job it read comes along (takeHandoff() below).
 //
 // Personalising costs what @app/coverLetterCredits.js says: one credit buys a
 // personalisation and one free re-run of it (same template, same application,
@@ -171,6 +174,51 @@ export function mount(body, ctx) {
   const personalizeBtn = button(`Personalise for this ${appConfig.shortLabel.toLowerCase()}`, { kind: 'citrine', icon: 'spark', onClick: personalize });
   [companyIn, roleIn, descIn].forEach((el) => el.addEventListener('input', () => { if (errorText) { errorText = ''; renderResult(); } refreshPersonalize(); }));
 
+  // ---------- arriving from a job page ----------
+  // main.js keeps the id of a job the extension's page button handed over;
+  // the extension gives it up once (GET_COVER_HANDOFF), and only one that
+  // says it can is asked. It fills the three fields and nothing else: what
+  // is personalised, and when, stays the user's call.
+  // Hidden until it has something to say: the card is a grid, and an empty
+  // row would still get its gap.
+  const handoffEl = h('div', { hidden: true });
+  const showHandoff = (tone, text) => {
+    fill(handoffEl, note(tone, h('p', null, text)));
+    handoffEl.hidden = false;
+  };
+
+  async function takeHandoff() {
+    const id = await ctx.takeCoverHandoff?.(() => alive);
+    if (!id || !alive) return;
+    const info = await getExtensionInfo();
+    if (!alive) return;
+    let reply = null;
+    if (info.state === 'current' && info.capabilities.includes('cover-handoff')) {
+      try {
+        reply = await sendToExtension('GET_COVER_HANDOFF', { id });
+      } catch {
+        reply = null;
+      }
+      if (!alive) return;
+    }
+    if (!reply) {
+      showHandoff('clay', 'The extension couldn’t be reached for the job page’s details. Paste the description below instead.');
+      return;
+    }
+    const job = reply.success && reply.job && typeof reply.job === 'object' ? reply.job : null;
+    if (!job) {
+      showHandoff('amber', 'The job page’s details have expired. Click “Customize cover letter” on the job page again, or paste the description below.');
+      return;
+    }
+    const text = (value) => (typeof value === 'string' ? value : '');
+    companyIn.value = text(job.company);
+    roleIn.value = text(job.role);
+    descIn.value = text(job.description);
+    if (errorText) { errorText = ''; renderResult(); }
+    showHandoff('olive', 'Filled from the job page: check it before personalising');
+    refreshPersonalize();
+  }
+
   // ---------- layout ----------
   const templatesEl = h('div');
   const resultEl = h('div');
@@ -183,6 +231,7 @@ export function mount(body, ctx) {
     templatesEl,
     section({ num: 2, label: 'Tailor', title: 'Aim it at one application', desc: 'Name the company and role and paste the description. Your template is rewritten for it, in your own voice.' },
       h('div.card', null,
+        handoffEl,
         h('div.fgrid', null,
           field({ label: 'Company', span: 3, control: companyIn }),
           field({ label: 'Role', span: 3, control: roleIn }),
@@ -548,6 +597,7 @@ export function mount(body, ctx) {
   fill(templatesEl, section({ num: 1, label: 'Templates', title: `Your ${noun}s` }, skeleton(2)));
   load();
   loadCredits();
+  takeHandoff();
 
   return {
     unmount() {
