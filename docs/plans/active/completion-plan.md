@@ -19,7 +19,7 @@ Run batch B<N> of docs/plans/active/completion-plan.md.
 | B0 | Baseline and guardrails | no | M | done 2026-10-16 (checkpoint 10) | see `git log --grep "checkpoint 10"` |
 | B1 | Server split ∥ website fixes ∥ extension protocol | no | L | done 2026-10-17 (checkpoint 11) | see `git log --grep "checkpoint 11"` |
 | B2 | Server: charging, billing, AI quality | no | L | done 2026-10-17 (checkpoint 12) | see `git log --grep "checkpoint 12"` |
-| B3 | Extension 1.0.4: job-page button, popup, wipe, release tooling | no | L | not started | |
+| B3 | Extension 1.0.4: job-page button, popup, wipe, release tooling; Explain spends first (B3-D) | no | L | not started | |
 | B4 | Owner session A: real services on the dev project | yes, ~90 min | M | not started | |
 | B5 | Docs, deploy checklist, final review | no | M | not started | |
 | B6 | Owner session B: release-candidate build | yes, ~20 min | S | not started | |
@@ -123,6 +123,12 @@ know) go here, newest last:
   **before** the server that needs it, or every generation answers 503. The
   design document (`server-side-generation-charging.md`) is implemented; its
   deviations are in HANDOVER §0, checkpoint 12.
+- **B2, owner's answers at checkpoint 12:** the deviations from the design
+  document are accepted, except that "Explain my fit" must spend before its
+  analysis, like Answer Studio: added to B3 as B3-D. B2-B's additions (the
+  wider replacement, the 500 that makes Dodo redeliver) are kept. Cover
+  letters sent as answers (1 credit, up to 4 generations) are accepted as a
+  known gap. Linking when Dodo can't be asked on the first read is kept.
 
 ---
 
@@ -803,8 +809,29 @@ document.
   with planted secrets or localhost fail them); with today's dev `.env`,
   `build:release` refuses at step 1.
 
-**Merge order:** C, B, A (A is the biggest; the registry-line conflicts get
-resolved last).
+**B3-D: "Explain my fit" spends first (the owner's answer at checkpoint 12).**
+Server only; disjoint from A to C.
+- **Owns:** `server/routes/jobExplain.js` (its charging only);
+  `server/lib/credits.js` (`chargeOneCredit`/`refundOneCredit`, only if their
+  shape must change); new route tests under `test/server/`;
+  `test/server/fakeServices.js` (additive).
+- **Spec:** the order Answer Studio has had since B2 (`server/routes/generate.js`):
+  validate the request, then `spendGeneration()` (kind `explain`, no
+  follow-ups), then the model, and `undoGeneration()` exactly once if
+  anything after the spend fails (the model, the parse, building the
+  response). Out of credits is 403 and migration 007 missing is 503, both
+  **before** the model is called. Premium pays nothing. The route's
+  read-the-balance pre-check goes: the spend decides. The response keeps its
+  shape (`creditsRemaining`, null on Premium). Reopening a saved explanation
+  stays free (the page doesn't call the route again).
+- **Acceptance:** route tests through the harness: a charge; out of credits
+  (403, the model never called); 007 missing (503, the model never called,
+  the error log names migration 007); Premium (no charge); a failed analysis
+  (the credit back, one refund row); two concurrent requests holding one
+  credit (one runs the model, the other gets 403 without calling it).
+
+**Merge order:** D, C, B, A (D is server-only and touches nothing else; A is
+the biggest, and the registry-line conflicts get resolved last).
 **Review focus:** the content script is safe on any host page; the sender
 checks; the key list is complete; no permission widening (the manifest
 differs from 1.0.2 only in its version, plus the localhost removal in the
