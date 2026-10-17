@@ -7,8 +7,11 @@
  */
 import { supabaseAdmin, updateProfile, formatSupabaseError } from '../supabase.js';
 import { log } from '../logger.js';
-import { isForeignSubscription, activationDecision } from '../subscriptionGuard.js';
+import { isForeignSubscription, activateSubscription, supabaseLinkStore } from '../subscriptionGuard.js';
 import { dodo } from '../lib/dodo.js';
+
+/** The account ⟷ subscription link, written with one conditional update. */
+const linkStore = supabaseLinkStore(supabaseAdmin);
 
 // ==================================================================
 // DODO PAYMENTS WEBHOOK (unauthenticated — verified via signature)
@@ -31,66 +34,22 @@ function logWebhookUpdateFailure(what, userId, err) {
 }
 
 /**
- * The subscription id the account is linked to, or null. Reads only: unlike
- * getProfile(), it never creates a profile for a user who has none — a
- * webhook can arrive after the account was deleted.
- */
-async function linkedSubscriptionId(userId) {
-  const { data, error } = await supabaseAdmin
-    .from('profiles')
-    .select('dodo_subscription_id')
-    .eq('id', userId)
-    .maybeSingle();
-  if (error) throw new Error(formatSupabaseError(error));
-  return data?.dodo_subscription_id || null;
-}
-
-/**
  * True, and logged, when the event is about a subscription other than the
  * account's own (server/subscriptionGuard.js). When the account cannot be
  * read, false: the event is handled as it was before this check existed.
+ * The read never creates a profile (unlike getProfile()): a webhook can
+ * arrive after the account was deleted.
  */
 async function isAboutAnotherSubscription(type, userId, data) {
   let linkedId;
   try {
-    linkedId = await linkedSubscriptionId(userId);
+    linkedId = (await linkStore.read(userId))?.linkedId || null;
   } catch (err) {
     log.warn(`[Dodo] ${type}: could not read the linked subscription, handling as before`, { errName: err?.name });
     return false;
   }
   if (!isForeignSubscription(linkedId, data?.subscription_id)) return false;
   log.info(`[Dodo] ${type} ignored: ${data.subscription_id} is not the subscription user ${userId} is linked to (${linkedId})`);
-  return true;
-}
-
-/**
- * For `subscription.active`: if the account already has a different
- * subscription in force, cancel this new one at Dodo and return true. Its
- * first payment is refunded by hand in Dodo's dashboard — the warning names
- * both subscriptions. Any doubt (Dodo or the profile cannot be read) returns
- * false, and the new subscription is linked as it always was.
- */
-async function cancelIfDuplicate(userId, newId) {
-  let linkedId;
-  let linkedStatus = null;
-  try {
-    linkedId = await linkedSubscriptionId(userId);
-    if (linkedId && linkedId !== newId) {
-      linkedStatus = (await dodo.subscriptions.retrieve(linkedId)).status;
-    }
-  } catch (err) {
-    log.warn('[Dodo] subscription.active: could not check for a duplicate, linking the new subscription', { errName: err?.name });
-    return false;
-  }
-  if (activationDecision({ linkedId, linkedStatus, newId }) !== 'duplicate') return false;
-
-  try {
-    await dodo.subscriptions.update(newId, { status: 'cancelled' });
-  } catch (err) {
-    log.error(`[Dodo] Second subscription ${newId} for user ${userId} (already on ${linkedId}) could not be cancelled; cancel and refund it in Dodo:`, err);
-    return true;
-  }
-  log.warn(`[Dodo] Second subscription ${newId} for user ${userId} cancelled (already on ${linkedId}); refund its payment in Dodo`);
   return true;
 }
 
@@ -114,21 +73,35 @@ export async function handleWebhook(req, res) {
 
   switch (event.type) {
     // --- Subscription activated — activate premium ---
+    // Linked with one conditional write, a duplicate cancelled, a stalled
+    // (on-hold) linked subscription replaced: activateSubscription() in
+    // server/subscriptionGuard.js. Anything it could not finish answers 500,
+    // so Dodo delivers the event again rather than leaving a paid
+    // subscription without Pro, or a duplicate billing.
     case 'subscription.active': {
       const userId = await resolveUserId(data);
-      if (userId) {
-        if (await cancelIfDuplicate(userId, data.subscription_id)) break;
+      if (userId && !data?.subscription_id) {
+        log.warn(`[Dodo] subscription.active for user ${userId} names no subscription; ignored`);
+      } else if (userId) {
         try {
-          await updateProfile(userId, {
-            is_premium: true,
-            dodo_subscription_id: data.subscription_id,
-            dodo_customer_id: data.customer?.customer_id || null,
-            subscription_status: 'active',
-            premium_since: new Date().toISOString(),
-          });
-          log.info(`[Dodo] Premium activated for user: ${userId}`);
+          const { outcome } = await activateSubscription({
+            userId,
+            newId: data.subscription_id,
+            values: {
+              is_premium: true,
+              dodo_customer_id: data.customer?.customer_id || null,
+              subscription_status: 'active',
+              premium_since: new Date().toISOString(),
+            },
+          }, { store: linkStore, subscriptions: dodo.subscriptions, log });
+          if (outcome === 'no_account') {
+            log.info(`[Dodo] activate premium: no profile for user ${userId}, account already deleted`);
+          } else if (outcome !== 'duplicate') {
+            log.info(`[Dodo] Premium activated for user: ${userId}`);
+          }
         } catch (err) {
-          logWebhookUpdateFailure('activate premium', userId, err);
+          log.error(`[Dodo] subscription.active for user ${userId} not handled; answering 500 so Dodo delivers it again:`, err);
+          return res.status(500).json({ received: false });
         }
       }
       break;

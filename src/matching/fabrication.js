@@ -43,7 +43,7 @@
  * `src/matching/index.js`.
  */
 
-import { SKILL_LEXICON } from './lexicon.js';
+import { SKILL_LEXICON, foldVersionedName } from './lexicon.js';
 import { asObject, jaccard, positiveIntOr, roundTo, tokenize, trigramSet } from './normalize.js';
 
 /**
@@ -288,7 +288,13 @@ export function entitiesOf(text) {
     if (words.length >= 2) out.add(`@${words.join(' ')}`);
   }
 
-  for (const token of tokenize(text)) if (SKILL_LEXICON.has(token)) out.add(`$${token}`);
+  // A versioned name is its skill: a resume's "HTML5" backs a written "HTML",
+  // and a written "Angular2" asserts Angular. Versioned names only, not every
+  // alias: ALIASES maps `cv` to computer vision, and "my CV" is not a skill.
+  for (const token of tokenize(text)) {
+    const skill = foldVersionedName(token);
+    if (SKILL_LEXICON.has(skill)) out.add(`$${skill}`);
+  }
 
   return out;
 }

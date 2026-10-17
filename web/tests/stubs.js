@@ -3,6 +3,9 @@
 // answer even when the dev server was started with a real VITE_SUPABASE_URL
 // (reuseExistingServer): a test run can never sign in to a real project.
 // Not a spec file, so Playwright does not run it (testMatch: *.spec.js).
+import { applicationKey } from '../../src/coverLetterCredits.js';
+// The server's own reading of a job context, so the stub keys a re-run as it does.
+import { jobDescriptionOf } from '../../server/lib/generationSpend.js';
 
 // A token that parses as a JWT, for a client that reads its claims.
 function fakeJwt(claims) {
@@ -133,13 +136,42 @@ export async function stubFeedback(page, answer = 'ok') {
 /* The API the dashboard boots on and spends credits through, for an account
    with `credits` and no Premium:
      GET  /api/me, /api/credits, /api/verify-premium
-     POST /api/credits/deduct            one credit, never below zero
-     POST /api/answer-vault/generate     a fixed letter, numbered per call
+     POST /api/answer-vault/generate     a fixed letter, numbered per call,
+                                         charged the way the server charges
+                                         (server/lib/generationSpend.js): a
+                                         granted follow-up is free, else one
+                                         credit, which grants 3 improvements
+                                         (kind 'answer') or 1 re-run of the
+                                         same job context (kind
+                                         'cover_letter'); a call with no kind
+                                         (an old client) is charged and
+                                         granted nothing; out of credits, 403
+                                         and no letter. The answer carries
+                                         `charge`, as the server's does.
+     POST /api/credits/deduct            a no-op, as on the server: the balance
    Resolves with the calls made, in order ({ method, path, body }), and the
    live balance as `state.credits`. Anything else under /api/ is a 404. */
 export async function stubApi(page, { credits = 3 } = {}) {
   const calls = [];
   const state = { credits };
+  // Granted follow-ups, by id: { kind, subject, left }.
+  const allowances = new Map();
+  let allowanceSeq = 0;
+  const chargeFor = (body) => {
+    const kind = body?.kind || null;
+    const subject = kind === 'cover_letter' ? applicationKey(jobDescriptionOf(String(body?.jobContext || '').trim())) : null;
+    const held = kind && body?.allowanceId ? allowances.get(body.allowanceId) : null;
+    if (held && held.kind === kind && held.left > 0 && (held.subject === null || held.subject === subject)) {
+      held.left -= 1;
+      return { charged: false, premium: false, allowanceId: held.left > 0 ? body.allowanceId : null, followUpsLeft: held.left, credits: state.credits };
+    }
+    if (state.credits <= 0) return null;
+    state.credits -= 1;
+    const free = kind === 'answer' ? 3 : kind === 'cover_letter' ? 1 : 0;
+    const id = `00000000-0000-4000-8000-${String(++allowanceSeq).padStart(12, '0')}`;
+    allowances.set(id, { kind: kind || 'answer', subject, left: free });
+    return { charged: true, premium: false, allowanceId: free > 0 ? id : null, followUpsLeft: free, credits: state.credits };
+  };
   const account = () => ({
     id: '00000000-0000-4000-8000-00000000e2e0',
     email: 'reader@example.com',
@@ -162,13 +194,13 @@ export async function stubApi(page, { credits = 3 } = {}) {
     if (path === '/api/credits') return route.fulfill({ headers, json: { credits: state.credits, isPremium: false } });
     if (path === '/api/verify-premium') return route.fulfill({ headers, json: { isPremium: false } });
     if (path === '/api/credits/deduct') {
-      if (state.credits <= 0) return route.fulfill({ status: 402, headers, json: { success: false, remaining: 0, error: 'No credits remaining' } });
-      state.credits -= 1;
-      return route.fulfill({ headers, json: { success: true, remaining: state.credits, isPremium: false } });
+      return route.fulfill({ headers, json: { success: true, remaining: state.credits, isPremium: false, charged: false } });
     }
     if (path === '/api/answer-vault/generate') {
+      const charge = chargeFor(body);
+      if (!charge) return route.fulfill({ status: 403, headers, json: { error: 'No credits remaining' } });
       generated += 1;
-      return route.fulfill({ headers, json: { text: `Dear Norwick Labs team, letter number ${generated}.`, fabricationFlags: [] } });
+      return route.fulfill({ headers, json: { text: `Dear Norwick Labs team, letter number ${generated}.`, fabricationFlags: [], charge } });
     }
     return route.fulfill({ status: 404, headers, json: { error: 'not stubbed' } });
   });

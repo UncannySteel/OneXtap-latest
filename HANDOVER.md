@@ -782,6 +782,122 @@ sends nothing yet, so its sender kind is tested only in unit tests.
 note). Open a new session and paste: `Run batch B2 of
 docs/plans/active/completion-plan.md.`
 
+### Checkpoint 12 (2026-10-17, session 9): B2, server-side charging, billing hardening, AI quality
+
+Batch B2 of the completion plan. Three builders in worktrees (B2-A charging,
+B2-B billing, B2-C AI quality). The account's usage limit stopped all three
+early again; they were resumed from their transcripts (A and C had saved
+nothing yet and started over). Merged A → B → C: C's call site in
+`server/routes/generate.js` merged without a conflict on top of A's rewrite,
+and was checked by hand. Reviewed (`code-review` at high, 8 findings) and
+audited (every money-path criterion passed; three partial). The confirmed
+findings went back to the builders, and the gate was re-run on the result.
+
+- **Server-side charging (§7 item 25, D7).** `supabase/migrations/007_generation_charges.sql`:
+  `generation_allowances` (one row per charge: the follow-ups it granted, and
+  the receipt a refund needs), `spend_generation()` (a granted follow-up, else
+  Premium, else `update profiles set credits = credits - 1 where … credits >
+  0`, the audit row and the allowance in the same transaction) and
+  `undo_generation()` (deletes the receipt and gives the credit back, at most
+  once; or gives a follow-up its use back). Service role only, re-runnable;
+  `schema.sql` ends with the same statements (a test holds them equal). The
+  spend rules sit behind a store (`server/lib/generationSpend.js`: Supabase
+  over RPC, and a memory copy for tests). `POST /api/answer-vault/generate`:
+  a well-formed request, then the hourly cap, then the spend, then the model,
+  and the spend undone if the generation fails (an upstream error, an
+  incomplete answer, an answer cut off at the limit). Out of credits is 403
+  and the model is never called; 007 missing is 503 with an error log naming
+  the file. The body takes `kind` (`answer` or `cover_letter`; an unknown one
+  is 400) and `allowanceId`; the response gains `charge: {charged, premium,
+  allowanceId, followUpsLeft, credits}`. A client that sends no `kind` (the
+  published popup, a cached page) is charged as an answer with no follow-ups,
+  and its later `POST /api/credits/deduct` is a no-op that answers with the
+  balance: charged once, never free. "Explain my fit" spends through the same
+  function (kind `explain`, a receipt with no follow-ups), still after its
+  analysis, and its refund takes the charge it gives back. Nothing in
+  `server/` reads a balance and writes it back (a routes test pins it).
+- **The dashboard** (`answer-studio.js`, `cover-letter.js`) sends `kind` and
+  the allowance id, keeps the server's id on the saved answer or template
+  (`aiAllowanceId`, with the old counters as a display mirror), and takes the
+  balance from `charge`, `Number.isFinite`-guarded. Answers and templates
+  saved before this show no free follow-ups: the server never granted them. A
+  cover letter's re-run is keyed, on the server and the page alike, to
+  `applicationKey()` of the job description without its "Organization:" and
+  "Role:" lines, so editing the company or role is still the same application
+  (`src/coverLetterCredits.js`'s rule; the server now imports that module,
+  `docs/repo-structure.md`).
+- **Billing hardening (§7 item 30, D8):** race-proof linking and the on-hold
+  replacement, as §7 item 30 now says. Beyond the spec: replacement also
+  covers paused, past due and pending; an activation the webhook could not
+  finish (a duplicate Dodo won't cancel, a database error, the link moving
+  three times, Dodo unreachable on a re-read) answers 500 so Dodo redelivers,
+  where it used to log and answer 200; an activation naming no subscription is
+  ignored. No migration was needed (no 008).
+- **AI quality (§7 item 32):** the Improve guard, versioned skill names and
+  rank timings, as §7 item 32 now says.
+- **From the review and the audit, fixed:** the Improve rule and guard ran on
+  cover letters too (the draft there is the template) and forbade naming the
+  company the letter is for: now Answer Studio's Improve only, and the target
+  organisation and role may be named; the retry had no time bound (charging
+  now comes first, so a client that gives up is charged): no retry after 30 s,
+  a 15 s timeout on it; on a re-read after a lost link write, a Dodo lookup
+  failure linked over the winner: it now answers 500; the re-run key had
+  started including the company and role; route tests added for the refund
+  after an incomplete or cut-off answer and for the retry being charged once.
+  **Lead glue:** `server/.env.example`'s rank-model line in the code's order;
+  the e2e stub keys a re-run as the server does.
+- **Accepted, not fixed:** see the open questions, and §7 item 25's "Left
+  open". The guard repeats the route's temperature and length floor (a
+  maintenance cost only). `undo_generation()`'s follow-up branch has no
+  ceiling; only the server calls it, once per failed request. The re-run key
+  is a 32-bit hash (a crafted collision buys one re-run).
+  `GET /api/verify-premium` reads and then writes `is_premium` (pre-existing,
+  outside B2): in an unlucky interleaving with the on-hold replacement it
+  could switch Pro off until the next event.
+- **Deviations from the design document**
+  (`docs/plans/active/server-side-generation-charging.md`): the migration is
+  007 (006 was taken); a third kind, `explain`; both functions take a
+  description for the audit row and raise `no_profile` and `bad_kind`; the
+  stored field is `aiAllowanceId`; `charge` has a `premium` field and drops
+  `allowanceId` once no follow-ups are left; deduct no longer answers 403 at
+  zero (it charges nothing, so it answers with the balance); "Explain my fit"
+  keeps check, run, charge, so with 007 missing it runs the analysis and then
+  answers 503; the popup and the worker's `GENERATE_IMPROVED_ANSWER` were not
+  touched (B3 owns the popup; §3 keeps the message).
+
+**Verified:** baseline: lint 0 errors / 1 warning; `npm test` 741/0/2; keyless
+evals 8 pass, 2 skipped. After: lint 0 errors / 1 warning (the same); `npm
+test` 864 pass, 0 fail, 2 skipped; the keyless evals unchanged; both builds;
+`test:e2e` 200 pass, 10 skipped, 0 fail; `test:e2e:extension` 6 of 6 (3
+`extension`, 3 `legacy` against store 1.0.2), the popup test now asserting
+that an old client's personalisations are each charged once by the server;
+`npm run server:dev` answers `/api/health` 200 with an `X-Request-Id`. All of
+it run twice: after the merge, and again after the review fixes.
+
+**Not verified:** nothing against a real service, by design (B4). Migration
+007 is applied nowhere: until it is, generation and "Explain my fit" refuse
+with a 503 on any project running this server, the dev project included
+(`supabase/migrations/README.md`). The concurrency guarantees rest on the SQL
+(one conditional statement each) and on the memory store's tests, not on a
+real database. The 27 s rank's cause is inferred from the code, not measured.
+
+**Open questions at the checkpoint:**
+1. The deviations from the design document above: accept them?
+2. B2-B's additions beyond the spec: replacing paused, past-due and pending
+   subscriptions as well as on-hold ones, and answering 500 so Dodo
+   redelivers an activation the webhook could not finish (a change to webhook
+   handling).
+3. `kind` comes from the client, so a modified client can buy up to four
+   generations with one credit by sending cover letters as answers. Accept
+   (bounded, and under the hourly cap), or tie an answer's improvements to
+   its question?
+4. When Dodo can't be asked about the linked subscription on the first read,
+   the new one still links (checkpoint 9's rule, kept). Keep?
+
+**Next:** batch B3. Open a new session and paste: `Run batch B3 of
+docs/plans/active/completion-plan.md.` B4 applies migration 007 to the dev
+project before anything else.
+
 ---
 
 ## 1. What was asked, and what was decided
@@ -1007,7 +1123,12 @@ mode, real Groq and Gemini; checkpoint 9 has the detail):
 - **Still open against real services**: Google sign-in; Dodo's
   `subscription.cancelled` at the end of a real period; "Explain my fit"'s
   one-credit charge on a free account after the checkpoint 9 fix; a real
-  double checkout (§7 item 30); anything in production.
+  double checkout (§7 item 30); anything in production. From checkpoint 12:
+  migration 007 on the dev project and server-side charging against it (a
+  charge, a free improvement, a re-run, two quick presses with one credit,
+  the 503 before it is applied), the on-hold replacement with real Dodo
+  subscriptions, the Improve guard and a rank's `meta.timings` with real
+  models.
 - **The store extension (1.0.2) itself**: never against real services. Since
   checkpoint 11 it runs in the legacy e2e (an unpacked copy, the site on
   localhost, the API stubbed): its "Unknown action" handshake, the sync, the
@@ -1040,9 +1161,17 @@ mode, real Groq and Gemini; checkpoint 9 has the detail):
   extension protocol (the worker's routing and sender checks, 1.0.2's four
   messages, the website's client, resume parsing), the landing's session key
   and the Job Matches label. The ones that load `src/` need Node 22.15+.
+- **Checkpoint 12: 864 pass, 0 fail, 2 skipped.** The 123 new ones: the spend
+  rules and their SQL (`generationSpend.test.js`), the charging routes through
+  the harness with a fake Supabase and Groq on loopback
+  (`generationCharging.test.js`), subscription linking and the webhook, the
+  Improve guard (unit and route), versioned skill names, and rank timings.
+  Keyless evals (`npm run evals`) unchanged: 8 pass, 2 skipped (the LLM
+  evals, opt-in), fabrication recall 100%, false positives 0%, profile
+  fields 94.6%.
 
 **E2E (`npm run test:e2e`)**, at checkpoint 5, and again at checkpoint 10: 188 pass, 10 skipped
-(197 at checkpoint 11, with the new copy tests)
+(197 at checkpoint 11, with the new copy tests; 200 at checkpoint 12, with Answer Studio's server-side charging)
 (keyboard and wheel tests on the phone profile), 0 fail, across desktop
 Chromium, phone Chromium and WebKit. It covers the landing page, its company
 pages, the 404 page, the account flows (sign-up's name, forgot password, the
@@ -1122,8 +1251,10 @@ before this work.
 
 **30. One account could end up with two Dodo subscriptions. Fixed in code at checkpoint 9, not yet tested with a real double checkout.** Checkout refuses an account that is already Pro, but an account becomes Pro only when the first `subscription.active` lands, so two checkouts in that window (two tabs, a slow or failing webhook) made two subscriptions, and the app tracks one. It was worse than double billing: every webhook acted on the account whatever subscription it named, so cancelling the stray one switched Pro off, and deleting the account cancelled only the linked one. The fix (`server/subscriptionGuard.js`, the webhook and `DELETE /api/account`, now in `server/routes/webhook.js` and `server/routes/account.js`, `web/dashboard/js/subscription.js`) is in §0, checkpoint 9. **Left open:**
 - the cancelled duplicate's payment is refunded by hand in Dodo (the log names both subscriptions); automating it needs the payment id from `payment.succeeded`;
-- two activations processed in the same instant can both link; account deletion cleans that up;
-- a linked subscription on hold is not cancelled when a new one replaces it.
+- two activations processed in the same instant can both link; account deletion cleans that up. **Fixed in code at checkpoint 12 (B2):** linking is one conditional write (`supabaseLinkStore()` in `server/subscriptionGuard.js`, lands only if the link is still what was read), so one activation links and the other re-reads and cancels itself as a duplicate; if Dodo can't be asked on that re-read, the webhook answers 500 and Dodo redelivers;
+- a linked subscription on hold is not cancelled when a new one replaces it. **Fixed in code at checkpoint 12 (B2):** the new one links first, then the stalled one (on hold, paused, past due or pending) is cancelled through Dodo, so the cancel's own `subscription.cancelled` is foreign to the account and can't switch Pro off. A failed cancel is logged with both ids for a manual cancel.
+
+Both are unit-tested with Dodo and Supabase faked; neither has met a real double checkout (B4).
 
 **26. Any account could mint credits through `POST /api/credits/refund`. Fixed at checkpoint 4 on this branch; production keeps the hole until this branch is deployed.** Pre-existing since the first commit (Feb 2026): the route added a credit for any signed-in, non-Premium account, with no check that a charge had happened, no limit, and no caller anywhere in the product. Removed, with `test/server/routes.test.js` to keep it out (§0).
 
@@ -1204,7 +1335,12 @@ before this work.
 - Job Matches lists "HTML · required" as not in the resume beside a matched "HTML5".
 - A rank took 27s; the page says "usually 5-20 seconds".
 
-**25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3. **Design written at checkpoint 4:** `docs/plans/active/server-side-generation-charging.md`. **The owner chose "not now" at checkpoint 5**; the hourly ceiling added then (`server/generateLimit.js`) bounds the quota damage, not the free drafts.
+**Addressed in code at checkpoint 12 (B2), none of it measured against a real service yet:**
+- Improve (Answer Studio's, an explicit `kind: 'answer'` with a draft): the prompt carries `IMPROVE_FACTS_RULE` (`server/prompts/answerVault.js`): no number, employer, title or tool that is in neither the profile nor the draft, though the target organisation and role may be named. After the model answers, `server/lib/improveGuard.js` counts unbacked claims in the old draft and the new one; more in the new one means one retry, with the offending sentences listed, and the answer with fewer flags is kept. No retry starts after 30 s into the request, and the retry has a 15 s timeout. It's not charged again, and the flags returned are those of the answer kept. Cover letters and old clients get exactly the old prompt.
+- HTML vs HTML5: an explicit list of versioned names (`VERSIONED_NAMES` in `src/matching/lexicon.js`: html, css, php, vue, angular, bootstrap, webpack, java, swift, oauth) folds `html5`, `html-5`, `css3`, `vue3` and the like in extraction, in stored job terms and in the claim check. S3, EC2, Web3, ES6, D3, K8s, C++ and Python 2/3 are unchanged (tests). Plain "HTML5" already matched through an alias, so the chip seen in the real run may have been the model's.
+- The 27 s: a default rank is one model call writing ~3,600 tokens, so there is nothing independent to parallelise (splitting the batch would cost more of the 20-a-day Gemini quota and move scores). The likely cause is the model order: `server/.env.example`'s commented `GEMINI_RANK_MODELS` listed the slowest model first, and a model that can't finish 30 jobs inside `GEMINI_RANK_TIMEOUT_MS` (25 s) times out before the next one answers. The example line now matches the code's default order. Every stage is timed (debug logs and `meta.timings`); a broadening loop no longer re-scores jobs an earlier loop scored. The page now says "usually takes 10–30 seconds, and longer when the AI service is busy". To check in B4: the dev env's `GEMINI_RANK_MODELS` order (pass/fail only) and `meta.timings` from a real rank.
+
+**25. Answer Studio and cover letters are charged by the client, after the fact.** Pre-existing for Answer Studio, and cover letters now follow the same pattern: the page calls `POST /api/answer-vault/generate`, which charges nothing, and then `POST /api/credits/deduct`. A modified client can skip the second call and generate for free. The balance itself cannot be tampered with (rule 6), and "Explain my fit" is charged inside its own route, so this is the one gap. Closing it means charging in the generate route and keeping the free improvements and re-runs on the server: a pricing-adjacent change, so the owner's call. Found at checkpoint 3. **Design written at checkpoint 4:** `docs/plans/active/server-side-generation-charging.md`. **The owner chose "not now" at checkpoint 5**; the hourly ceiling added then (`server/generateLimit.js`) bounds the quota damage, not the free drafts. **Decided at planning (D7), fixed in code at checkpoint 12 (B2), not applied anywhere:** the generate route spends before the model through `spend_generation()` (migration 007), gives the spend back through `undo_generation()` if the generation fails, and keeps the free improvements and re-runs on the server as allowances; `POST /api/credits/deduct` is a no-op that answers with the balance. "Explain my fit" spends through the same function. Until 007 is applied, both routes refuse with a 503 (fail closed). Details in §0, checkpoint 12. **Left open:** `kind` is the client's word, so a modified client can send cover letters as `answer` and get 3 untied follow-ups instead of 1 re-run (1 credit buys at most 4 generations, under the hourly cap); a request the client gives up on after the server spent is charged with nothing shown (the 90 s client timeout; the Improve retry is bounded to stay well inside it); a refused generation still uses an hourly slot.
 
 ### Found and fixed along the way (for the record)
 

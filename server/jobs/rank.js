@@ -85,6 +85,24 @@ function envInt(name, fallback, floor, ceiling) {
  * A deployment that sets RANK_PROVIDER=groq should set RANK_BATCH_SIZE=10 with
  * it. At 30 the Groq leg rejects the request outright rather than degrading
  * gracefully, which is the one failure mode this file otherwise never has.
+ *
+ * ═══ WHAT IT COSTS IN TIME ═══
+ *
+ * One call per pass means all of a pass's output comes out of one stream,
+ * one token after another: ~120 tokens a job, so ~3,600 for thirty. That,
+ * not the pool read or the prefilter, is how long a rank takes, and it is set
+ * by WHICH model answers. Scaling the per-batch speeds measured for the
+ * rotation (server/routes/jobRank.js, batches of 3-5 jobs) to thirty jobs
+ * gives roughly 10s on the fastest model, 15-20s on the one the chain leads
+ * with, and more than its 25s per-model timeout on the two slowest, which
+ * therefore cannot finish a full batch at all. A 27s rank is this, not a bug
+ * in the graph (HANDOVER §7 item 32).
+ *
+ * Splitting the pass into parallel batches would cut the wall clock and is
+ * deliberately not done: every batch is one request against the 20-per-day
+ * Gemini quota above, and a job's score moves with its batch-mates. The
+ * stage timings in rankBatch and runRankGraph (debug logs, and
+ * `meta.timings` on the response) are what to read before changing either.
  */
 const BATCH_SIZE_DEFAULT = 30;
 export const BATCH_SIZE = envInt('RANK_BATCH_SIZE', BATCH_SIZE_DEFAULT, 1, 60);
@@ -485,7 +503,10 @@ export function summarizeScoredBy(results) {
  *   spans from. Optional; the inert handle from startTrace() works too.
  * @returns {Promise<{results: object[], degraded: boolean,
  *   scoredBy: 'llm'|'keyword'|'mixed', batches: number, llmCalls: number,
- *   prompt: {name: string, version: number}|null}>}
+ *   modelMs: number, slowestCallMs: number,
+ *   prompt: {name: string, version: number}|null}>} `modelMs` is the time
+ *   spent inside callModel, summed over batches; `slowestCallMs` the longest
+ *   single call.
  */
 export async function rankBatch(params = {}) {
   // Read off an object rather than destructured in the signature: a default
@@ -502,7 +523,9 @@ export async function rankBatch(params = {}) {
 
   const list = Array.isArray(jobs) ? jobs.filter(Boolean) : [];
   if (list.length === 0) {
-    return { results: [], degraded: false, scoredBy: 'keyword', batches: 0, llmCalls: 0, prompt: null };
+    return {
+      results: [], degraded: false, scoredBy: 'keyword', batches: 0, llmCalls: 0, modelMs: 0, slowestCallMs: 0, prompt: null,
+    };
   }
 
   let prompt = null;
@@ -522,6 +545,12 @@ export async function rankBatch(params = {}) {
   const perBatch = new Array(batches.length);
   const degradeReasons = [];
   let llmCalls = 0;
+  // Wall clock spent inside callModel, summed over batches, and the longest
+  // single call. With one batch in flight at a time the sum is the model's
+  // share of the rank; the longest call is what one more batch would cost.
+  let modelMs = 0;
+  let slowestCallMs = 0;
+  const startedAt = Date.now();
 
   /** Score one batch, returning results aligned to that batch's input order. */
   const runOne = async (batch, index) => {
@@ -530,6 +559,24 @@ export async function rankBatch(params = {}) {
         keywordResult(resumeProfile, job, prompt ? 'no_model_caller' : 'no_prompt')
       );
     }
+
+    // ═══ STAGE TIMINGS ═══
+    //
+    // A rank is almost all model time: one call per batch, and a 30-job batch
+    // is ~3,600 output tokens generated one after another (see BATCH_SIZE), so
+    // its duration depends on which model in the rotation answers. These
+    // numbers are what tells a slow model from a slow pool read or a queue.
+    // Counts and durations only — never the prompt, which carries the profile.
+    const waitedMs = Date.now() - startedAt;
+    let callStarted = 0;
+    let callMs = 0;
+    const timeCall = () => {
+      if (!callStarted) return;
+      callMs = Date.now() - callStarted;
+      modelMs += callMs;
+      if (callMs > slowestCallMs) slowestCallMs = callMs;
+      callStarted = 0;
+    };
 
     const span = trace?.span?.({
       name: 'rank_batch',
@@ -545,13 +592,22 @@ export async function rankBatch(params = {}) {
       });
 
       llmCalls += 1;
-      const raw = await callModel({
-        system,
-        user,
-        maxTokens: RANK_MAX_TOKENS,
-        temperature: RANK_TEMPERATURE,
-      });
+      callStarted = Date.now();
+      let raw;
+      try {
+        raw = await callModel({
+          system,
+          user,
+          maxTokens: RANK_MAX_TOKENS,
+          temperature: RANK_TEMPERATURE,
+        });
+      } finally {
+        // In a finally, so a call that throws (a provider timeout, a 429) is
+        // counted too: those are the slowest calls a rank makes.
+        timeCall();
+      }
 
+      const parseStarted = Date.now();
       const parsed = parseJsonArrayLenient(raw);
 
       // Index by jobId, not by position. Position looks tidier and is wrong:
@@ -602,9 +658,18 @@ export async function rankBatch(params = {}) {
         });
       }
 
+      rankLog.debug('rank batch timing', {
+        batch: index,
+        jobs: batch.length,
+        waitedMs,
+        modelMs: callMs,
+        parseMs: Date.now() - parseStarted,
+        scored: out.length - recovered,
+      });
+
       span?.update?.({
         output: { scored: out.length - recovered, recovered, clamped },
-        metadata: { returned: parsed.length },
+        metadata: { returned: parsed.length, modelMs: callMs },
       })?.end?.();
 
       if (recovered) {
@@ -617,10 +682,14 @@ export async function rankBatch(params = {}) {
 
       return out;
     } catch (err) {
+      // `callMs` already holds a failed call's time: the finally around
+      // callModel counted it.
+      //
       // The whole batch is lost, not the jobs in it. This is the degradation
       // path the Groq 404s exercise today.
       rankLog.warn('rank batch failed, degrading to keyword scoring', {
         batch: index,
+        modelMs: callMs,
         errName: err?.name,
         status: err?.status ?? err?.statusCode,
         // The message, not just the name — the same reasoning as the pool path
@@ -668,6 +737,8 @@ export async function rankBatch(params = {}) {
     scoredBy: summarizeScoredBy(results),
     batches: batches.length,
     llmCalls,
+    modelMs,
+    slowestCallMs,
     prompt: prompt ? { name: prompt.name, version: prompt.version } : null,
   };
 }

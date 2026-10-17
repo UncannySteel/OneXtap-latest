@@ -247,12 +247,15 @@ Leaf modules in src/:
 
   src/matching/**        — imports NOTHING outside itself. See rule 10.
 
-THE ONE CROSS-BOUNDARY IMPORT INTO THE SERVER:
+THE TWO CROSS-BOUNDARY IMPORTS INTO THE SERVER:
 
   server/routes/{generate,jobRank,jobExplain}.js ──┐
+  server/lib/improveGuard.js ──┤
   server/jobs/graph.js       ──┼──► src/matching/index.js
   server/jobs/rank.js        ──┤
   server/jobs/normalizeListing.js ─┘
+
+  server/lib/generationSpend.js ──► src/coverLetterCredits.js   (no deps)
 
 extension/background.js   — imports only extension/logger.js and extension/messages/**
                             (which import only extension/profileSync.js).
@@ -270,11 +273,20 @@ public/content.js         — standalone. Imports nothing at all.
    unauthenticated feedback post in `web/src/app/backend.js`.
 
    The exception: **`server/` imports `src/matching/index.js`** — from
-   three routers in `server/routes/` and three files under `server/jobs/`. Keyword extraction
+   three routers in `server/routes/`, `server/lib/improveGuard.js` and three
+   files under `server/jobs/`. Keyword extraction
    has to produce byte-identical results on both sides or a job's stored
    keywords would not match the ones the client scores against, and two copies
    of a 570-entry lexicon would drift the way the two page scrapers do. So it
    is imported rather than duplicated, which is only safe because of rule 10.
+
+   The second, since checkpoint 12: **`server/lib/generationSpend.js` imports
+   `src/coverLetterCredits.js`**, for the cover-letter re-run key the server
+   charges by (`applicationKey()`) and the re-run count. The page's cost hint
+   and the server's charge have to key the same text alike, and the module is
+   pure with no imports, the same reasoning as rule 10;
+   `test/server/generationSpend.test.js` keeps it importable and holds the
+   parity.
 
    **The arrow runs one way only.** Nothing in `src/` or `web/` may import
    from `server/` — `server/` is a separate package with its own

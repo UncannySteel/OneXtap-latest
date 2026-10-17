@@ -3,7 +3,7 @@ import { section, field, input, select, textarea, button, iconButton, setBusy, n
 import { fabricationNotice } from '../ui/fabrication.js';
 import { profileSwitcher } from '../ui/switchers.js';
 import {
-  AI_TIMEOUT_SEC, ANSWER_STYLE_INSTRUCTIONS, ANSWER_STYLE_OPTIONS, CREDIT_API_TIMEOUT_MS, withTimeout,
+  AI_TIMEOUT_SEC, ANSWER_STYLE_INSTRUCTIONS, ANSWER_STYLE_OPTIONS, withTimeout,
 } from '@app/answerStudio.js';
 import { getAccessToken } from '@app/auth.js';
 import { ANSWER_STUDIO_MODEL, API_URL } from '@app/config.js';
@@ -21,26 +21,39 @@ const log = baseLog.child('ui');
 // fabrication check (the active resume's corpus goes along when there is one).
 //
 // Credit rule, unchanged: one credit buys the FIRST generation for an answer
-// and three follow-up improvements to it, which are free and are kept with the
-// saved answer. Premium never deducts. Credits come off only after a
-// successful generation, so a failed call costs nothing.
+// and three follow-up improvements to it, which are free for 30 days. Premium
+// never pays. The server charges, inside the generate call (kind 'answer'):
+// it grants the improvements as an allowance, whose id this page sends back
+// on the next call, and answers with `charge` — the balance and the
+// improvements left. A failed generation is given back by the server, so it
+// costs nothing. The saved answer keeps the allowance id (`aiAllowanceId`) and
+// `aiImprovementsLeft`, which only mirrors the server's count for display.
 //
 // Job context: the pasted description (and company). The popup additionally
 // reads the job page it is opened on; the dashboard does not try to, because
 // from here "the active tab" is the dashboard itself — its own text is not a
 // job description, and sending it as one would tailor the answer to nothing.
 
+const allowanceOf = (item) => (typeof item?.aiAllowanceId === 'string' && item.aiAllowanceId ? item.aiAllowanceId : null);
+
+// An answer saved before the server kept count has a number and no allowance:
+// the server never granted those improvements, so they show as none.
 const normalizeVault = (items = []) => (Array.isArray(items) ? items : []).map((item) => ({
   ...item,
-  aiImprovementsLeft: Number.isFinite(Number(item?.aiImprovementsLeft)) ? Math.max(0, Number(item.aiImprovementsLeft)) : 0,
+  aiAllowanceId: allowanceOf(item),
+  aiImprovementsLeft: allowanceOf(item) && Number.isFinite(Number(item?.aiImprovementsLeft)) ? Math.max(0, Number(item.aiImprovementsLeft)) : 0,
 }));
+
+/** A credit count from the server: a number, or null for anything else (CLAUDE.md rule 3). */
+const finiteOrNull = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
 export function mount(body, ctx) {
   let alive = true;
   let profile = { ...DEFAULT_PROFILE, vault: normalizeVault(DEFAULT_PROFILE.vault) };
   let activeId = null;
   let generatedOnce = false;
-  let improvementsLeft = 0;
+  let improvementsLeft = 0;  // mirrors the server's count for allowanceId
+  let allowanceId = null;    // the improvements the server granted this answer
   let generating = false;
   let credits = null;       // number, Infinity (premium), or null (not read)
   let creditsError = '';
@@ -88,6 +101,7 @@ export function mount(body, ctx) {
     if (!activeId) {
       generatedOnce = false;
       improvementsLeft = 0;
+      allowanceId = null;
     }
     refreshControls();
   });
@@ -112,19 +126,21 @@ export function mount(body, ctx) {
     }
     cancelEdit.hidden = !activeId && !q && !a;
     editingLabel.textContent = activeId ? 'Editing a saved answer' : 'New answer';
+    // Premium is Infinity (CLAUDE.md rule 3): only a finite count is printed.
+    const count = Number.isFinite(credits) ? credits : null;
     fill(meta,
-      credits === null
-        ? null
-        : premium
-          ? tag('Premium · unlimited', 'ink')
-          : h('span.credit-pill', { class: credits === 0 ? 'is-empty' : '' }, ico('coins', 13), `${credits} credit${credits === 1 ? '' : 's'} left`),
-      !premium && credits !== null && h('span.meta-note', null, `Free improvements on this answer: ${improvementsLeft}`));
+      premium
+        ? tag('Premium · unlimited', 'ink')
+        : count === null
+          ? null
+          : h('span.credit-pill', { class: count === 0 ? 'is-empty' : '' }, ico('coins', 13), `${count} credit${count === 1 ? '' : 's'} left`),
+      !premium && count !== null && h('span.meta-note', null, `Free improvements on this answer: ${improvementsLeft}`));
   }
 
   function renderMessages() {
     fill(messages,
       !premium && h('p.editor-rule', null,
-        '1 credit writes an answer and includes 3 free improvements to it. Improvements left are kept with each saved answer.'),
+        '1 credit writes an answer and includes 3 free improvements to it, for 30 days. Improvements left are kept with each saved answer.'),
       creditsError && note('amber',
         h('p', null, `Couldn’t load your credits: ${creditsError}`),
         h('button.link-btn', { type: 'button', onclick: loadCredits }, 'Try again')),
@@ -155,6 +171,7 @@ export function mount(body, ctx) {
     answer.value = '';
     generatedOnce = false;
     improvementsLeft = 0;
+    allowanceId = null;
     flags = [];
     errorText = '';
     refreshControls();
@@ -166,7 +183,8 @@ export function mount(body, ctx) {
     activeId = item.id;
     question.value = String(item.question || '');
     answer.value = String(item.answer || '');
-    improvementsLeft = premium ? 0 : Math.max(0, Number(item.aiImprovementsLeft || 0));
+    allowanceId = premium ? null : allowanceOf(item);
+    improvementsLeft = allowanceId ? Math.max(0, Number(item.aiImprovementsLeft || 0)) : 0;
     generatedOnce = true;
     errorText = '';
     flags = [];
@@ -187,12 +205,41 @@ export function mount(body, ctx) {
       creditsError = res.error;
       credits = null;
     } else {
-      credits = premium ? Infinity : (res.credits ?? 0);
+      credits = premium ? Infinity : (finiteOrNull(res.credits) ?? 0);
       ctx.setCredits(credits);
     }
     refreshControls();
     renderMessages();
     renderSaved();
+  }
+
+  /**
+   * The `charge` a generation came back with: the balance, and the allowance
+   * this answer now holds. The server's count, never one worked out here.
+   */
+  function applyCharge(charge) {
+    if (!charge || typeof charge !== 'object') {
+      // A server that did not say: assume nothing was granted, re-read the balance.
+      allowanceId = null;
+      improvementsLeft = 0;
+      loadCredits();
+      return;
+    }
+    if (charge.premium === true) {
+      premium = true;
+      credits = Infinity;
+      ctx.setCredits(credits);
+      allowanceId = null;
+      improvementsLeft = 0;
+      return;
+    }
+    const balance = finiteOrNull(charge.credits);
+    if (balance !== null) {
+      credits = balance;
+      ctx.setCredits(credits);
+    }
+    allowanceId = typeof charge.allowanceId === 'string' && charge.allowanceId ? charge.allowanceId : null;
+    improvementsLeft = allowanceId ? Math.max(0, finiteOrNull(charge.followUpsLeft) ?? 0) : 0;
   }
 
   async function load() {
@@ -216,9 +263,10 @@ export function mount(body, ctx) {
     const a = answer.value.trim();
     if (!q || !a) return;
     const vault = profile.vault || [];
+    const allowance = premium ? { aiAllowanceId: null, aiImprovementsLeft: 0 } : { aiAllowanceId: allowanceId, aiImprovementsLeft: improvementsLeft };
     if (activeId) {
       const next = vault.map((item) => (item.id === activeId
-        ? { ...item, question: q, answer: a, aiImprovementsLeft: premium ? 0 : improvementsLeft }
+        ? { ...item, question: q, answer: a, ...allowance }
         : item));
       await persist({ ...profile, vault: normalizeVault(next) });
       ctx.toast('Changes saved.');
@@ -229,7 +277,7 @@ export function mount(body, ctx) {
         ctx.toast('That answer is already saved.', 'error');
         return;
       }
-      await persist({ ...profile, vault: normalizeVault([...vault, { id: Date.now(), question: q, answer: a, aiImprovementsLeft: premium ? 0 : improvementsLeft }]) });
+      await persist({ ...profile, vault: normalizeVault([...vault, { id: Date.now(), question: q, answer: a, ...allowance }]) });
       ctx.toast('Answer saved.');
     }
     resetEditor();
@@ -242,11 +290,16 @@ export function mount(body, ctx) {
     ctx.toast('Answer deleted.');
   }
 
-  /** The improvement balance and the answer, written back to the saved answer being edited. */
-  async function persistActive(nextAnswer, nextImprovements) {
+  /** The answer and its allowance (the server's, mirrored), written back to the saved answer being edited. */
+  async function persistActive(nextAnswer) {
     if (!activeId) return;
     const next = (profile.vault || []).map((item) => (item.id === activeId
-      ? { ...item, answer: nextAnswer, aiImprovementsLeft: premium ? 0 : Math.max(0, Number(nextImprovements || 0)) }
+      ? {
+        ...item,
+        answer: nextAnswer,
+        aiAllowanceId: premium ? null : allowanceId,
+        aiImprovementsLeft: premium ? 0 : Math.max(0, Number(improvementsLeft || 0)),
+      }
       : item));
     await persist({ ...profile, vault: normalizeVault(next) });
     renderSaved();
@@ -284,8 +337,10 @@ export function mount(body, ctx) {
         credits = res.credits;
       }
     }
-    const consumesCredit = !premium && improvementsLeft <= 0;
-    if (consumesCredit && Number(latest || 0) <= 0) {
+    // A hint, to spare a round trip: the server decides what this costs. With
+    // the balance unknown, it is the server's call too.
+    const consumesCredit = !premium && !(allowanceId && improvementsLeft > 0);
+    if (consumesCredit && Number.isFinite(latest) && latest <= 0) {
       errorText = 'No credits remaining. Premium makes answers unlimited.';
       renderMessages();
       ctx.toast('No credits remaining. Upgrade to continue.', 'error');
@@ -335,6 +390,9 @@ export function mount(body, ctx) {
         styleHint: ANSWER_STYLE_INSTRUCTIONS[tone.value] || ANSWER_STYLE_INSTRUCTIONS.balanced,
         model: ANSWER_STUDIO_MODEL,
         ...(corpus.length ? { corpus } : {}),
+        // What it costs: the server charges, or spends this allowance.
+        kind: 'answer',
+        ...(allowanceId && !premium ? { allowanceId } : {}),
       };
 
       const result = await withTimeout(
@@ -359,30 +417,11 @@ export function mount(body, ctx) {
       // Advisory only: the answer stands, and nothing is regenerated.
       flags = Array.isArray(result?.fabricationFlags) ? result.fabricationFlags : [];
 
+      // The server already charged (or spent the allowance); take its word.
+      applyCharge(result?.charge);
       if (!premium) {
-        let nextImprovements = improvementsLeft;
-        if (consumesCredit) {
-          try {
-            const deduct = await withTimeout(creditManager.deductCredit(), CREDIT_API_TIMEOUT_MS, 'Credit update timed out after generation.');
-            if (!deduct.success) {
-              errorText = deduct.error || 'Answer written, but your credits could not be updated.';
-              nextImprovements = 0;
-            } else {
-              credits = deduct.isPremium ? Infinity : deduct.remaining;
-              ctx.setCredits(credits);
-              nextImprovements = 3;
-            }
-          } catch (creditErr) {
-            log.warn('Credit deduction failed after generation:', creditErr);
-            errorText = 'Answer written, but the credit update failed. Refresh to see your balance.';
-            nextImprovements = 0;
-          }
-        } else {
-          nextImprovements = Math.max(0, improvementsLeft - 1);
-        }
-        improvementsLeft = nextImprovements;
         try {
-          await persistActive(improved, nextImprovements);
+          await persistActive(improved);
         } catch (persistErr) {
           log.warn('Could not persist the improvement balance:', persistErr);
         }
@@ -394,6 +433,11 @@ export function mount(body, ctx) {
     } catch (e) {
       if (!alive) return;
       errorText = e?.message || 'Something went wrong.';
+      // The server refused for want of a credit: its balance is zero, whatever this page thought.
+      if (!premium && /no credits/i.test(errorText)) {
+        credits = 0;
+        ctx.setCredits(0);
+      }
       ctx.toast(errorText, 'error');
     } finally {
       generating = false;

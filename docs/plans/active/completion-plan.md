@@ -18,7 +18,7 @@ Run batch B<N> of docs/plans/active/completion-plan.md.
 | --- | --- | --- | --- | --- | --- |
 | B0 | Baseline and guardrails | no | M | done 2026-10-16 (checkpoint 10) | see `git log --grep "checkpoint 10"` |
 | B1 | Server split ∥ website fixes ∥ extension protocol | no | L | done 2026-10-17 (checkpoint 11) | see `git log --grep "checkpoint 11"` |
-| B2 | Server: charging, billing, AI quality | no | L | not started | |
+| B2 | Server: charging, billing, AI quality | no | L | done 2026-10-17 (checkpoint 12) | see `git log --grep "checkpoint 12"` |
 | B3 | Extension 1.0.4: job-page button, popup, wipe, release tooling | no | L | not started | |
 | B4 | Owner session A: real services on the dev project | yes, ~90 min | M | not started | |
 | B5 | Docs, deploy checklist, final review | no | M | not started | |
@@ -95,6 +95,34 @@ know) go here, newest last:
   and the FAQ sentence are removed). The four remaining overstatements
   (HANDOVER §7 item 14) stay as they are: don't rewrite them in later
   batches. The narrowed message senders stay.
+- **B2: baseline for B3.** `npm run lint` 0 errors, 1 warning (the same);
+  `npm test` 864/0/2; `test:e2e` 200 pass / 10 skipped;
+  `test:e2e:extension` 6. The usage limit stopped all three builders again;
+  resuming them by `SendMessage` worked as in B1.
+- **B2, for B3: charging is on the server now.** The generate route charges
+  inside the call (`kind`, `allowanceId`, the response's `charge`), and
+  `/api/credits/deduct` is a no-op. The popup's signed-in Personalize path
+  is an old client to the server: charged a credit per call, no free re-run.
+  `web/tests/extension.spec.js`'s "popup cover letters (an old client)" test
+  asserts exactly that; when B3 removes that path, drop or adapt the test.
+  `web/dashboard/js/ws/cover-letter.js` changed in `personalize()`, the cost
+  hint and the re-run key (`jobContextFor()`, keyed by the description
+  alone): B3-A's handoff prefill must leave those as they are.
+  `web/tests/stubs.js` charges inside generate and imports
+  `jobDescriptionOf()` from `server/lib/generationSpend.js`.
+- **B2, for B4: apply migration 007 to the dev project first.** Until it is
+  applied, generation and "Explain my fit" answer 503 there (fail closed).
+  Run the file itself, not `schema.sql` (the ledger says why). Then by hand:
+  two quick presses with one credit (one generation, one refusal); an answer
+  and a free improvement; a cover letter and its free re-run; "Explain my
+  fit"'s charge; a real double checkout, and a new subscription replacing an
+  on-hold one; the dev env's `GEMINI_RANK_MODELS` order (pass/fail only) and
+  `meta.timings` from a real rank; Improve against Groq; `npm run evals`
+  with `RUN_LLM_EVALS=1` if the owner wants the LLM evals.
+- **B2, for B5's deploy checklist:** migration 007 goes onto production
+  **before** the server that needs it, or every generation answers 503. The
+  design document (`server-side-generation-charging.md`) is implemented; its
+  deviations are in HANDOVER §0, checkpoint 12.
 
 ---
 

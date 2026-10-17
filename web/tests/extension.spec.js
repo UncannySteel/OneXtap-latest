@@ -115,7 +115,11 @@ test.describe('the extension, loaded', () => {
     await expect(form.locator('#em')).toHaveValue('ada@example.com');
   });
 
-  test('popup cover letters: one credit buys a personalisation and one free re-run', async ({ context, page, serviceWorker, extensionId }) => {
+  // The popup's personalising predates server-side charging: it sends no
+  // `kind`, so the server (and stubApi) charge every call and grant nothing,
+  // and its own call to POST /api/credits/deduct is a no-op. Its "free re-run"
+  // is therefore refused at zero credits. Batch B3 removes this path.
+  test('popup cover letters (an old client): every personalisation is charged by the server, once', async ({ context, page, serviceWorker, extensionId }) => {
     await stubAuth(context);
     const api = await stubApi(context, { credits: 1 });
     const popup = await context.newPage();
@@ -153,16 +157,24 @@ test.describe('the extension, loaded', () => {
     await description.fill('Senior Backend Engineer at Norwick Labs. Requirements: Python, PostgreSQL, Docker.');
     await expect(popup.getByText('Uses 1 credit · includes 1 free re-run')).toBeVisible();
 
-    // Paid: one credit, through the server, after the letter came back.
+    // Paid: one credit, charged by the server inside the generation. The
+    // popup's deduct afterwards is answered with the balance and charges
+    // nothing.
     await button.click();
     await expect(suggestion).toHaveValue('Dear Norwick Labs team, letter number 1.');
+    expect(api.calls.filter((c) => c.path === '/api/answer-vault/generate')[0].body.kind).toBeUndefined();
     expect(deducts()).toBe(1);
     expect(api.state.credits).toBe(0);
+    // The popup still believes in its own counter…
     await expect(popup.getByText('Free re-run for this description')).toBeVisible();
 
-    // Its re-run is free, with the balance at zero.
+    // …but the server granted it nothing: at zero credits the "re-run" is
+    // refused, and nothing is generated or charged.
     await button.click();
-    await expect(suggestion).toHaveValue('Dear Norwick Labs team, letter number 2.');
+    await expect(popup.getByText('No credits remaining', { exact: true }).first()).toBeVisible();
+    await expect(suggestion).toHaveCount(0);
+    expect(generations()).toBe(2);
+    expect(api.state.credits).toBe(0);
     expect(deducts()).toBe(1);
 
     // Another job, no credits: refused before any AI call.
@@ -173,9 +185,10 @@ test.describe('the extension, loaded', () => {
     expect(generations()).toBe(2);
     expect(deducts()).toBe(1);
 
-    // The allowance is kept on the template, in the extension's store.
+    // The popup's own counter is still on the template, in the extension's
+    // store; the server pays it no attention.
     const stored = await extensionStorage(serviceWorker, ['onextap_profiles']);
-    expect(activeProfile(stored).coverLetters[0]).toMatchObject({ name: 'Formal', aiRerunsLeft: 0 });
+    expect(activeProfile(stored).coverLetters[0]).toMatchObject({ name: 'Formal', aiRerunsLeft: 1 });
   });
 
   test('signed out, the popup sends cover letters to the dashboard, and versions saved there come back to fill', async ({ context, page, serviceWorker, extensionId }) => {

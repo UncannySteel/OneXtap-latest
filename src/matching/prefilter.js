@@ -15,7 +15,7 @@ import {
   roundTo,
   tokenize,
 } from './normalize.js';
-import { detectSeniority, SKILL_LEXICON } from './lexicon.js';
+import { detectSeniority, SKILL_LEXICON, foldVersionedPhrase } from './lexicon.js';
 import { foldToLexicon } from './extractKeywords.js';
 
 /**
@@ -183,7 +183,11 @@ export function normalizeJobKeywords(job) {
   const byTerm = new Map();
 
   const push = (rawTerm, rawWeight, rawRequired, rawCount) => {
-    const term = normalizeText(rawTerm);
+    // Versioned names fold here too, not only at extraction: a row keeps the
+    // terms it was ingested with, so a `vue3` stored before the fold existed
+    // must still meet a resume's `vue`. Two spellings of one term then merge
+    // like any other repeat, below.
+    const term = foldVersionedPhrase(normalizeText(rawTerm));
     if (!term) return;
     const weight = Number.isFinite(rawWeight) ? rawWeight : DEFAULT_KEYWORD_WEIGHT;
     const required = Boolean(rawRequired);

@@ -15,7 +15,7 @@ import {
   tokenize,
 } from './normalize.js';
 import { STOPWORDS, PHRASE_BREAKERS, NEVER_EMIT } from './stopwords.js';
-import { SKILL_LEXICON, ALIASES, TITLE_TOKENS, SENIORITY } from './lexicon.js';
+import { SKILL_LEXICON, ALIASES, TITLE_TOKENS, SENIORITY, foldVersionedName } from './lexicon.js';
 
 /**
  * One accumulated term. `count` is how many times it was observed, `weight` the
@@ -84,7 +84,7 @@ const WEIGHT_DECIMALS = 4;
 
 /**
  * Resolve a candidate n-gram to a lexicon entry, trying the literal phrase, the
- * whole-phrase alias, and finally a per-token alias fold.
+ * whole-phrase alias, and finally a per-token fold (alias, else versioned name).
  *
  * Aliasing is done on whole tokens/phrases and never as a string replacement —
  * `'jsx'.replace('js', 'javascript')` is exactly the bug this avoids.
@@ -108,9 +108,11 @@ function resolveTerm(phrase, isUnigram) {
     if (entry) return entry;
   }
 
+  // A versioned spelling (`vue3`, `html-5`) is tried only when the token has
+  // no alias of its own; see VERSIONED_NAMES for why it is a list.
   const folded = phrase
     .split(' ')
-    .map((token) => ALIASES.get(token) ?? token)
+    .map((token) => ALIASES.get(token) ?? foldVersionedName(token))
     .join(' ');
   if (folded !== phrase) {
     const entry = SKILL_LEXICON.get(folded);

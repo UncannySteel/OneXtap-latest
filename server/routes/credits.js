@@ -2,17 +2,12 @@
  * The credit balance: GET /api/credits and POST /api/credits/deduct.
  */
 import express from 'express';
-import {
-  supabaseAdmin,
-  getProfile,
-  updateProfile,
-  requireAuth,
-  formatSupabaseError,
-} from '../supabase.js';
+import { getProfile, requireAuth } from '../supabase.js';
 import { log } from '../logger.js';
 import { apiErrorMessage } from '../lib/errors.js';
 
 const router = express.Router();
+const creditsLog = log.child('credits');
 
 // ------------------------------------------------------------------
 // GET /api/credits — get current credit balance
@@ -34,53 +29,29 @@ router.get('/api/credits', requireAuth, async (req, res) => {
 });
 
 // ------------------------------------------------------------------
-// POST /api/credits/deduct — deduct 1 credit (server-verified)
+// POST /api/credits/deduct — a no-op, for old clients
 // ------------------------------------------------------------------
+// Generations are paid for where they happen now: POST
+// /api/answer-vault/generate and POST /api/jobs/explain spend before (or, for
+// explain, right after) the model call, atomically (server/lib/credits.js).
+// Nothing current calls this. Clients from before that change (the published
+// popup, a cached Answer Studio page) still call it after a generation the
+// server has already charged, so it answers as it always did, success and the
+// balance, and charges nothing. Charging here as well would charge them twice.
+//
+// `remaining` is null on Premium, which is what the old `Infinity` became in
+// JSON; old clients read `isPremium` first.
 router.post('/api/credits/deduct', requireAuth, async (req, res) => {
   try {
     const profile = await getProfile(req.userId, req.userEmail);
-
-    if (profile.is_premium) {
-      return res.json({ success: true, remaining: Infinity, isPremium: true });
-    }
-
-    if (profile.credits <= 0) {
-      return res.status(403).json({ success: false, remaining: 0, error: 'No credits remaining' });
-    }
-
-    const newCredits = profile.credits - 1;
-    await updateProfile(req.userId, { credits: newCredits });
-
-    const { error: deductTxError } = await supabaseAdmin
-      .from('credit_transactions')
-      .insert({
-        user_id: req.userId,
-        amount: -1,
-        type: 'usage',
-        description: 'AI generation credit used',
-      });
-
-    if (deductTxError) {
-      log.error(
-        '[API] credit_transactions insert failed after deduct:',
-        formatSupabaseError(deductTxError)
-      );
-      try {
-        await updateProfile(req.userId, { credits: profile.credits });
-      } catch (rollbackErr) {
-        log.error(
-          '[API] Failed to rollback credits after deduct audit failure:',
-          apiErrorMessage(rollbackErr)
-        );
-      }
-      return res.status(500).json({
-        success: false,
-        error:
-          'Could not record credit usage. Your balance was restored; please try again.',
-      });
-    }
-
-    res.json({ success: true, remaining: newCredits });
+    const isPremium = !!profile.is_premium;
+    creditsLog.info('POST /api/credits/deduct from an old client: answered with the balance, nothing charged');
+    res.json({
+      success: true,
+      remaining: isPremium ? null : profile.credits,
+      isPremium,
+      charged: false,
+    });
   } catch (error) {
     log.error('POST /api/credits/deduct error:', apiErrorMessage(error));
     res.status(500).json({ success: false, error: apiErrorMessage(error) });
@@ -96,8 +67,10 @@ router.post('/api/credits/deduct', requireAuth, async (req, res) => {
 // in the product ever called it. Removed on 2026-10-03.
 //
 // Refunds happen inside the server, on the route that charged: see
-// refundOneCredit(), which /api/jobs/explain calls when a paid explanation
-// fails. A route that gives credits back must be able to prove what it is
-// giving back. test/server/routes.test.js keeps this one from returning.
+// undoGeneration() and refundOneCredit() in server/lib/credits.js, which
+// POST /api/answer-vault/generate and /api/jobs/explain call when a paid
+// generation fails, and which give back only a charge that happened, once. A
+// route that gives credits back must be able to prove what it is giving back.
+// test/server/routes.test.js keeps this one from returning.
 
 export default router;

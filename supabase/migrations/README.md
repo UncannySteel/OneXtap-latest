@@ -26,6 +26,7 @@ answers `42703` does not exist; check constraints read with
 | `004_location_parts.sql` | 3 columns + 3 indexes on `job_listings` | **applied 2026-09-19** | Additive and re-runnable. Applied without being recorded; found by probe on 2026-09-19 — see "Ledger drift". The columns were null on every row until the 2026-09-19 ingest and the `scripts/backfill-location-parts.mjs` repair; 1052 of 3,923 rows carry a country now, and `/api/jobs/locations` answers. Adzuna's pre-004 rows stay null until its cursor re-walks them — the backfill deliberately will not guess them from the display string. |
 | `005_keyless_sources.sql` | nothing — widens `job_listings_source_check` | **applied 2026-09-19** | Additive and re-runnable. Applied without being recorded; confirmed 2026-09-19 by `pg_get_constraintdef`, which returns all nine source values. Not the reason the four keyless sources hold 0 rows — ingest has not run since they were registered. |
 | `006_generation_rate_limit.sql` | `generation_rate_limit` | **not applied** (written 2026-10-06, on `merge/web-dashboard`) | Additive and re-runnable. Apply before or with the deploy that brings `server/generateLimit.js`. Until then the generate route works without its hourly ceiling and logs "generation limit unavailable" once per instance (it fails open). Not in `schema.sql`: a fresh project runs it after `002`. |
+| `007_generation_charges.sql` | `generation_allowances`, `spend_generation()`, `undo_generation()` | **not applied** (written 2026-10-17, batch B2) | Additive and re-runnable. **Apply before the deploy that brings server-side charging**: without it `POST /api/answer-vault/generate` and `POST /api/jobs/explain` fail closed (503, and an error log naming this file), so nothing is generated, free or paid. Needs `schema.sql`'s `profiles` and `credit_transactions`. The same statements end `schema.sql`, so a fresh project gets them there. |
 
 ## Dev project
 
@@ -38,6 +39,7 @@ tracked file names it.
 | `supabase/schema.sql` (whole file) | **applied 2026-10-10** | Fresh project, so batch 2 ran too. That block already carries what `001`, `003`, `004` and `005` add; do not run those here. |
 | `002_rank_cache.sql` | **applied 2026-10-10** | |
 | `006_generation_rate_limit.sql` | **applied 2026-10-10** | |
+| `007_generation_charges.sql` | **not applied** | Written 2026-10-17 (B2). The 2026-10-10 `schema.sql` run predates its block in `schema.sql`, so run this file here. |
 
 Verified the same day by a read-only PostgREST probe: all seven tables answer
 (`profiles`, `credit_transactions`, `job_listings`, `job_ingest_state`,

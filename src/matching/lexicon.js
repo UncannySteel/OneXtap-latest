@@ -326,6 +326,71 @@ export const ALIASES = new Map([
 ]);
 
 /**
+ * Technologies whose version number is part of how people write them:
+ * "HTML5", "CSS3", "Vue3", "PHP8", "Angular2+". To a recruiter each is the
+ * plain skill, so each folds to its lexicon term.
+ *
+ * ═══ AN EXPLICIT LIST, NOT "STRIP THE DIGITS" ═══
+ *
+ * A digit is often the name itself: S3, EC2, Web3, D3, K8s, B2B, Cloudflare R2.
+ * A general rule would turn those into `s`, `ec`, `web` and `r` (the R
+ * language), so a version is only recognised on a name listed here, after the
+ * whole token has already failed to match the lexicon and ALIASES. Every entry
+ * must be a {@link SKILL_LEXICON} key (`test/matching/versionedNames.test.js`).
+ *
+ * Deliberately absent:
+ *   - single letters (`c`, `r`, `go`): C4, C11, R2 and Go1 mean other things.
+ *   - `python`: "Python 3" already folds (the bare number is dropped as noise)
+ *     and `python3` has its own alias; Python 2 and 3 are left exactly as
+ *     they were.
+ *   - `es`: ES6 is an alias onto `javascript`, not a version of "es".
+ *
+ * `html5` and `css3` are also in ALIASES, from before this list; both paths
+ * agree, and the list is what reaches `html-5`, `html4` and `css2` too.
+ *
+ * @type {ReadonlySet<string>}
+ */
+export const VERSIONED_NAMES = Object.freeze(new Set([
+  'html', 'css', 'php', 'vue', 'angular', 'bootstrap', 'webpack', 'java', 'swift', 'oauth',
+]));
+
+/**
+ * A name immediately followed by a version: `html5`, `html-5`, `php8.2`,
+ * `angular17`. One or two digits, optionally `.minor` (TOKEN_RE keeps an
+ * internal dot or hyphen inside one token). A four-digit year is not a
+ * version, so `css2024` does not match.
+ */
+const VERSIONED_TOKEN = /^([a-z]+)-?\d{1,2}(?:\.\d{1,2})?$/;
+
+/**
+ * Fold one token to its unversioned name, when it is a listed name plus a
+ * version; anything else comes back unchanged.
+ *
+ * Token level only, like ALIASES, and for the same reason: a string replace
+ * would rewrite the inside of other words.
+ *
+ * @param {unknown} token A normalized token; non-strings are returned as given.
+ * @returns {unknown} The lexicon term (`html` for `html5`), or `token`.
+ */
+export function foldVersionedName(token) {
+  if (typeof token !== 'string') return token;
+  const match = VERSIONED_TOKEN.exec(token);
+  return match && VERSIONED_NAMES.has(match[1]) ? match[1] : token;
+}
+
+/**
+ * {@link foldVersionedName} over every token of a space-joined phrase:
+ * `tailwind css3` becomes `tailwind css`.
+ *
+ * @param {string} phrase Normalized text.
+ * @returns {string}
+ */
+export function foldVersionedPhrase(phrase) {
+  if (typeof phrase !== 'string' || !phrase) return phrase;
+  return phrase.split(' ').map(foldVersionedName).join(' ');
+}
+
+/**
  * Seniority ladder. Values are ordinal, not linear — the gap from senior to
  * lead is not the same as intern to junior — but ordinal is all the fit
  * calculation in `fallbackScore` needs.

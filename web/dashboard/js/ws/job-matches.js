@@ -16,7 +16,7 @@ const log = baseLog.child('ui');
 //
 //   - Filters are a DRAFT the user edits and an APPLIED copy that ranks.
 //     Nothing re-ranks until Apply (or Enter in the filter card); a rank is
-//     5-20 seconds of LLM calls against daily budgets, so it is never spent
+//     10-30 seconds of model time against daily budgets, so it is never spent
 //     on a half-made selection.
 //   - Sort re-orders results already in hand: instant, free, no re-rank.
 //   - Leaving the page and coming back does not re-rank either: the last
@@ -559,7 +559,10 @@ export function mount(body, ctx) {
     if (ranking) {
       list = h('div.ranking', null,
         h('p.busy-row', null, h('span.spin', { 'aria-hidden': 'true' }), h('span', null, progressText())),
-        h('p.meta-note', null, 'Ranking runs in batches and usually takes 5–20 seconds. The exact numbers arrive with the result.'),
+        // One AI pass over up to 30 jobs, whose length depends on which model
+        // answers: the estimate is worked out at BATCH_SIZE in server/jobs/rank.js.
+        // Not yet checked against real timings (meta.timings has them now).
+        h('p.meta-note', null, 'The closest matches are scored in one AI pass. It usually takes 10–30 seconds, and longer when the AI service is busy. The exact numbers arrive with the result.'),
         skeleton(3, ['100%', '100%', '100%']).map((el) => { el.classList.add('skel-card'); return el; }));
     } else if (loadError && !result) {
       list = note('amber', h('p', null, loadError), h('button.link-btn', { type: 'button', onclick: () => scheduleRank(true) }, 'Try again'));

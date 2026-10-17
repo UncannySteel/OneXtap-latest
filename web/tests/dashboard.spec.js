@@ -23,6 +23,8 @@ const JD_ONE = 'Senior Backend Engineer at Norwick Labs. Requirements: Python, P
 const JD_TWO = 'Platform Engineer at Kestrel Analytics. Requirements: Kubernetes, Terraform.';
 const JD_THREE = 'Data Engineer at Fernhill Foods. Requirements: Airflow, dbt.';
 
+// The server charges inside the generate call and answers with `charge`
+// (stubApi does the same); the dashboard never calls POST /api/credits/deduct.
 test.describe('the dashboard: cover letters and credits', () => {
   test('one credit buys a personalisation and one free re-run; none left, it says so', async ({ page, isMobile }) => {
     await stubAuth(page);
@@ -31,7 +33,9 @@ test.describe('the dashboard: cover letters and credits', () => {
     await page.goto('/dashboard/#/cover-letter');
 
     const deducts = () => api.calls.filter(c => c.path === '/api/credits/deduct').length;
-    const generations = () => api.calls.filter(c => c.path === '/api/answer-vault/generate').length;
+    const generateCalls = () => api.calls.filter(c => c.path === '/api/answer-vault/generate');
+    const generations = () => generateCalls().length;
+    const lastRequest = () => generateCalls().at(-1).body;
     const hint = page.locator('#cl-hint');
     const button = page.getByRole('button', { name: 'Personalise for this job' });
     const letter = page.getByRole('textbox', { name: 'Personalised version' });
@@ -47,18 +51,24 @@ test.describe('the dashboard: cover letters and credits', () => {
     await description.fill(JD_ONE);
     await expect(hint).toHaveText('Using “Formal”. Uses 1 credit, which includes one free re-run.');
 
-    // Paid: one credit, through the server, after the letter came back.
+    // Paid: one credit, charged by the server inside the generation.
     await button.click();
     await expect(letter).toHaveValue('Dear Norwick Labs team, letter number 1.');
-    expect(deducts()).toBe(1);
+    expect(lastRequest()).toMatchObject({ kind: 'cover_letter' });
+    expect(lastRequest().allowanceId).toBeUndefined();
     expect(api.state.credits).toBe(1);
     await expect(page.locator('[data-bind="credits"]').first()).toHaveText('1');
     await expect(hint).toHaveText('Using “Formal”. This one is a free re-run.');
 
-    // The re-run of the same application is free, once.
+    // The re-run of the same application is free, once: the page hands back
+    // the allowance the server granted.
+    const afterFirst = await page.evaluate(() => JSON.parse(localStorage.getItem('onextap_profiles')));
+    const grantedId = afterFirst.profiles[afterFirst.activeProfileId].coverLetters[0].aiAllowanceId;
+    expect(grantedId).toMatch(/^[0-9a-f-]{36}$/);
     await button.click();
     await expect(letter).toHaveValue('Dear Norwick Labs team, letter number 2.');
-    expect(deducts()).toBe(1);
+    expect(lastRequest()).toMatchObject({ kind: 'cover_letter', allowanceId: grantedId });
+    expect(api.state.credits).toBe(1);
     await expect(hint).toHaveText('Using “Formal”. Uses 1 credit, which includes one free re-run.');
 
     // Another job is another application: paid, and it buys its own re-run,
@@ -66,12 +76,12 @@ test.describe('the dashboard: cover letters and credits', () => {
     await description.fill(JD_TWO);
     await button.click();
     await expect(letter).toHaveValue('Dear Norwick Labs team, letter number 3.');
-    expect(deducts()).toBe(2);
     expect(api.state.credits).toBe(0);
+    await expect(page.locator('[data-bind="credits"]').first()).toHaveText('0');
     await expect(hint).toHaveText('Using “Formal”. This one is a free re-run.');
     await button.click();
     await expect(letter).toHaveValue('Dear Norwick Labs team, letter number 4.');
-    expect(deducts()).toBe(2);
+    expect(api.state.credits).toBe(0);
 
     // A third job with no credits left: refused before any AI call.
     await description.fill(JD_THREE);
@@ -79,12 +89,43 @@ test.describe('the dashboard: cover letters and credits', () => {
     await button.click();
     await expect(page.getByText('No credits remaining. Premium makes cover letters unlimited.')).toBeVisible();
     expect(generations()).toBe(4);
-    expect(deducts()).toBe(2);
+    expect(deducts()).toBe(0);
 
-    // The allowance is kept on the template, in this browser's profile store.
+    // The allowance is kept on the template, in this browser's profile store:
+    // its re-run used, so no id left to send.
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('onextap_profiles')));
     const template = stored.profiles[stored.activeProfileId].coverLetters[0];
-    expect(template).toMatchObject({ name: 'Formal', aiRerunsLeft: 0 });
+    expect(template).toMatchObject({ name: 'Formal', aiRerunsLeft: 0, aiAllowanceId: null });
     expect(template.aiRerunKey).toMatch(/^[0-9a-f]{8}$/);
+  });
+});
+
+test.describe('the dashboard: Answer Studio and credits', () => {
+  test('one credit writes an answer with three free improvements, charged by the server', async ({ page, isMobile }) => {
+    await stubAuth(page);
+    const api = await stubApi(page, { credits: 1 });
+    await signIn(page, isMobile);
+    await page.goto('/dashboard/#/answer-studio');
+
+    const generateCalls = () => api.calls.filter(c => c.path === '/api/answer-vault/generate');
+    const answer = page.getByPlaceholder('Optional — your own draft. Generate writes one; Improve rewrites what is here.');
+
+    await page.getByPlaceholder('e.g. Why do you want to work here?').fill('Why do you want to work here?');
+    await page.getByRole('button', { name: 'Generate answer' }).click();
+    await expect(answer).toHaveValue('Dear Norwick Labs team, letter number 1.');
+    expect(generateCalls()[0].body).toMatchObject({ kind: 'answer' });
+    expect(generateCalls()[0].body.allowanceId).toBeUndefined();
+    expect(api.state.credits).toBe(0);
+    await expect(page.getByText('Free improvements on this answer: 3')).toBeVisible();
+    await expect(page.locator('.credit-pill')).toHaveText('0 credits left');
+
+    // Improving it is free, at zero credits, with the allowance handed back.
+    await page.getByRole('button', { name: 'Improve answer' }).click();
+    await expect(answer).toHaveValue('Dear Norwick Labs team, letter number 2.');
+    expect(generateCalls()[1].body.allowanceId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(api.state.credits).toBe(0);
+    await expect(page.getByText('Free improvements on this answer: 2')).toBeVisible();
+
+    expect(api.calls.filter(c => c.path === '/api/credits/deduct')).toHaveLength(0);
   });
 });

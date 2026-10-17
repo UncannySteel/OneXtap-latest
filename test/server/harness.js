@@ -30,6 +30,14 @@
  * the life of the process: an SDK may have captured the wrapped fetch, and a
  * late call after close() must still be blocked. `node --test` runs each test
  * file in its own process, so nothing leaks into other files.
+ *
+ * Fake services (optional, startHarness({ fakes })). A test that needs a
+ * route to get past Supabase or Groq can serve a fake of either on loopback:
+ * the harness listens for it on an ephemeral port, points that service's
+ * HARNESS_ENV URL at it before the import, and lets the guard through to that
+ * port only. The four guarantees still hold: the URL is a dummy of ours, the
+ * listener is ours, the connection never leaves loopback, and the logs are
+ * still captured. Without `fakes`, nothing changes.
  */
 import http from 'node:http';
 import net from 'node:net';
@@ -255,13 +263,44 @@ function envDiff(before, after) {
   return [...names].filter((k) => before[k] !== after[k]).sort();
 }
 
+/** The env vars a fake may stand in for: the service URLs, all unreachable by default. */
+const FAKEABLE = Object.keys(HARNESS_ENV).filter((key) => HARNESS_ENV[key] === UNREACHABLE_URL);
+
+function listenOnLoopback(server) {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+  });
+}
+
+/**
+ * Serve each fake on its own loopback port and point its env var there.
+ * @param {Record<string, http.RequestListener>|undefined} fakes Keyed by a
+ *   HARNESS_ENV service URL name (SUPABASE_URL, GROQ_BASE_URL, …).
+ * @returns {Promise<Array<{name: string, server: http.Server, port: number}>>}
+ */
+async function serveFakes(fakes) {
+  const served = [];
+  for (const [name, handler] of Object.entries(fakes || {})) {
+    if (!FAKEABLE.includes(name)) throw new Error(`the harness has no service URL called ${name}`);
+    if (typeof handler !== 'function') throw new Error(`the fake for ${name} is not a request handler`);
+    const server = http.createServer(handler);
+    const port = await listenOnLoopback(server);
+    servingPorts.add(port);
+    process.env[name] = `http://127.0.0.1:${port}`;
+    served.push({ name, server, port });
+  }
+  return served;
+}
+
 let loaded = null;
 
-async function loadApp() {
+async function loadApp({ fakes } = {}) {
   applyEnv();
   installNetworkGuard();
   installDotenvTripwire();
   captureServerLogs();
+  const fakeServers = await serveFakes(fakes);
 
   const listensDuringImport = [];
   const realListen = net.Server.prototype.listen;
@@ -279,7 +318,7 @@ async function loadApp() {
   }
   const envChangedByImport = envDiff(before, { ...process.env });
 
-  return { app: mod.default, envChangedByImport, listensDuringImport };
+  return { app: mod.default, envChangedByImport, listensDuringImport, fakeServers };
 }
 
 function request(port, method, urlPath, headers = {}, body) {
@@ -311,10 +350,14 @@ function request(port, method, urlPath, headers = {}, body) {
 /**
  * Import the app (once per process) and serve it on an ephemeral loopback
  * port. Call close() when done.
+ * @param {{ fakes?: Record<string, http.RequestListener> }} [options] Fake
+ *   services, by the env var that points at them (see the header). Only the
+ *   first call in a process imports the app, so only its fakes count; close()
+ *   stops them.
  */
-export async function startHarness() {
-  if (!loaded) loaded = loadApp();
-  const { app, envChangedByImport, listensDuringImport } = await loaded;
+export async function startHarness(options = {}) {
+  if (!loaded) loaded = loadApp(options);
+  const { app, envChangedByImport, listensDuringImport, fakeServers } = await loaded;
 
   const server = http.createServer(app);
   await new Promise((resolve, reject) => {
@@ -342,6 +385,11 @@ export async function startHarness() {
       servingPorts.delete(port);
       server.closeAllConnections?.();
       await new Promise((resolve) => server.close(resolve));
+      for (const fake of fakeServers.splice(0)) {
+        servingPorts.delete(fake.port);
+        fake.server.closeAllConnections?.();
+        await new Promise((resolve) => fake.server.close(resolve));
+      }
     },
   };
 }

@@ -45,8 +45,9 @@ const graphLog = log.child('rank');
  *
  * This is our analogue of the baseline's bounded live fetch. The baseline caps
  * how much it pulls from the provider on each loop; we hold a pool of our own,
- * so the bound moves to the expensive step instead: 30 jobs is six batches,
- * which is the most LLM work one request may cost. Raising it raises latency
+ * so the bound moves to the expensive step instead: 30 jobs is one batch at
+ * the default BATCH_SIZE (it was six when batches were five jobs), which is
+ * the most LLM work one pass may cost. Raising it raises latency
  * and spend linearly and improves recall barely at all, because the prefilter
  * has already sorted by keyword overlap and the tail is noise.
  */
@@ -556,7 +557,22 @@ export async function runRankGraph(params = {}) {
   const options = params?.options && typeof params.options === 'object' ? params.options : {};
 
   const startedAt = Date.now();
-  const timings = { totalMs: 0, prefilterMs: 0, rankMs: 0, reformulateMs: 0 };
+  // `prefilterMs` is the whole prefilter STEP — the pool read and the local
+  // pass — and `poolMs` the read alone. `modelMs` is the time inside the model
+  // calls, `llmCalls` how many there were, and `reusedJobs` how many scores a
+  // later loop took from an earlier one instead of asking again. `flushMs`
+  // (the trace flush) is filled in last and is outside `totalMs`.
+  const timings = {
+    totalMs: 0,
+    prefilterMs: 0,
+    rankMs: 0,
+    reformulateMs: 0,
+    poolMs: 0,
+    modelMs: 0,
+    llmCalls: 0,
+    reusedJobs: 0,
+    flushMs: 0,
+  };
   const reformulations = [];
 
   // The ceiling is zero unless broadening is switched on, so `maxLoops` below
@@ -664,7 +680,9 @@ export async function runRankGraph(params = {}) {
         if (typeof fetchJobs !== 'function') throw new Error('No job source configured');
         const page = await fetchJobs({ ...state.filters, terms });
         pool = Array.isArray(page?.jobs) ? page.jobs : [];
+        timings.poolMs += Date.now() - prefilterStarted;
       } catch (err) {
+        timings.poolMs += Date.now() - prefilterStarted;
         // The pool is unreachable. Nothing downstream can help, but the caller
         // still gets a shaped answer rather than a rejected promise.
         lastError = err;
@@ -698,14 +716,47 @@ export async function runRankGraph(params = {}) {
       timings.prefilterMs += Date.now() - prefilterStarted;
 
       // ── STEP 3: rankJobs ─────────────────────────────────────────────
+      //
+      // ═══ A JOB IS SCORED ONCE PER RUN ═══
+      //
+      // A later loop reads a WIDER pool, so most of its candidates are jobs
+      // an earlier loop already scored — and the merge below keeps the first
+      // copy of every job, so a second score for one of them was always
+      // computed and then thrown away. On a 30-job pass that was most of a
+      // model call (see BATCH_SIZE in rank.js for what one costs in time),
+      // spent to change nothing on the page. Those jobs are no longer sent:
+      // the same jobs come back with the same scores they were kept with, the
+      // loop costs fewer tokens or no call at all, and it finishes sooner. The
+      // one thing that moves is who a NEW job shares its batch with, which
+      // prompts/rank.md already tells the model to ignore. The candidates are
+      // unchanged (`sentToScorer` still counts them); only which of them still
+      // need a model is.
+      const unscored = candidates.filter((job) => !scoredById.has(String(job?.jobId ?? job?.job_id ?? job?.id ?? '')));
+      timings.reusedJobs += candidates.length - unscored.length;
+
       const rankStarted = Date.now();
       const batch = await rankBatch({
-        jobs: candidates,
+        jobs: unscored,
         resumeProfile: state.profile,
         callModel,
         trace,
       });
       timings.rankMs += Date.now() - rankStarted;
+      timings.modelMs += Number.isFinite(batch.modelMs) ? batch.modelMs : 0;
+      timings.llmCalls += Number.isFinite(batch.llmCalls) ? batch.llmCalls : 0;
+
+      // Counts and durations only; nothing from the profile or the jobs.
+      graphLog.debug('rank pass timing', {
+        loop: loops,
+        prefilterMs: rankStarted - loopStarted,
+        pool: pool.length,
+        candidates: candidates.length,
+        reused: candidates.length - unscored.length,
+        rankMs: Date.now() - rankStarted,
+        modelMs: batch.modelMs ?? 0,
+        slowestCallMs: batch.slowestCallMs ?? 0,
+        llmCalls: batch.llmCalls ?? 0,
+      });
 
       // Merge, never replace. `relaxed` is a frozen snapshot rather than the
       // live array, because the array keeps growing and every envelope holding
@@ -894,7 +945,22 @@ export async function runRankGraph(params = {}) {
 
   // Before returning, not after: on Vercel the function can be frozen the
   // instant the response is written, and anything still batched is lost.
+  const flushStarted = Date.now();
   await flushTracing();
+  timings.flushMs = Date.now() - flushStarted;
+
+  // One line per rank with every stage, so a slow one names its own cause:
+  // `modelMs` close to `totalMs` is the model, a large `poolMs` is the pool
+  // read, and `flushMs` (bounded at 2s) is tracing.
+  graphLog.debug('rank timings', {
+    ...timings,
+    loops,
+    poolSize,
+    sentToScorer,
+    jobs: ranked.length,
+    scoredBy,
+    budgetExhausted,
+  });
 
   return result;
 }
@@ -1020,7 +1086,9 @@ export function keywordOnlyResult(resumeProfile, jobs, reason = 'rate_limited') 
     degraded: true,
     scoredBy: 'keyword',
     sources: summarizeSources(ranked),
-    timings: { totalMs: 0, prefilterMs: 0, rankMs: 0, reformulateMs: 0 },
+    timings: {
+      totalMs: 0, prefilterMs: 0, rankMs: 0, reformulateMs: 0, poolMs: 0, modelMs: 0, llmCalls: 0, reusedJobs: 0, flushMs: 0,
+    },
     poolSize: list.length,
     sentToScorer: candidates.length,
     matcherVersion: MATCHER_VERSION,

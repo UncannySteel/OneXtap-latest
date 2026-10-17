@@ -6,13 +6,10 @@ import { loadProfileStore, updateActiveProfileData, MAX_COVER_LETTERS_PER_PROFIL
 import { getAccessToken } from '@app/auth.js';
 import { getApplicationTypeConfig } from '@app/applicationTypes.js';
 import { ANSWER_STUDIO_MODEL, API_URL } from '@app/config.js';
-import { ANSWER_STYLE_INSTRUCTIONS, CREDIT_API_TIMEOUT_MS, withTimeout } from '@app/answerStudio.js';
+import { ANSWER_STYLE_INSTRUCTIONS } from '@app/answerStudio.js';
 import { creditManager } from '@app/creditManager.js';
-import { applicationKey, consumesCredit, allowanceAfter } from '@app/coverLetterCredits.js';
+import { applicationKey, consumesCredit } from '@app/coverLetterCredits.js';
 import { loadFabricationCorpus } from '@app/fabricationCorpus.js';
-import { log as baseLog } from '@app/logger.js';
-
-const log = baseLog.child('ui');
 
 // Cover Letter — the backend's CoverLetterPanel, for the web: templates for
 // the active profile (up to MAX_COVER_LETTERS_PER_PROFILE), personalised per
@@ -25,10 +22,13 @@ const log = baseLog.child('ui');
 // and the finished letter is copied (or saved, and filled from the popup).
 //
 // Personalising costs what @app/coverLetterCredits.js says: one credit buys a
-// personalisation and one free re-run of it (same template, same job
-// description); Premium is unlimited. As in Answer Studio, the credit is
-// checked before the call and deducted through the server after a successful
-// one, and the re-run allowance is kept on the template.
+// personalisation and one free re-run of it (same template, same application,
+// within 30 days); Premium is unlimited. The server charges, inside the
+// generate call (kind 'cover_letter'), and keys the re-run to the description
+// in the job context it was sent, without the company and role lines
+// (subjectKeyFor() in server/lib/generationSpend.js), so the cost hint here
+// keys the description alone. The template keeps the server's allowance id (`aiAllowanceId`); `aiRerunsLeft`
+// and `aiRerunKey` mirror it for the hint.
 
 const APP_TYPE = 'job';
 const NAME_MAX = 32;
@@ -40,6 +40,24 @@ const excerpt = (text, n) => {
   return s.length > n ? `${s.slice(0, n)}…` : s;
 };
 const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** A credit count from the server: a number, or null for anything else (CLAUDE.md rule 3). */
+const finiteOrNull = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+
+/**
+ * The job context personalising sends. The server reads the description back
+ * out of it by these two header lines (jobDescriptionOf() in
+ * server/lib/generationSpend.js): change the format, change that too.
+ */
+const jobContextFor = (companyName, role, description) =>
+  `${companyName ? `Organization: ${companyName}\n` : ''}${role ? `Role: ${role}\n\n` : ''}${description.substring(0, 6000)}`;
+
+/**
+ * The template as the cost hint should see it: its re-run counts only if the
+ * server granted it. A template from before the server kept count has a
+ * number and no allowance, and the server will charge it.
+ */
+const grantedOnly = (template) => (template?.aiAllowanceId ? template : null);
 
 export function mount(body, ctx) {
   const appConfig = getApplicationTypeConfig(APP_TYPE);
@@ -111,18 +129,39 @@ export function mount(body, ctx) {
     if (!alive) return;
     premium = res.isPremium;
     if (!res.error) {
-      credits = premium ? Infinity : (res.credits ?? 0);
+      credits = premium ? Infinity : (finiteOrNull(res.credits) ?? 0);
       ctx.setCredits(credits);
     }
     refreshPersonalize();
   }
 
+  /**
+   * The application key of what personalising would send now: the
+   * description's, as the server keys it (the company and role lines left out).
+   */
+  function currentKey() {
+    return applicationKey(descIn.value.trim());
+  }
+
   /** What personalising the selected template for the pasted description will cost, in words. */
   function costNote(template) {
     if (premium || !template || !descIn.value.trim()) return '';
-    if (!consumesCredit({ premium, template, key: applicationKey(descIn.value) })) return 'This one is a free re-run.';
-    if (credits === 0) return 'No credits left: Premium makes cover letters unlimited.';
+    if (!consumesCredit({ premium, template: grantedOnly(template), key: currentKey() })) return 'This one is a free re-run.';
+    if (Number.isFinite(credits) && credits <= 0) return 'No credits left: Premium makes cover letters unlimited.';
     return 'Uses 1 credit, which includes one free re-run.';
+  }
+
+  /** The template's allowance after a generation, from the server's `charge`. */
+  function allowanceFrom(charge, key) {
+    if (!charge || typeof charge !== 'object' || charge.premium === true) {
+      return { aiAllowanceId: null, aiRerunsLeft: 0, aiRerunKey: null };
+    }
+    const id = typeof charge.allowanceId === 'string' && charge.allowanceId ? charge.allowanceId : null;
+    return {
+      aiAllowanceId: id,
+      aiRerunsLeft: id ? Math.max(0, finiteOrNull(charge.followUpsLeft) ?? 0) : 0,
+      aiRerunKey: key,
+    };
   }
 
   // ---------- the target application ----------
@@ -345,7 +384,14 @@ export function mount(body, ctx) {
       return;
     }
 
+    // What is sent, and the key the server will give its re-run: the
+    // description's, whatever the company and role lines say.
+    const companyName = companyIn.value.trim();
+    const role = roleIn.value.trim();
+    const jobContext = jobContextFor(companyName, role, description);
     const key = applicationKey(description);
+    const allowanceId = premium ? null : grantedOnly(template)?.aiAllowanceId ?? null;
+
     let latest = credits;
     if (!premium && latest === null) {
       const res = await creditManager.getCreditsWithStatus();
@@ -354,8 +400,9 @@ export function mount(body, ctx) {
         credits = res.credits;
       }
     }
-    const charged = consumesCredit({ premium, template, key });
-    if (charged && Number(latest || 0) <= 0) {
+    // A hint, to spare a round trip: the server decides what this costs.
+    const charged = consumesCredit({ premium, template: grantedOnly(template), key });
+    if (charged && Number.isFinite(latest) && latest <= 0) {
       errorText = 'No credits remaining. Premium makes cover letters unlimited.';
       renderResult();
       ctx.toast('No credits remaining. Upgrade to continue.', 'error');
@@ -373,9 +420,6 @@ export function mount(body, ctx) {
     try {
       const token = await getAccessToken();
       if (!token) throw new Error('Please sign in first.');
-      const companyName = companyIn.value.trim();
-      const role = roleIn.value.trim();
-      const roleLine = role ? `Role: ${role}\n\n` : '';
       const taskHint = 'Rewrite the cover letter template for this specific opportunity. Preserve the candidate\'s writing style and voice — do not make it generic. Reference the company and role by name. Weave in 2-4 key requirements from the description. Keep length within ±10% of the original. First person. No headings or bullet points.';
       const corpus = await loadFabricationCorpus();
 
@@ -385,11 +429,14 @@ export function mount(body, ctx) {
         body: JSON.stringify({
           question: `${LABEL} for this application`,
           draft: template.body,
-          jobContext: `${companyName ? `Organization: ${companyName}\n` : ''}${roleLine}${description.substring(0, 6000)}`,
+          jobContext,
           taskHint,
           styleHint: ANSWER_STYLE_INSTRUCTIONS.balanced,
           model: ANSWER_STUDIO_MODEL,
           ...(corpus.length ? { corpus } : {}),
+          // What it costs: the server charges, or spends this re-run.
+          kind: 'cover_letter',
+          ...(allowanceId ? { allowanceId } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -402,28 +449,30 @@ export function mount(body, ctx) {
       flags = Array.isArray(data?.fabricationFlags) ? data.fabricationFlags : [];
       lastContext = { company: companyName, description };
 
-      let deducted = false;
-      if (charged) {
-        try {
-          const deduct = await withTimeout(creditManager.deductCredit(), CREDIT_API_TIMEOUT_MS, 'Credit update timed out after generation.');
-          if (!deduct.success) {
-            errorText = deduct.error || 'Letter written, but your credits could not be updated.';
-          } else {
-            deducted = true;
-            credits = deduct.isPremium ? Infinity : deduct.remaining;
-            ctx.setCredits(credits);
-          }
-        } catch (creditErr) {
-          log.warn('Credit deduction failed after generation:', creditErr);
-          errorText = 'Letter written, but the credit update failed. Refresh to see your balance.';
-        }
+      // The server already charged (or spent the re-run); take its word.
+      const charge = data?.charge;
+      if (charge?.premium === true) {
+        premium = true;
+        credits = Infinity;
+        ctx.setCredits(credits);
+      } else if (finiteOrNull(charge?.credits) !== null) {
+        credits = charge.credits;
+        ctx.setCredits(credits);
+      } else if (!charge) {
+        loadCredits();
       }
-      const allowance = allowanceAfter({ premium, charged, deducted, template, key });
+      const allowance = allowanceFrom(charge, key);
       await persist(letters.map((t) => (t.id === template.id ? { ...t, lastUsed: new Date().toISOString(), ...allowance } : t)));
-      ctx.toast(charged || premium ? `${LABEL} personalised.` : `${LABEL} personalised, on its free re-run.`);
+      const free = charge && charge.charged === false && charge.premium !== true;
+      ctx.toast(free ? `${LABEL} personalised, on its free re-run.` : `${LABEL} personalised.`);
     } catch (e) {
       if (!alive) return;
       errorText = e?.message || 'The AI couldn’t write this one.';
+      // The server refused for want of a credit: its balance is zero, whatever this page thought.
+      if (!premium && /no credits/i.test(errorText)) {
+        credits = 0;
+        ctx.setCredits(0);
+      }
       ctx.toast(errorText, 'error');
     } finally {
       generating = false;

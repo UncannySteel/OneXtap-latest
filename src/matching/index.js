@@ -45,6 +45,8 @@ export {
   ALIASES,
   SENIORITY,
   TITLE_TOKENS,
+  VERSIONED_NAMES,
+  foldVersionedName,
   detectSeniority,
 } from './lexicon.js';
 

@@ -125,7 +125,8 @@ function sanitizeTailoringSuggestions(suggestions, corpus) {
 }
 
 router.post('/api/jobs/explain', requireAuth, async (req, res) => {
-  let charged = false;
+  // chargeOneCredit()'s answer once it charged: what a refund gives back.
+  let charge = null;
 
   try {
     const body = req.body || {};
@@ -289,8 +290,7 @@ router.post('/api/jobs/explain', requireAuth, async (req, res) => {
     }
 
     // Generation succeeded. Charge now — and from here on, any failure refunds.
-    const charge = await chargeOneCredit(req.userId, req.userEmail, 'Job fit analysis');
-    charged = charge.charged;
+    charge = await chargeOneCredit(req.userId, req.userEmail, 'Job fit analysis');
 
     try {
       const payload = {
@@ -305,13 +305,13 @@ router.post('/api/jobs/explain', requireAuth, async (req, res) => {
       await flushTracing();
       return res.json(payload);
     } catch (err) {
-      await refundOneCredit(req.userId, req.userEmail, 'Credit refunded (failed job fit analysis)');
-      charged = false;
+      await refundOneCredit(req.userId, req.userEmail, 'Credit refunded (failed job fit analysis)', charge);
+      charge = null;
       throw err;
     }
   } catch (error) {
-    if (charged) {
-      await refundOneCredit(req.userId, req.userEmail, 'Credit refunded (failed job fit analysis)');
+    if (charge?.charged) {
+      await refundOneCredit(req.userId, req.userEmail, 'Credit refunded (failed job fit analysis)', charge);
     }
     const status = error?.statusCode || 502;
     jobsLog.error('POST /api/jobs/explain failed', { errName: error?.name });
